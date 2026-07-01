@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.app.Activity
 import android.appwidget.AppWidgetManager
@@ -41,14 +41,14 @@ class WidgetSettingsActivity : Activity() {
         val opacity = field(R.id.widget_opacity).text.toString().toIntOrNull()?.coerceIn(0, 100)
             ?: cfg.widgetOpacity
 
-        getSharedPreferences("comfort_forecast", MODE_PRIVATE).edit()
+        getSharedPreferences("ac_windows", MODE_PRIVATE).edit()
             .putString("widgetForecastHours", hours.toString())
             .putString("widgetOpacity", opacity.toString())
             .apply()
 
         // Forecast length changed → cached scores are the wrong span; refetch + redraw.
         WidgetCache.clear(this)
-        ComfortForecastProvider.refreshNow(this)
+        AcWindowsProvider.refreshNow(this)
 
         setResult(RESULT_OK, resultIntent())
         finish()

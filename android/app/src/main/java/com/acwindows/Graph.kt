@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -15,7 +15,7 @@ import android.graphics.Paint
  * flag). The best contiguous window is underlined.
  *
  * The bitmap is rendered at the ImageView's true pixel aspect (see
- * ComfortForecastProvider) and shown with fitCenter, so text never stretches on resize.
+ * AcWindowsProvider) and shown with fitCenter, so text never stretches on resize.
  */
 object Graph {
 

@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import androidx.compose.ui.graphics.Color
 import kotlin.math.roundToInt

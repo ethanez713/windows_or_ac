@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size

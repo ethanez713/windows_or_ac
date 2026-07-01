@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ComfortForecast"
+rootProject.name = "AcWindows"
 include(":app")

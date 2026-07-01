@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.content.Context
 import android.util.Log
@@ -35,7 +35,7 @@ object SecretsStore {
             props.entries.associate { it.key.toString() to it.value.toString().trim() }
                 .filterValues { it.isNotEmpty() }
         } catch (e: Exception) {
-            Log.w("ComfortForecast", "secrets load failed")  // never log the values
+            Log.w("AcWindows", "secrets load failed")  // never log the values
             emptyMap()
         }
     }
@@ -53,12 +53,12 @@ object SecretsStore {
         val f = File(context.filesDir, FILE)
         try {
             val props = Properties().apply { merged.forEach { (k, v) -> setProperty(k, v) } }
-            f.outputStream().use { props.store(it, "Comfort Forecast API keys — do not share") }
+            f.outputStream().use { props.store(it, "AC / Windows API keys — do not share") }
             // Lock down: owner read/write only (the dir is already app-private 0700).
             f.setReadable(false, false); f.setReadable(true, true)
             f.setWritable(false, false); f.setWritable(true, true)
         } catch (e: Exception) {
-            Log.w("ComfortForecast", "secrets save failed")
+            Log.w("AcWindows", "secrets save failed")
         }
     }
 }

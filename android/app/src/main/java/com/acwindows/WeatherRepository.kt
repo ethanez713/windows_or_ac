@@ -1,11 +1,12 @@
-package com.comfortforecast
+package com.acwindows
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -33,16 +34,45 @@ object WeatherRepository {
 
     private const val TOLERANCE_F = 8.0
 
-    suspend fun fetch(cfg: AppConfig): WeatherResult = coroutineScope {
+    /** Don't render until at least this many sources have answered (ok or failed). */
+    private const val MIN_SOURCES = 3
+
+    /**
+     * Once [MIN_SOURCES] have answered, wait at most this long for the stragglers
+     * before drawing with whatever's in. Until 3 have answered we keep waiting
+     * (bounded only by each fetch's own HTTP timeout).
+     */
+    private const val SOURCE_SOFT_DEADLINE_MS = 5_000L
+
+    /** One-shot fetch: returns the final result with no progressive callbacks. */
+    suspend fun fetch(cfg: AppConfig): WeatherResult = fetchProgressive(cfg) {}
+
+    /**
+     * Progressive fetch for the widget. Kicks off every current-reading source plus
+     * the hourly-forecast feeds in parallel and invokes [onUpdate] each time a fresh
+     * arrival improves the picture — but only after [MIN_SOURCES] sources have
+     * answered. So the widget paints the instant the 3rd source lands, redraws on
+     * every later source/forecast arrival, and stops waiting [SOURCE_SOFT_DEADLINE_MS]
+     * after the 3rd answer. Returns the final assembled result.
+     */
+    suspend fun fetchProgressive(
+        cfg: AppConfig, onUpdate: suspend (WeatherResult) -> Unit,
+    ): WeatherResult = coroutineScope {
         val hrs = cfg.widgetForecastHours
         // Current readings (keyless + any keyed hyperlocal sources) + hourly forecast.
-        val readings = currentReadingTasks(cfg)
+        val readingTasks = currentReadingTasks(cfg)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourly(cfg, hrs) }
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, hrs) }
-
-        val consensus = aggregate(readings.awaitAll(), cfg.sourceWeights)
-        val forecast = ForecastBuilder.build(omH.await(), nwsH.await(), cfg.comfort)
-        WeatherResult(consensus, forecast)
+        driveProgressive(
+            readingTasks, listOf(omH, nwsH),
+            assemble = { readings, feeds ->
+                WeatherResult(
+                    aggregate(readings, cfg.sourceWeights, readingTasks.size),
+                    ForecastBuilder.build(hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort),
+                )
+            },
+            onUpdate = onUpdate,
+        )
     }
 
     /**
@@ -70,6 +100,18 @@ object WeatherRepository {
         cfg: AppConfig,
         days: Int = cfg.comfort.appForecastDays,
         deviceSource: DeviceSource = NoopDeviceSource,
+    ): AppState = fetchAppStateProgressive(cfg, days, deviceSource) {}
+
+    /**
+     * Progressive variant of [fetchAppState] for the launcher app: same 3-source /
+     * 5-second policy as [fetchProgressive], emitting an [AppState] on each fresh
+     * arrival so the app's source counter and graphs fill in live.
+     */
+    suspend fun fetchAppStateProgressive(
+        cfg: AppConfig,
+        days: Int = cfg.comfort.appForecastDays,
+        deviceSource: DeviceSource = NoopDeviceSource,
+        onUpdate: suspend (AppState) -> Unit,
     ): AppState = coroutineScope {
         val readingTasks = currentReadingTasks(cfg)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourlyDays(cfg, days) }
@@ -77,11 +119,79 @@ object WeatherRepository {
         // the rest "degraded". Open-Meteo alone still drives the score.
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
+        driveProgressive(
+            readingTasks, listOf(omH, nwsH, home),
+            assemble = { readings, feeds ->
+                AppState(
+                    aggregate(readings, cfg.sourceWeights, readingTasks.size),
+                    ForecastBuilder.build(hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort),
+                    feeds[home] as? HomeState ?: HomeState(),
+                    readings.toList(),
+                )
+            },
+            onUpdate = onUpdate,
+        )
+    }
 
-        val readings = readingTasks.awaitAll()
-        val consensus = aggregate(readings, cfg.sourceWeights)
-        val forecast = ForecastBuilder.build(omH.await(), nwsH.await(), cfg.comfort)
-        AppState(consensus, forecast, home.await(), readings)
+    @Suppress("UNCHECKED_CAST")
+    private fun hourlyOf(feeds: Map<Deferred<*>, Any?>, key: Deferred<*>): List<Map<String, Any?>> =
+        feeds[key] as? List<Map<String, Any?>> ?: emptyList()
+
+    /**
+     * The shared progressive engine. Awaits [readingTasks] and [feeds] as they finish,
+     * accumulating each into [readings] / a per-feed value map, and calls [onUpdate]
+     * with a freshly [assemble]d result on every arrival once [MIN_SOURCES] sources
+     * have answered. Caps the wait at [SOURCE_SOFT_DEADLINE_MS] (measured from start)
+     * once that floor is met, then cancels any stragglers and returns the final result.
+     */
+    private suspend fun <R> driveProgressive(
+        readingTasks: List<Deferred<SourceReading>>,
+        feeds: List<Deferred<*>>,
+        assemble: (readings: List<SourceReading>, feeds: Map<Deferred<*>, Any?>) -> R,
+        onUpdate: suspend (R) -> Unit,
+    ): R {
+        val readings = ArrayList<SourceReading>(readingTasks.size)
+        val feedValues = HashMap<Deferred<*>, Any?>()
+        val readingSet = readingTasks.toHashSet()
+        val pending = HashSet<Deferred<*>>(readingTasks.size + feeds.size).apply {
+            addAll(readingTasks); addAll(feeds)
+        }
+        val startNs = System.nanoTime()
+        fun elapsedMs() = (System.nanoTime() - startNs) / 1_000_000
+
+        while (pending.isNotEmpty()) {
+            val haveEnough = readings.size >= MIN_SOURCES
+            if (haveEnough && elapsedMs() >= SOURCE_SOFT_DEADLINE_MS) break
+            // Wait indefinitely for the 3rd answer; once we have it, only for the deadline remainder.
+            val waitMs = if (haveEnough) SOURCE_SOFT_DEADLINE_MS - elapsedMs() else null
+            val done = awaitNext(pending, waitMs) { d, v ->
+                if (d in readingSet) readings.add(v as SourceReading) else feedValues[d] = v
+            } ?: break   // deadline hit while waiting on stragglers
+            pending.remove(done)
+            if (readings.size >= MIN_SOURCES) onUpdate(assemble(readings, feedValues))
+        }
+        pending.forEach { it.cancel() }
+        return assemble(readings, feedValues)
+    }
+
+    /**
+     * Suspends until the next deferred in [pending] completes, hands its (deferred,
+     * value) to [capture], and returns that deferred. With [waitMs] non-null it gives
+     * up after that many ms (returning null); null means wait without a timeout.
+     */
+    private suspend fun awaitNext(
+        pending: Set<Deferred<*>>,
+        waitMs: Long?,
+        capture: (Deferred<*>, Any?) -> Unit,
+    ): Deferred<*>? {
+        suspend fun pick(): Deferred<*> = select {
+            pending.forEach { d -> d.onAwait { v -> capture(d, v); d } }
+        }
+        return when {
+            waitMs == null -> pick()
+            waitMs <= 0L -> null
+            else -> withTimeoutOrNull(waitMs) { pick() }
+        }
     }
 
     // ---- HTTP helpers (HttpURLConnection + org.json, both built into Android) ----
@@ -331,7 +441,9 @@ object WeatherRepository {
      * favour the sources they trust. Weight 0 drops a source from the consensus entirely.
      * The temp spread (max−min) is still reported for the confidence flag.
      */
-    private fun aggregate(readings: List<SourceReading>, weights: Map<String, Double>): Consensus {
+    private fun aggregate(
+        readings: List<SourceReading>, weights: Map<String, Double>, attempted: Int,
+    ): Consensus {
         val ok = readings.filter { it.ok }
         val failed = readings.filter { !it.ok }.map { "${it.source}: ${it.error ?: "error"}" }
 
@@ -372,6 +484,7 @@ object WeatherRepository {
             tempSpreadF = spread,
             sourcesOk = ok.map { it.source },
             sourcesFailed = failed,
+            sourcesAttempted = attempted,
         )
     }
 }

@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -70,7 +70,7 @@ private val DarkColors = darkColorScheme(
 
 /** Always-dark, modern theme for the app. */
 @Composable
-fun ComfortForecastTheme(content: @Composable () -> Unit) {
+fun AcWindowsTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = DarkColors, content = content)
 }
 

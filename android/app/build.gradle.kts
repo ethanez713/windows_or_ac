@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.comfortforecast"
+    namespace = "com.acwindows"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.comfortforecast"
+        applicationId = "com.acwindows"
         minSdk = 26          // Android 8.0; covers ~99% of active devices
         targetSdk = 34
         versionCode = 1

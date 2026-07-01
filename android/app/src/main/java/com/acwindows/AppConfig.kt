@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.content.Context
 
@@ -37,7 +37,7 @@ data class AppConfig(
         // ────────────────────────────────────────────
 
         fun load(context: Context): AppConfig {
-            val p = context.getSharedPreferences("comfort_forecast", Context.MODE_PRIVATE)
+            val p = context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE)
             val base = Comfort()
             return AppConfig(
                 lat = p.getString("lat", null)?.toDoubleOrNull() ?: DEFAULT_LAT,

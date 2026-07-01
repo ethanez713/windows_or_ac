@@ -1,9 +1,9 @@
-"""Tests for the Open-Window Score (comfort_forecast/score.py)."""
+"""Tests for the Open-Window Score (ac_windows/score.py)."""
 
 import unittest
 
-from comfort_forecast.config import Comfort
-from comfort_forecast.score import _ramp_down, window_score
+from ac_windows.config import Comfort
+from ac_windows.score import _ramp_down, window_score
 
 
 class TestRamp(unittest.TestCase):

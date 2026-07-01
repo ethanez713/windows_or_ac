@@ -1,4 +1,13 @@
-# Comfort Forecast — open the windows, or turn on the AC?
+<!--
+RENAME TODO (comfort_forecast -> ac_windows): the source is fully renamed
+(Python package `ac_windows`, Android `com.acwindows` / "AcWindows" / app name
+"AC / Windows"). Still to do at the repo/dir level:
+  - Local checkout dir: `~/comfort_forecast` -> `~/ac_windows` (plain `mv`; note the
+    Claude memory/session path `-path-to-repo` derives from this dir).
+  - GitHub remote: rename `ethanez713/comfort_forecast` -> `ac_windows` on GitHub,
+    then `git remote set-url origin ssh://git@github.com/ethanez713/ac_windows.git`.
+-->
+# AC / Windows — open the windows, or turn on the AC?
 
 A small, **dependency-free** Python backend that polls multiple weather sources
 and tells you whether to **open your windows** (free cooling) or **run the AC**,
@@ -24,7 +33,7 @@ The Android home-screen widget — the current call, the readings behind it, and
 Open-Window Score across the next day-and-a-half (tall bars = open up, short = run
 the AC; the dashed line is your open threshold):
 
-![Comfort Forecast widget](docs/screenshots/widget.png)
+![AC / Windows widget](docs/screenshots/widget.png)
 
 The companion app's multi-day forecast — tap a day to expand it into either the raw
 weather values or the per-factor score breakdown:
@@ -41,9 +50,9 @@ there are **zero third-party dependencies**.
 
 ```bash
 cp config.example.toml config.toml     # then edit your location & comfort target
-python -m comfort_forecast.cli                 # human-readable
-python -m comfort_forecast.cli --json          # machine-readable (the widget contract)
-python -m comfort_forecast.cli --lat 40.7 --lon -74.0   # one-off location override
+python -m ac_windows.cli                 # human-readable
+python -m ac_windows.cli --json          # machine-readable (the widget contract)
+python -m ac_windows.cli --lat 40.7 --lon -74.0   # one-off location override
 python -m unittest discover -s tests    # run the test suite (no network)
 ```
 
@@ -220,7 +229,7 @@ still produce a result.** (met.no's WAF occasionally 403s datacenter IPs but is
 fine from home/phone networks.)
 
 Adding a source is one file: write `fetch(location, user_agent, timeout) ->
-WeatherReading` (and optionally `fetch_hourly(...)`) in `comfort_forecast/providers/`
+WeatherReading` (and optionally `fetch_hourly(...)`) in `ac_windows/providers/`
 and register it in `providers/__init__.py`. Good keyless candidates for a 4th:
 **PirateWeather** (free key) or a second Open-Meteo *model* (e.g. `gfs_seamless`
 vs `icon_seamless`) for independent model diversity through one API.
@@ -228,7 +237,7 @@ vs `icon_seamless`) for independent model diversity through one API.
 ## Layout
 
 ```
-comfort_forecast/
+ac_windows/
   config.py        # load + validate config.toml (stdlib tomllib)
   models.py        # WeatherReading, AggregateReading, Recommendation, Forecast (dataclasses)
   http_util.py     # tiny JSON-over-HTTP helper (stdlib urllib)
@@ -278,7 +287,7 @@ This follows a proportionate, personal-project security posture:
 
 ## License
 
-Comfort Forecast is free software, licensed under the **GNU General Public License v3.0**
+AC / Windows is free software, licensed under the **GNU General Public License v3.0**
 — see [LICENSE](LICENSE). You may use, study, share, and modify it; derivative
 works must remain open-source under the same license.
 

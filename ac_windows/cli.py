@@ -1,8 +1,8 @@
 """Command-line entrypoint: fetch -> aggregate -> decide -> print.
 
-    python -m comfort_forecast.cli                 # human-readable, uses ./config.toml
-    python -m comfort_forecast.cli --json          # machine-readable (for the widget)
-    python -m comfort_forecast.cli --lat 40.7 --lon -74.0   # one-off location override
+    python -m ac_windows.cli                 # human-readable, uses ./config.toml
+    python -m ac_windows.cli --json          # machine-readable (for the widget)
+    python -m ac_windows.cli --lat 40.7 --lon -74.0   # one-off location override
 
 The --json output is the contract a phone widget (or a future smart-home
 controller) consumes, so its shape is kept stable and flat.

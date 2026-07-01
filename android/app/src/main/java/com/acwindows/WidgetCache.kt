@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.content.Context
 import org.json.JSONArray
@@ -33,7 +33,7 @@ data class Snapshot(
 object WidgetCache {
 
     const val TTL_MS = 15 * 60 * 1000L
-    private const val PREFS = "comfort_forecast"
+    private const val PREFS = "ac_windows"
     private const val KEY = "snapshot"
 
     fun save(context: Context, s: Snapshot) {

@@ -26,16 +26,16 @@
         <!-- The home-screen widget. No launcher Activity is needed: you add the
              widget from the launcher's widget tray. -->
         <receiver
-            android:name=".ComfortForecastProvider"
+            android:name=".AcWindowsProvider"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.comfortforecast.ACTION_REFRESH" />
+                <action android:name="com.acwindows.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/comfort_forecast_info" />
+                android:resource="@xml/ac_windows_info" />
         </receiver>
 
         <!-- Global app / comfort settings (thresholds + location). Launched from the
@@ -43,7 +43,7 @@
         <activity
             android:name=".ConfigActivity"
             android:exported="false"
-            android:label="Comfort Forecast settings"
+            android:label="AC / Windows settings"
             android:theme="@android:style/Theme.Material" />
 
         <!-- Widget-only settings (forecast length + opacity). Shown when the widget is

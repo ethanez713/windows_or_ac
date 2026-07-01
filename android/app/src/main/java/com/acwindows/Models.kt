@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 /**
  * Data containers, mirroring the Python backend's models.py so the two stay
@@ -61,6 +61,8 @@ data class Consensus(
     val tempSpreadF: Double = 0.0,
     val sourcesOk: List<String> = emptyList(),
     val sourcesFailed: List<String> = emptyList(),
+    val sourcesAttempted: Int = 0,   // total sources kicked off (the X in the "N/X sources" count),
+                                     // stable across progressive frames while ok/failed grow toward it
 )
 
 enum class Action { OPEN_WINDOWS, RUN_AC, KEEP_CLOSED, COMFORTABLE, UNKNOWN }

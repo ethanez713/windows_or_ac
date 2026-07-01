@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 /**
  * A source of home/device state — the Phase-2 seam for smart-home integration.

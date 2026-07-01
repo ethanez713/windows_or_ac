@@ -1,4 +1,4 @@
-# Comfort Forecast — Android home-screen widget
+# AC / Windows — Android home-screen widget
 
 A self-contained native widget that shows whether to **open your windows** or
 **run the AC** — plus a **24-hour Open-Window Score graph** so you can see the
@@ -42,7 +42,7 @@ redraws. The configured setpoints are shown on the widget (`open ≥ 60 · targe
 
 ## 1. Configure your location
 
-Edit `app/src/main/java/com/comfortforecast/AppConfig.kt` and set:
+Edit `app/src/main/java/com/acwindows/AppConfig.kt` and set:
 
 ```kotlin
 const val DEFAULT_LAT = 40.7128            // your latitude
@@ -149,23 +149,23 @@ called). If you rebuild the toolchain from scratch, recreate it:
 ./dev.sh emu        # boot the emulator HEADLESS (the reliable path on WSL2)
 ./dev.sh install    # build + adb install onto the running emulator/device
 ./dev.sh verify     # trigger a refresh, print the on-device fetch+decision from logcat
-./dev.sh shot       # screenshot the emulator -> /tmp/comfortforecast.png
+./dev.sh shot       # screenshot the emulator -> /tmp/acwindows.png
 ./dev.sh run        # the whole loop: emu (if needed) -> install -> verify
-./dev.sh logs       # tail this app's 'ComfortForecast' logcat
+./dev.sh logs       # tail this app's 'AcWindows' logcat
 ```
 
 `verify` is the key one: it broadcasts `ACTION_REFRESH` (which runs `RefreshWorker` without
 needing a placed widget) and prints the result, e.g.
 
 ```
-ComfortForecast: fetch ok=[open-meteo, nws] failed=[] confidence=high temp=74.38 dew=48.31 aqi=38 -> OPEN_WINDOWS: Open your windows
+AcWindows: fetch ok=[open-meteo, nws] failed=[] confidence=high temp=74.38 dew=48.31 aqi=38 -> OPEN_WINDOWS: Open your windows
 ```
 
 **Headless vs. windowed:** the **headless** qemu binary boots reliably with just the libs
 above. The **windowed** binary (`./dev.sh emu-window`, shown via WSLg) additionally needs the
 full Qt stack and is fussier — for verification you don't need the window: `./dev.sh shot`
 captures the SwiftShader framebuffer (including any placed widget) as a PNG. To place the
-widget itself: long-press the home screen → Widgets → drag **Comfort Forecast** out.
+widget itself: long-press the home screen → Widgets → drag **AC / Windows** out.
 
 **RAM:** the box is memory-tight, so `dev.sh` caps the emulator at 1.5 GB; close other heavy
 apps while it runs.

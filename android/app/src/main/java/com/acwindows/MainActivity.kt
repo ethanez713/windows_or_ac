@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import android.app.Application
 import android.content.Intent
@@ -83,7 +83,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(refreshing = true, error = null) }
         viewModelScope.launch {
             val result = runCatching {
-                WeatherRepository.fetchAppState(AppConfig.load(getApplication()))
+                // Progressive: surface the first state as soon as 3+ sources answer, then
+                // refresh it (and the "N/X sources" count + graphs) on every later arrival.
+                WeatherRepository.fetchAppStateProgressive(AppConfig.load(getApplication())) { partial ->
+                    val empty = partial.consensus.confidence == "none" && partial.forecast.points.isEmpty()
+                    if (!empty) _ui.update {
+                        it.copy(
+                            loading = false, refreshing = false, state = partial,
+                            updatedAtMs = System.currentTimeMillis(), error = null,
+                        )
+                    }
+                }
             }
             _ui.update { cur ->
                 result.fold(
@@ -112,7 +122,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { ComfortForecastTheme { AppRoot() } }
+        setContent { AcWindowsTheme { AppRoot() } }
     }
 }
 
@@ -131,7 +141,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Comfort Forecast", fontWeight = FontWeight.Bold) },
+                title = { Text("AC / Windows", fontWeight = FontWeight.Bold) },
                 actions = {
                     DetailModeToggle(mode) { mode = it }
                     SettingsButton()
@@ -360,7 +370,7 @@ private fun fmtInches(inches: Double): String {
 private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, onClick: () -> Unit) {
     val c = state.consensus
     val ok = c.sourcesOk.size
-    val total = ok + c.sourcesFailed.size
+    val total = maxOf(c.sourcesAttempted, ok + c.sourcesFailed.size)
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
     val dot = confidenceColor(c.confidence)

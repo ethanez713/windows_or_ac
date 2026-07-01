@@ -1,4 +1,4 @@
-package com.comfortforecast
+package com.acwindows
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

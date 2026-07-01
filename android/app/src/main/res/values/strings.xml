@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Comfort Forecast</string>
+    <string name="app_name">AC / Windows</string>
     <string name="widget_description">Open the windows or run the AC, with a 48-hour score graph.</string>
 </resources>
