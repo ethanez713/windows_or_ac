@@ -214,7 +214,8 @@ private enum class ChartMode { SCORE, VALUES }
 @Composable
 private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long) {
     val context = LocalContext.current
-    val comfort = remember { AppConfig.load(context).comfort }
+    val cfg = remember { AppConfig.load(context) }
+    val comfort = cfg.comfort
     val threshold = comfort.openScoreMin
     val days = remember(state) {
         state.forecast.points.groupBy { it.time.take(10) }
@@ -237,6 +238,9 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long) 
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        cfg.placeName?.takeIf { it.isNotBlank() }?.let { place ->
+            item { LocationLabel(place) }
+        }
         item { SourceStatusHeader(state, updatedAtMs) { showSources = true } }
         items(days, key = { it.date }) { day ->
             DayCard(
@@ -366,6 +370,21 @@ private fun fmtInches(inches: Double): String {
  * (X/N), the consensus confidence colour, and when this data was fetched. Tap to open the
  * per-source breakdown — handy when the reported numbers look off versus a local reading.
  */
+/** City/county label for the configured location, shown just above the sources banner. */
+@Composable
+private fun LocationLabel(name: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 2.dp)) {
+        Icon(
+            painterResource(R.drawable.ic_location),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
 @Composable
 private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, onClick: () -> Unit) {
     val c = state.consensus

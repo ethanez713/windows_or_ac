@@ -147,6 +147,7 @@ class AcWindowsProvider : AppWidgetProvider() {
             RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, "Loading…")
                 setTextViewText(R.id.readings, "")
+                setViewVisibility(R.id.location, View.GONE)
                 setTextViewText(R.id.sources, "fetching weather…")
                 setTextViewText(R.id.updated, "")
                 setViewVisibility(R.id.refresh_spinner, View.VISIBLE)
@@ -166,12 +167,15 @@ class AcWindowsProvider : AppWidgetProvider() {
 
             // Tier the text rows by height so a 2x2 still looks intentional.
             val showReadings = hDp >= 130
+            val place = cfg.placeName?.trim().orEmpty()
+            val showLocation = place.isNotEmpty()
 
             // Estimate the graph ImageView's true size so its bitmap matches the
             // view aspect (with fitCenter) — this is what keeps text from
             // stretching/compressing when the widget is resized.
             var reservedDp = 24 + 22 + 6 + 21          // padding + headline + graph margin + footer
             if (showReadings) reservedDp += 19
+            if (showLocation) reservedDp += 16         // location line above the footer
             val ivWdp = (wDp - 24).coerceAtLeast(60)
             val ivHdp = (hDp - reservedDp).coerceAtLeast(40)
 
@@ -201,6 +205,8 @@ class AcWindowsProvider : AppWidgetProvider() {
                 setTextViewText(R.id.headline, s.headline)
                 setTextViewText(R.id.readings, readings)
                 setViewVisibility(R.id.readings, if (showReadings) View.VISIBLE else View.GONE)
+                setTextViewText(R.id.location, place)
+                setViewVisibility(R.id.location, if (showLocation) View.VISIBLE else View.GONE)
                 setTextViewText(R.id.sources, sources)
                 setTextViewText(R.id.updated, updated)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)

@@ -88,6 +88,30 @@
             android:layout_marginBottom="14dp"
             android:background="#33FFFFFF" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Location"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:paddingBottom="2dp" />
+        <TextView style="@style/CfgHint"
+            android:text="Tap to fill from your device (coarse, city-level), or enter a lat/long by hand if you'd rather not share location. Nothing is sent anywhere but the weather lookup." />
+
+        <Button
+            android:id="@+id/use_location"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:drawableStart="@drawable/ic_location"
+            android:drawablePadding="6dp"
+            android:text="Use my location" />
+        <TextView
+            android:id="@+id/loc_status"
+            style="@style/CfgHint"
+            android:layout_marginTop="4dp"
+            android:text="" />
+
         <TextView style="@style/CfgLabel" android:text="Latitude" />
         <EditText
             android:id="@+id/lat"

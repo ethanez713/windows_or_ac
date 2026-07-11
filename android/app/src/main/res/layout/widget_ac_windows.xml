@@ -38,6 +38,20 @@
         android:scaleType="fitCenter"
         android:contentDescription="Open-window score for the next 48 hours" />
 
+    <TextView
+        android:id="@+id/location"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:textColor="#CCFFFFFF"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:drawableStart="@drawable/ic_location"
+        android:drawablePadding="4dp"
+        android:visibility="gone"
+        android:text="" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -17,6 +17,7 @@ data class AppConfig(
     val comfort: Comfort,
     val secrets: Secrets = Secrets(),     // user-pasted provider API keys (see SecretsStore)
     val sourceWeights: Map<String, Double> = emptyMap(),  // per-source trust weight (default 1.0)
+    val placeName: String? = null,        // reverse-geocoded label for lat/lon (device location), or null
     val widgetOpacity: Int = 100,         // widget background opacity, 0–100%
     val widgetForecastHours: Int = 36,    // how many hours the widget graph spans
 ) {
@@ -59,6 +60,7 @@ data class AppConfig(
                 sourceWeights = KNOWN_SOURCES.associateWith { s ->
                     p.getString("weight_$s", null)?.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
                 },
+                placeName = p.getString("placeName", null)?.takeIf { it.isNotBlank() },
                 widgetOpacity = p.getString("widgetOpacity", null)?.toIntOrNull()?.coerceIn(0, 100) ?: 100,
                 widgetForecastHours = p.getString("widgetForecastHours", null)?.toIntOrNull()
                     ?.coerceIn(6, 96) ?: DEFAULT_WIDGET_HOURS,
