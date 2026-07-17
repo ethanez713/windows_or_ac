@@ -3,7 +3,6 @@ package com.acwindows
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
@@ -92,14 +91,19 @@ class ConfigActivity : Activity() {
     // ───────── on-device location ─────────
 
     private fun onUseLocation() {
-        if (LocationProvider.hasPermission(this)) fetchLocation()
+        // Gate on precise: if we don't yet have FINE, prompt — this also lets an
+        // existing Approximate-only grant upgrade to Precise via the Android 12+ toggle.
+        if (LocationProvider.hasPrecise(this)) fetchLocation()
         else requestPermissions(LocationProvider.permissions, REQ_LOCATION)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, results)
         if (requestCode != REQ_LOCATION) return
-        if (results.any { it == PackageManager.PERMISSION_GRANTED }) fetchLocation()
+        // Fetch if we ended up with any grant (fetch uses the finest available); only a
+        // full denial falls back to manual entry. Re-check live state rather than the
+        // results array, since an already-held COARSE reads as granted here too.
+        if (LocationProvider.hasPermission(this)) fetchLocation()
         else setLocStatus("Location permission denied — enter a lat/long by hand.")
     }
 

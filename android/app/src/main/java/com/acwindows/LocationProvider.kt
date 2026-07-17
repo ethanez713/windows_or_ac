@@ -23,18 +23,33 @@ import kotlin.coroutines.resume
 /**
  * On-device location using only the platform [LocationManager] + [Geocoder] — no
  * Google Play Services dependency, so the app stays buildable/installable on any
- * device and free of proprietary libs. Coarse (≈city-level) accuracy is all the
- * weather lookup needs, so we request only ACCESS_COARSE_LOCATION; users who don't
- * want to share location at all can still type a lat/long by hand in settings.
+ * device and free of proprietary libs. We request precise (ACCESS_FINE_LOCATION) for
+ * metre-level coordinates so the hyperlocal forecast is pinned to the actual address,
+ * with COARSE alongside so Android 12+ still works if the user picks Approximate; users
+ * who don't want to share location at all can still type a lat/long by hand in settings.
  */
 object LocationProvider {
 
-    /** What ConfigActivity requests. Coarse only — fine is accepted if already granted. */
-    val permissions = arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
+    /** A cached fix must be at least this accurate (metres) to reuse when precise is requested. */
+    private const val PRECISE_ACCURACY_M = 100f
+
+    /**
+     * What ConfigActivity requests. FINE (precise) first with COARSE alongside so the
+     * Android 12+ permission dialog shows the Precise/Approximate toggle; if the user
+     * grants only Approximate we still work at city level.
+     */
+    val permissions = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+    )
 
     fun hasPermission(context: Context): Boolean =
         granted(context, Manifest.permission.ACCESS_COARSE_LOCATION) ||
             granted(context, Manifest.permission.ACCESS_FINE_LOCATION)
+
+    /** True only when metre-level ACCESS_FINE_LOCATION is granted (not just Approximate). */
+    fun hasPrecise(context: Context): Boolean =
+        granted(context, Manifest.permission.ACCESS_FINE_LOCATION)
 
     private fun granted(context: Context, perm: String) =
         ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
@@ -49,10 +64,14 @@ object LocationProvider {
     suspend fun currentLocation(context: Context, timeoutMs: Long = 12_000): Location? {
         if (!hasPermission(context)) return null
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        val precise = hasPrecise(context)
 
-        lastKnown(lm)?.let { return it }
+        lastKnown(lm, precise)?.let { return it }
 
+        // With precise permission prefer GPS (metre-level) for the fresh fix; fall back to
+        // the coarser NETWORK provider only when GPS is unavailable (indoors, disabled).
         val provider = when {
+            precise && lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
             lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
             lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
             else -> return null
@@ -61,10 +80,17 @@ object LocationProvider {
     }
 
     @SuppressLint("MissingPermission")
-    private fun lastKnown(lm: LocationManager): Location? =
-        lm.allProviders
+    private fun lastKnown(lm: LocationManager, precise: Boolean): Location? {
+        val fixes = lm.allProviders
             .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
-            .maxByOrNull { it.time }
+        // When precise is requested, only reuse a cached fix that is already metre-level;
+        // otherwise fall through to a fresh GPS read rather than hand back a stale
+        // city-level fix. Without precise, the freshest fix (any provider) is fine.
+        return if (precise)
+            fixes.filter { it.hasAccuracy() && it.accuracy <= PRECISE_ACCURACY_M }.maxByOrNull { it.time }
+        else
+            fixes.maxByOrNull { it.time }
+    }
 
     @SuppressLint("MissingPermission")
     private suspend fun singleUpdate(lm: LocationManager, provider: String): Location? =
