@@ -89,8 +89,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 WeatherRepository.fetchAppStateProgressive(AppConfig.load(getApplication())) { partial ->
                     val empty = partial.consensus.confidence == "none" && partial.forecast.points.isEmpty()
                     if (!empty) _ui.update {
+                        // Keep refreshing=true across partials: an early partial may carry current
+                        // conditions but no hourly forecast yet, and the UI shows skeleton chips
+                        // (not "No forecast available") for as long as a fetch is still in flight.
                         it.copy(
-                            loading = false, refreshing = false, state = partial,
+                            loading = false, state = partial,
                             updatedAtMs = System.currentTimeMillis(), error = null,
                         )
                     }
@@ -154,15 +157,17 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         Box(Modifier.padding(padding).fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
             val s = ui.state
             when {
-                ui.loading && s == null -> CenterBox { CircularProgressIndicator() }
-                s == null -> CenterBox {
+                // Genuine failure with nothing to show → error + retry.
+                s == null && !ui.loading -> CenterBox {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(ui.error ?: "No data", color = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = vm::refresh) { Text("Retry") }
                     }
                 }
-                else -> ForecastScreen(s, mode, ui.updatedAtMs)
+                // Still loading the first data → skeleton chips, not a spinner or empty message.
+                s == null -> SkeletonForecast()
+                else -> ForecastScreen(s, mode, ui.updatedAtMs, ui.refreshing)
             }
             PullToRefreshContainer(ptr, Modifier.align(Alignment.TopCenter))
         }
@@ -205,6 +210,41 @@ private fun SettingsButton() {
 private fun CenterBox(content: @Composable () -> Unit) =
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 
+/**
+ * Placeholder chips shown while the first forecast is still loading. Mirrors the real
+ * layout (sources banner + day rows) so data swaps in without a jump, and replaces the
+ * brief "No forecast available" flash that showed before the hourly forecast arrived.
+ */
+@Composable
+private fun SkeletonForecast() {
+    val chip = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    Column(
+        Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SkeletonChip(chip, Modifier.fillMaxWidth().height(40.dp))   // sources banner
+        repeat(5) {
+            ElevatedCard(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.elevatedCardColors(containerColor = SurfaceElevated),
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SkeletonChip(chip, Modifier.width(64.dp).height(16.dp))   // date
+                    Spacer(Modifier.width(12.dp))
+                    SkeletonChip(chip, Modifier.weight(1f).height(40.dp))     // sparkline
+                    Spacer(Modifier.width(12.dp))
+                    SkeletonChip(chip, Modifier.width(72.dp).height(28.dp))   // summary
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonChip(color: Color, modifier: Modifier) {
+    Box(modifier.clip(RoundedCornerShape(8.dp)).background(color))
+}
+
 // ───────────────────────── 14-Day forecast screen ─────────────────────────
 
 private data class DayForecast(val date: String, val points: List<ForecastPoint>)
@@ -213,7 +253,7 @@ private data class DayForecast(val date: String, val points: List<ForecastPoint>
 private enum class ChartMode { SCORE, VALUES }
 
 @Composable
-private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long) {
+private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, refreshing: Boolean) {
     val context = LocalContext.current
     val cfg = remember { AppConfig.load(context) }
     val comfort = cfg.comfort
@@ -231,7 +271,9 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long) 
     var showSources by rememberSaveable { mutableStateOf(false) }
 
     if (days.isEmpty()) {
-        CenterBox { Text("No forecast available") }
+        // A fetch in flight may have current conditions but no hourly forecast yet — show
+        // skeletons rather than flashing "No forecast available" before the data lands.
+        if (refreshing) SkeletonForecast() else CenterBox { Text("No forecast available") }
         return
     }
     LazyColumn(
