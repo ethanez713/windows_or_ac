@@ -42,6 +42,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -238,10 +239,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long) 
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        cfg.placeName?.takeIf { it.isNotBlank() }?.let { place ->
-            item { LocationLabel(place) }
-        }
-        item { SourceStatusHeader(state, updatedAtMs) { showSources = true } }
+        item { SourceStatusHeader(state, updatedAtMs, cfg.placeName) { showSources = true } }
         items(days, key = { it.date }) { day ->
             DayCard(
                 day = day,
@@ -370,34 +368,21 @@ private fun fmtInches(inches: Double): String {
  * (X/N), the consensus confidence colour, and when this data was fetched. Tap to open the
  * per-source breakdown — handy when the reported numbers look off versus a local reading.
  */
-/** City/county label for the configured location, shown just above the sources banner. */
 @Composable
-private fun LocationLabel(name: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 2.dp)) {
-        Icon(
-            painterResource(R.drawable.ic_location),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
-private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, onClick: () -> Unit) {
+private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, place: String?, onClick: () -> Unit) {
     val c = state.consensus
     val ok = c.sourcesOk.size
     val total = maxOf(c.sourcesAttempted, ok + c.sourcesFailed.size)
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
     val dot = confidenceColor(c.confidence)
     val updated = remember(updatedAtMs) {
         if (updatedAtMs > 0)
             java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(updatedAtMs))
         else null
     }
+    val placeLabel = place?.trim()?.takeIf { it.isNotEmpty() }
     Surface(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onClick() },
         color = SurfaceElevated,
@@ -407,14 +392,42 @@ private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, onClick: () -
             Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-            Spacer(Modifier.width(8.dp))
-            Text("$ok/$total sources", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
-            updated?.let {
-                Text(" · updated $it", fontSize = 12.sp, color = onVar)
+            if (placeLabel != null) {
+                // Condensed single line: "📍 City, ST · ● 6/6 · 3:45 PM  ›". The city name
+                // ellipsizes inside the weighted inner row so the count/time never get pushed
+                // off; the chevron stays pinned to the right edge.
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painterResource(R.drawable.ic_location),
+                        contentDescription = null,
+                        tint = onVar,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        placeLabel,
+                        Modifier.weight(1f, fill = false),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(" · ", fontSize = 13.sp, color = onVar)
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+                    Spacer(Modifier.width(6.dp))
+                    Text("$ok/$total", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
+                    updated?.let { Text(" · $it", fontSize = 12.sp, color = onVar, maxLines = 1, softWrap = false) }
+                }
+                Text(" ›", fontSize = 13.sp, color = primary)
+            } else {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+                Spacer(Modifier.width(8.dp))
+                Text("$ok/$total sources", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
+                updated?.let { Text(" · updated $it", fontSize = 12.sp, color = onVar) }
+                Spacer(Modifier.weight(1f))
+                Text("details ›", fontSize = 12.sp, color = primary)
             }
-            Spacer(Modifier.weight(1f))
-            Text("details ›", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
         }
     }
 }

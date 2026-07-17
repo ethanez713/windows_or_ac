@@ -147,7 +147,7 @@ class AcWindowsProvider : AppWidgetProvider() {
             RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, "Loading…")
                 setTextViewText(R.id.readings, "")
-                setViewVisibility(R.id.location, View.GONE)
+                setTextViewCompoundDrawablesRelative(R.id.sources, 0, 0, 0, 0)
                 setTextViewText(R.id.sources, "fetching weather…")
                 setTextViewText(R.id.updated, "")
                 setViewVisibility(R.id.refresh_spinner, View.VISIBLE)
@@ -175,7 +175,6 @@ class AcWindowsProvider : AppWidgetProvider() {
             // stretching/compressing when the widget is resized.
             var reservedDp = 24 + 22 + 6 + 21          // padding + headline + graph margin + footer
             if (showReadings) reservedDp += 19
-            if (showLocation) reservedDp += 16         // location line above the footer
             val ivWdp = (wDp - 24).coerceAtLeast(60)
             val ivHdp = (hDp - reservedDp).coerceAtLeast(40)
 
@@ -193,10 +192,16 @@ class AcWindowsProvider : AppWidgetProvider() {
                 s.aqi?.let { append("   ·   AQI $it") }
                 append("   ·   score ${s.nowScore.roundToInt()}")
             }
-            val sources = if (s.sourcesOk.isEmpty()) "no sources"
-                else "${s.sourcesOk.size}/${s.sourcesTotal} sources · ${s.confidence}"
+            // With a location set, condense to fold the place into this one footer line
+            // ("📍 City, ST · 6/6 · high  3:45 PM"); without one, keep the verbose form.
+            val sources = when {
+                s.sourcesOk.isEmpty() -> if (showLocation) "$place · no sources" else "no sources"
+                showLocation -> "$place · ${s.sourcesOk.size}/${s.sourcesTotal} · ${s.confidence}"
+                else -> "${s.sourcesOk.size}/${s.sourcesTotal} sources · ${s.confidence}"
+            }
             val updated = if (refreshing) "updating…"
-                else "updated " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(s.updatedAtMs))
+                else (if (showLocation) "" else "updated ") +
+                    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(s.updatedAtMs))
 
             val ivWpx = (ivWdp * density).toInt().coerceIn(120, 1600)
             val ivHpx = (ivHdp * density).toInt().coerceIn(56, 900)
@@ -205,8 +210,10 @@ class AcWindowsProvider : AppWidgetProvider() {
                 setTextViewText(R.id.headline, s.headline)
                 setTextViewText(R.id.readings, readings)
                 setViewVisibility(R.id.readings, if (showReadings) View.VISIBLE else View.GONE)
-                setTextViewText(R.id.location, place)
-                setViewVisibility(R.id.location, if (showLocation) View.VISIBLE else View.GONE)
+                // Location pin sits as the footer line's leading compound drawable when set.
+                setTextViewCompoundDrawablesRelative(
+                    R.id.sources, if (showLocation) R.drawable.ic_location else 0, 0, 0, 0,
+                )
                 setTextViewText(R.id.sources, sources)
                 setTextViewText(R.id.updated, updated)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
