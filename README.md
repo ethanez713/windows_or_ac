@@ -1,12 +1,3 @@
-<!--
-RENAME TODO (comfort_forecast -> ac_windows): the source is fully renamed
-(Python package `ac_windows`, Android `com.acwindows` / "AcWindows" / app name
-"AC / Windows"). Still to do at the repo/dir level:
-  - Local checkout dir: `~/comfort_forecast` -> `~/ac_windows` (plain `mv`; note the
-    Claude memory/session path `-path-to-repo` derives from this dir).
-  - GitHub remote: rename `ethanez713/comfort_forecast` -> `ac_windows` on GitHub,
-    then `git remote set-url origin ssh://git@github.com/ethanez713/ac_windows.git`.
--->
 # AC / Windows — open the windows, or turn on the AC?
 
 A small, **dependency-free** Python backend that polls multiple weather sources
