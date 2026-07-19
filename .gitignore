@@ -1,6 +1,7 @@
 # --- secrets / personal config (never commit) ---
 config.toml
 .secrets/
+.secrets
 .env
 .env*
 *secret*
