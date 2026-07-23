@@ -1,10 +1,10 @@
 package com.acwindows
 
 import android.app.Activity
-import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -13,16 +13,22 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * On-device widget settings. Shown when the widget is added, and re-openable
- * later (long-press the widget → reconfigure, Android 12+). Writes to the same
- * SharedPreferences that [AppConfig.load] reads, so changes take effect on the
- * next refresh. Settings are global (shared by all widget instances).
+ * Global app / comfort settings (thresholds, location, API keys), opened from the app's
+ * gear icon. Writes to the same SharedPreferences that [AppConfig.load] reads, so changes
+ * take effect on the next refresh. Settings are global (shared by all widget instances).
+ *
+ * There is no Save button: edits are staged in the fields and committed when you leave
+ * the screen (see [onStop]). The header's "Discard changes" button — which appears only
+ * once something has been edited — is the way to back out.
  */
 class ConfigActivity : Activity() {
 
-    private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-
     private val scope = MainScope()
+
+    private lateinit var staged: StagedEdits
+
+    /** The location label stored in prefs when the screen opened; restored on discard. */
+    private var savedPlaceName: String? = null
 
     // The label + coordinates last resolved via "Use my location". We only persist the
     // label if the saved lat/lon still match these (hand-editing them clears it).
@@ -40,14 +46,15 @@ class ConfigActivity : Activity() {
         R.id.weight_airnow to "airnow",
     )
 
+    /** Every editable field on the screen, for staged-edit tracking. */
+    private val valueFields = listOf(
+        R.id.open_score, R.id.temp_ideal, R.id.max_temp, R.id.dew_ideal, R.id.dew_max,
+        R.id.aqi_ideal, R.id.aqi_max, R.id.rain_ideal, R.id.rain_max, R.id.lat, R.id.lon,
+        R.id.key_tomorrowio, R.id.key_pirateweather, R.id.key_airnow,
+    ) + weightFields.map { it.first }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Default result: if the user backs out during the add flow, no widget is added.
-        widgetId = intent?.extras?.getInt(
-            AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID,
-        ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
-        setResult(RESULT_CANCELED, resultIntent())
-
         setContentView(R.layout.activity_config)
 
         // Pre-fill with the current effective config (prefs merged with defaults).
@@ -76,11 +83,45 @@ class ConfigActivity : Activity() {
         weightFields.forEach { (id, src) -> field(id).setText(trimNum(cfg.sourceWeights[src] ?: 1.0)) }
 
         // Show the saved location label (if the coordinates came from device location).
-        cfg.placeName?.let { setLocStatus("Using $it") }
+        savedPlaceName = cfg.placeName
+        setLocStatus(cfg.placeName?.let { "Using $it" } ?: "")
+
+        // Track edits from here on: whatever is in the fields now is the baseline.
+        val discard = findViewById<Button>(R.id.discard)
+        staged = StagedEdits(valueFields.map { field(it) }) { dirty ->
+            discard.visibility = if (dirty) View.VISIBLE else View.GONE
+        }
+        discard.setOnClickListener { discardChanges() }
 
         findViewById<Button>(R.id.use_location).setOnClickListener { onUseLocation() }
-        findViewById<Button>(R.id.cancel).setOnClickListener { finish() }
-        findViewById<Button>(R.id.save).setOnClickListener { save() }
+    }
+
+    /** Back press: commit before the screen behind us resumes, so it sees the new config. */
+    override fun onPause() {
+        super.onPause()
+        if (isFinishing) saveIfDirty()
+    }
+
+    /**
+     * Home / app switcher: still leaving the screen. Guarded so the two paths that
+     * merely pause or recreate us — the location permission dialog (onPause only) and a
+     * rotation (onStop with isChangingConfigurations) — don't save behind the user's back.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) saveIfDirty()
+    }
+
+    private fun saveIfDirty() {
+        if (staged.isDirty()) save()
+    }
+
+    private fun discardChanges() {
+        staged.discard()
+        pendingPlaceName = null
+        pendingLat = null
+        pendingLon = null
+        setLocStatus(savedPlaceName?.let { "Using $it" } ?: "")
     }
 
     override fun onDestroy() {
@@ -194,12 +235,11 @@ class ConfigActivity : Activity() {
         WidgetCache.clear(this)
         AcWindowsProvider.refreshNow(this)
 
-        setResult(RESULT_OK, resultIntent())
-        finish()
+        savedPlaceName = placeName
+        staged.commit()
     }
 
     private fun field(id: Int): EditText = findViewById(id)
-    private fun resultIntent() = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
     private fun trimNum(d: Double) = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
 
     private companion object {

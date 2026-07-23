@@ -29,6 +29,31 @@
         <item name="android:textColor">#99FFFFFF</item>
     </style>
 
+    <!-- Fixed title bar at the top of a settings screen: title + Discard changes. -->
+    <style name="CfgHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:paddingTop">16dp</item>
+        <item name="android:paddingBottom">10dp</item>
+    </style>
+
+    <!-- Borderless header action, hidden until there are staged edits (see StagedEdits). -->
+    <style name="CfgDiscard">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+        <item name="android:textColor">#FF60A5FA</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
     <!-- One column (label + field) of a range row; sits in a weighted parent. -->
     <style name="CfgRangeCol">
         <item name="android:layout_width">0dp</item>
