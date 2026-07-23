@@ -7,7 +7,7 @@ import org.json.JSONObject
 /**
  * Everything needed to re-draw the widget without touching the network. Persisted
  * so the widget renders instantly from cache on every load and only hits the
- * network when the cache is missing or older than [TTL_MS] (15 min).
+ * network when the cache is missing or older than [TTL_MS] (10 min).
  */
 data class Snapshot(
     val action: Action,
@@ -24,6 +24,8 @@ data class Snapshot(
     val times: List<String>,
     val worst: List<Int>,   // per-hour dominant detracting factor (0=temp,1=humid,2=aqi,3=rain; -1=none)
     val isDay: List<Boolean>,   // per-hour sun-up flag (true sunrise→sunset) for the graph's day/night shading
+    val precipProb: List<Double>,   // per-hour % chance of rain (0 when a source didn't supply it)
+    val precipIn: List<Double>,     // per-hour rain amount, inches (that hour's rate; 0 when unknown)
     val bestStart: String?,
     val bestEnd: String?,
     val note: String,
@@ -32,7 +34,8 @@ data class Snapshot(
 
 object WidgetCache {
 
-    const val TTL_MS = 15 * 60 * 1000L
+    /** Matches the widget's 10-minute auto-refresh tick (see AcWindowsProvider). */
+    const val TTL_MS = 10 * 60 * 1000L
     private const val PREFS = "ac_windows"
     private const val KEY = "snapshot"
 
@@ -52,6 +55,8 @@ object WidgetCache {
             .put("times", JSONArray(s.times))
             .put("worst", JSONArray(s.worst))
             .put("isDay", JSONArray(s.isDay))
+            .put("precipProb", JSONArray(s.precipProb))
+            .put("precipIn", JSONArray(s.precipIn))
             .put("bestStart", s.bestStart ?: JSONObject.NULL)
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
             .put("note", s.note)
@@ -68,6 +73,9 @@ object WidgetCache {
             fun dbl(k: String) = if (o.isNull(k)) null else o.getDouble(k)
             fun strList(k: String) = o.getJSONArray(k).let { a -> (0 until a.length()).map { a.getString(it) } }
             fun dblList(k: String) = o.getJSONArray(k).let { a -> (0 until a.length()).map { a.getDouble(it) } }
+            // Optional (added after the first release): a snapshot cached by an older
+            // build simply has no rain series, and the graph draws no rain line.
+            fun optDblList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optDouble(it, 0.0) } } ?: emptyList()
             fun intList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getInt(it) } } ?: emptyList()
             fun boolList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getBoolean(it) } } ?: emptyList()
             Snapshot(
@@ -85,6 +93,8 @@ object WidgetCache {
                 times = strList("times"),
                 worst = intList("worst"),
                 isDay = boolList("isDay"),
+                precipProb = optDblList("precipProb"),
+                precipIn = optDblList("precipIn"),
                 bestStart = if (o.isNull("bestStart")) null else o.getString("bestStart"),
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),
                 note = o.optString("note", ""),

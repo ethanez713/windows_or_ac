@@ -211,9 +211,11 @@ private fun CenterBox(content: @Composable () -> Unit) =
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
 
 /**
- * Placeholder chips shown while the first forecast is still loading. Mirrors the real
- * layout (sources banner + day rows) so data swaps in without a jump, and replaces the
- * brief "No forecast available" flash that showed before the hourly forecast arrived.
+ * Placeholder chips shown while the first forecast is still loading. Mirrors a real
+ * [DayCard] at full size — same 84dp/96dp gutters, same 40dp sparkline, same stacked
+ * summary and open-hours line — so the cards don't visibly grow when data swaps in.
+ * Also replaces the brief "No forecast available" flash that showed before the hourly
+ * forecast arrived.
  */
 @Composable
 private fun SkeletonForecast() {
@@ -222,18 +224,40 @@ private fun SkeletonForecast() {
         Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SkeletonChip(chip, Modifier.fillMaxWidth().height(40.dp))   // sources banner
+        SkeletonChip(chip, Modifier.fillMaxWidth().height(38.dp))   // sources banner
         repeat(5) {
+            // Geometry copied from DayCard so the swap is a fill, not a re-layout.
+            val dateW = 84.dp
+            val summaryW = 96.dp
+            val barPad = 8.dp
             ElevatedCard(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.elevatedCardColors(containerColor = SurfaceElevated),
             ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SkeletonChip(chip, Modifier.width(64.dp).height(16.dp))   // date
-                    Spacer(Modifier.width(12.dp))
-                    SkeletonChip(chip, Modifier.weight(1f).height(40.dp))     // sparkline
-                    Spacer(Modifier.width(12.dp))
-                    SkeletonChip(chip, Modifier.width(72.dp).height(28.dp))   // summary
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(dateW)) {
+                            SkeletonChip(chip, Modifier.width(64.dp).height(18.dp))   // date
+                        }
+                        SkeletonChip(
+                            chip,
+                            Modifier.weight(1f).padding(horizontal = barPad).height(40.dp),   // sparkline
+                        )
+                        // Weather glyphs + high/low + rain, stacked and end-aligned like
+                        // DaySummaryView (this column, not the sparkline, sets the row height).
+                        Column(Modifier.width(summaryW), horizontalAlignment = Alignment.End) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SkeletonChip(chip, Modifier.size(22.dp))
+                                SkeletonChip(chip, Modifier.size(22.dp))
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            SkeletonChip(chip, Modifier.width(64.dp).height(18.dp))   // high / low
+                            Spacer(Modifier.height(2.dp))
+                            SkeletonChip(chip, Modifier.width(48.dp).height(13.dp))   // rain
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    SkeletonChip(chip, Modifier.width(150.dp).height(15.dp))   // "N hours to open windows"
                 }
             }
         }

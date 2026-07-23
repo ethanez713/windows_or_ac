@@ -8,12 +8,16 @@ import androidx.work.WorkerParameters
 /**
  * Does the actual fetch+decide off the main thread, caches the result, then
  * pushes it to every widget instance. Enqueued by [AcWindowsProvider] on add, on
- * tap, on cache expiry, and on a periodic schedule.
+ * tap, on cache expiry, and on the 10-minute auto-refresh tick.
+ *
+ * Every run — however it was triggered — re-arms the next tick, so the auto-refresh
+ * chain heals itself and the clock always restarts from the last actual refresh.
  */
 class RefreshWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = try {
+        AcWindowsProvider.scheduleTick(applicationContext)
         val cfg = AppConfig.load(applicationContext)
         // Render progressively: paint as soon as 3+ sources answer, then redraw on every
         // later source/forecast arrival (each call updates the widget's "N/X sources" count).
@@ -76,6 +80,8 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                 times = fc.points.map { it.time },
                 worst = worst,
                 isDay = fc.points.map { it.isDay ?: true },
+                precipProb = fc.points.map { it.precipProb ?: 0.0 },
+                precipIn = fc.points.map { it.precipIn ?: 0.0 },
                 bestStart = fc.bestStart,
                 bestEnd = fc.bestEnd,
                 note = fc.notes.firstOrNull() ?: "",

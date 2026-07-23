@@ -1,5 +1,6 @@
 package com.acwindows
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -25,6 +26,10 @@ import kotlin.math.roundToInt
  * update, and only kicks off a network refresh when the cache is missing or
  * older than [WidgetCache.TTL_MS]. Tapping forces an immediate refresh.
  *
+ * Auto-refresh runs on its own every [TICK_INTERVAL_MS] (10 min), driven by an
+ * AlarmManager tick with a WorkManager periodic job as a backstop — see
+ * [scheduleTick] for why it takes both.
+ *
  * Rendering is per-widget and size-aware: it shows as many forecast hours as fit
  * the widget's width and tiers the text rows by height, so the same widget works
  * from 2x2 up to a full-width banner.
@@ -35,6 +40,7 @@ class AcWindowsProvider : AppWidgetProvider() {
         val stale = WidgetCache.isStale(context)
         ids.forEach { id -> drawId(context, mgr, id, refreshing = stale && WidgetCache.load(context) == null) }
         if (stale) enqueueRefresh(context)   // only fetch when actually due
+        scheduleTick(context)
         schedulePeriodic(context)
     }
 
@@ -44,23 +50,45 @@ class AcWindowsProvider : AppWidgetProvider() {
         drawId(context, mgr, id, refreshing = false)   // re-fit bars to the new size
     }
 
-    override fun onEnabled(context: Context) = schedulePeriodic(context)
+    override fun onEnabled(context: Context) {
+        scheduleTick(context)
+        schedulePeriodic(context)
+    }
 
     override fun onDisabled(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_WORK)
+        alarms(context)?.cancel(tickIntent(context))
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_REFRESH) {
-            renderAll(context, refreshing = true)   // immediate "pulling data" feedback
-            enqueueRefresh(context)
+        when (intent.action) {
+            ACTION_REFRESH -> {
+                renderAll(context, refreshing = true)   // immediate "pulling data" feedback
+                enqueueRefresh(context)
+            }
+            // The 10-minute auto-refresh tick. Re-arm first (so the chain survives even
+            // if the fetch never runs), then refresh quietly — no spinner, because this
+            // one isn't user-initiated and the old data stays readable meanwhile.
+            ACTION_TICK -> {
+                scheduleTick(context)
+                enqueueRefresh(context)
+            }
+            // Alarms don't survive a reboot (WorkManager's own jobs do), so re-arm.
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                scheduleTick(context)
+                schedulePeriodic(context)
+            }
         }
     }
 
     companion object {
         const val ACTION_REFRESH = "com.acwindows.ACTION_REFRESH"
+        private const val ACTION_TICK = "com.acwindows.ACTION_TICK"
         private const val PERIODIC_WORK = "ac_windows_periodic"
+
+        /** How often the widget refreshes itself, unprompted. */
+        const val TICK_INTERVAL_MS = 10 * 60 * 1000L
 
         /** Tapping the widget body opens the full app. */
         private fun appIntent(context: Context): PendingIntent {
@@ -89,10 +117,47 @@ class AcWindowsProvider : AppWidgetProvider() {
                 .enqueue(OneTimeWorkRequestBuilder<RefreshWorker>().build())
         }
 
+        private fun alarms(context: Context) =
+            context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+
+        /** The self-rescheduling 10-minute tick broadcast (see [scheduleTick]). */
+        private fun tickIntent(context: Context): PendingIntent {
+            val intent = Intent(context, AcWindowsProvider::class.java).setAction(ACTION_TICK)
+            return PendingIntent.getBroadcast(
+                context, 2, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Arm the next auto-refresh, [TICK_INTERVAL_MS] from now. Called on every widget
+         * update, on boot, and by [RefreshWorker] after each run, so the clock restarts
+         * from the last actual refresh and a dropped tick heals on the next one.
+         *
+         * WorkManager can't do this alone: its periodic floor is 15 min, which is why the
+         * widget only ever moved when you tapped it. setAndAllowWhileIdle is inexact and
+         * needs no permission, but still fires in Doze (the OS throttles it to roughly
+         * every 9 min at worst), so 10 min is honoured whenever the phone is awake.
+         */
+        fun scheduleTick(context: Context) {
+            val am = alarms(context) ?: return
+            // Same PendingIntent every time, so re-arming reschedules rather than stacking.
+            val pi = tickIntent(context)
+            // With no widget on a home screen there's nothing to refresh — don't leave a
+            // self-perpetuating alarm running (settings screens refresh via the same worker).
+            if (widgetIds(context).isEmpty()) {
+                am.cancel(pi)
+                return
+            }
+            runCatching {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + TICK_INTERVAL_MS, pi)
+            }
+        }
+
         private fun schedulePeriodic(context: Context) {
-            // 15 min is WorkManager's floor and matches the cache TTL. UPDATE (not KEEP)
-            // so a reinstall/version bump re-applies the interval instead of keeping a
-            // stale longer one — the bug where the widget appeared to stop refreshing.
+            // Backstop only — the 10-min alarm tick is the primary driver. 15 min is
+            // WorkManager's floor. UPDATE (not KEEP) so a reinstall/version bump re-applies
+            // the interval instead of keeping a stale longer one.
             val work = PeriodicWorkRequestBuilder<RefreshWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, work,
@@ -108,10 +173,13 @@ class AcWindowsProvider : AppWidgetProvider() {
             enqueueRefresh(context)
         }
 
+        private fun widgetIds(context: Context): IntArray =
+            AppWidgetManager.getInstance(context)
+                .getAppWidgetIds(ComponentName(context, AcWindowsProvider::class.java))
+
         private fun renderAll(context: Context, refreshing: Boolean) {
             val mgr = AppWidgetManager.getInstance(context)
-            mgr.getAppWidgetIds(ComponentName(context, AcWindowsProvider::class.java))
-                .forEach { drawId(context, mgr, it, refreshing) }
+            widgetIds(context).forEach { drawId(context, mgr, it, refreshing) }
         }
 
         private fun drawId(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean) {
@@ -185,6 +253,8 @@ class AcWindowsProvider : AppWidgetProvider() {
             val times = s.times.take(hours)
             val worst = s.worst.take(hours)
             val isDay = s.isDay.take(hours)
+            val precipProb = s.precipProb.take(hours)
+            val precipIn = s.precipIn.take(hours)
 
             val readings = buildString {
                 s.tempF?.let { append("${it.roundToInt()}°F") }
@@ -223,7 +293,10 @@ class AcWindowsProvider : AppWidgetProvider() {
                 if (scores.isNotEmpty()) {
                     setImageViewBitmap(
                         R.id.graph,
-                        Graph.render(scores, times, worst, isDay, s.bestStart, s.bestEnd, threshold, ivWpx, ivHpx, density),
+                        Graph.render(
+                            scores, times, worst, isDay, precipProb, precipIn,
+                            s.bestStart, s.bestEnd, threshold, ivWpx, ivHpx, density,
+                        ),
                     )
                 }
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))

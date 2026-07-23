@@ -255,7 +255,7 @@ controller maps those actions to devices without touching the decision logic.
       phone over USB; build + emulate from the CLI with `android/dev.sh` (no Android Studio).
 - [x] **Forecast-aware advice** — multi-hour Open-Window Score graph, best-window
       detection, and night-flush / pre-cool notes (`score.py` + `forecast.py`;
-      the widget draws the graph and caches results with a 15-min TTL).
+      the widget draws the graph, auto-refreshes every 10 min, and caches results).
 - [ ] **Indoor sensor input** — use the smart thermostat's actual indoor temp/RH
       (also unlocks proper solar-load modeling — see *Methodology*).
 - [ ] **Smart-home control** — map actions to thermostat / attic fan / window

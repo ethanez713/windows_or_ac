@@ -18,13 +18,19 @@ redraws. The configured setpoints are shown on the widget (`open ≥ 60 · targe
 78°F`).
 
 **Behavior:**
+- **Auto-refreshes every 10 min** on its own (an inexact AlarmManager tick that
+  re-arms itself, with a 15-min WorkManager job as a backstop — WorkManager alone
+  can't go under 15 min).
 - **Caches** the last result and renders it instantly on every load; only hits
-  the network when the cache is missing or older than **15 min** (or on tap).
+  the network when the cache is missing or older than **10 min** (or on tap).
 - **Refresh indicator** — a spinner + "updating…" shows while it's pulling data;
   the footer shows the last-updated time.
 - **Tap** the widget to force an immediate refresh.
 - Background color encodes the call; the graph bars above the dashed threshold
   line are the open-worthy hours, and the best contiguous window is underlined.
+- **Rain line** — when rain is in the forecast, a blue line traces the chance of it
+  on the same 0–100 axis as the bars, thickening with the hourly rate (1dp under
+  0.05″/h, 2dp to 0.33″, 3dp to 1″, 4dp above) and labelled with the total inches.
 
 > ✅ This project **compiles** (`./gradlew assembleDebug` → `app-debug.apk`, AGP 8.5.2 /
 > Gradle 8.7 / JDK 17 / compileSdk 34) and was verified against a user-space toolchain on
@@ -99,8 +105,8 @@ background color encodes the call:
 | 🟦 teal | comfortable — your call |
 | 🟥 red | no data (tap to retry) |
 
-**Tap the widget** to refresh immediately; otherwise it updates about every 15
-minutes (WorkManager's minimum interval).
+**Tap the widget** to refresh immediately; otherwise it updates itself about every
+10 minutes.
 
 ## Local build & emulator (no Android Studio)
 
@@ -173,8 +179,9 @@ apps while it runs.
 ## Troubleshooting
 
 - **Stuck on "Updating…" / not refreshing** — aggressive battery optimization can
-  pause WorkManager. Tapping the widget forces an immediate refresh; to keep the
-  periodic updates reliable, exempt the app from battery optimization in Settings.
+  pause the refresh (Doze also stretches the 10-min tick to ~15 when the phone is
+  idle). Tapping the widget forces an immediate refresh; to keep the automatic
+  updates on schedule, exempt the app from battery optimization in Settings.
 - **"no sources reachable"** — check the phone's internet. NWS is US-only, so
   outside the US only Open-Meteo will respond (still fine — you'll see
   `degraded` confidence). Double-check your lat/lon.

@@ -12,7 +12,8 @@ import android.graphics.Paint
  * Left axis: tall = "win" (open windows), short = "ac". A dashed line marks the
  * open threshold (labelled with its value). Dark vertical dividers mark day
  * changes (with a date flag); grey ones mark each day's noon (with a "noon"
- * flag). The best contiguous window is underlined.
+ * flag). The best contiguous window is underlined. When rain is in the forecast,
+ * a blue line traces the chance of it on the same 0–100 axis (see [drawRain]).
  *
  * The bitmap is rendered at the ImageView's true pixel aspect (see
  * AcWindowsProvider) and shown with fitCenter, so text never stretches on resize.
@@ -42,11 +43,35 @@ object Graph {
         )
     }
 
+    // Rain overlay: a bright sky blue (kin to the app's cyan rain factor) that stays
+    // legible crossing both the mint "open" bars and the grey closed ones.
+    private val RAIN_BLUE = Color.rgb(0x7D, 0xD3, 0xFC)
+
+    /** Below this chance, with no accumulation, there's no rain worth drawing. */
+    private const val RAIN_MIN_PCT = 5.0
+
+    /**
+     * Line thickness in dp for an hour's rain rate (inches in that hour): a hairline
+     * for a trace, up to 4dp for an inch-plus downpour.
+     */
+    private fun rainStrokeDp(inchesPerHour: Double): Float = when {
+        inchesPerHour >= 1.0 -> 4f
+        inchesPerHour >= 0.33 -> 3f
+        inchesPerHour >= 0.05 -> 2f
+        else -> 1f
+    }
+
+    /** Inches with the app's precision: 0.2″, 0.05″. */
+    private fun fmtInches(v: Double): String =
+        (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
+
     fun render(
         scores: List<Double>,
         times: List<String>,
         worst: List<Int>,
         isDay: List<Boolean>,
+        precipProb: List<Double>,
+        precipIn: List<Double>,
         bestStart: String?,
         bestEnd: String?,
         threshold: Double,
@@ -144,6 +169,12 @@ object Graph {
             }
         }
 
+        // Rain rides on top of the bars, under the day/noon markers.
+        drawRain(
+            c, precipProb, precipIn, n, { i -> barLeft(i) },
+            barW, base, plotTop, plotH, axisW, w, sp,
+        )
+
         // Shared label paint for the date + noon flags (white on a coloured pill).
         val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE; textSize = 8.5f * sp; isFakeBoldText = true; textAlign = Paint.Align.CENTER
@@ -181,6 +212,89 @@ object Graph {
             c.drawLine(barLeft(bi), base + 1.5f * sp, barLeft(bj) + barW, base + 1.5f * sp, u)
         }
         return bmp
+    }
+
+    /**
+     * Traces the chance of rain as a blue line on the SAME 0–100 axis as the bars
+     * (100% chance sits where a 100-score bar tops out), so rain reads at a glance
+     * without a second chart. Only hours that actually carry a chance are drawn, so
+     * a dry forecast leaves the graph untouched. Thickness follows the hourly rain
+     * RATE ([rainStrokeDp]), and each run of wet hours is labelled with the total
+     * inches it adds up to.
+     */
+    private fun drawRain(
+        c: Canvas, prob: List<Double>, inches: List<Double>, n: Int,
+        barLeft: (Int) -> Float, barW: Float, base: Float, plotTop: Float, plotH: Float,
+        axisW: Float, w: Int, sp: Float,
+    ) {
+        fun p(i: Int) = prob.getOrElse(i) { 0.0 }
+        fun rate(i: Int) = inches.getOrElse(i) { 0.0 }
+        // Accumulation counts as "wet" even at a low stated chance — if the forecast
+        // says inches will fall, the line should be there.
+        val wet = (0 until n).map { p(it) >= RAIN_MIN_PCT || rate(it) > 0.0 }
+        if (wet.none { it }) return
+
+        fun x(i: Int) = barLeft(i) + barW / 2
+        fun y(i: Int) = base - (p(i).coerceIn(0.0, 100.0) / 100.0).toFloat() * plotH
+
+        val rain = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = RAIN_BLUE; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
+        }
+        for (i in 0 until n) {
+            if (!wet[i]) continue
+            if (i + 1 < n && wet[i + 1]) {
+                // A segment spans two hours: take the wetter one, so a downpour never
+                // hides behind the drizzle beside it.
+                rain.strokeWidth = rainStrokeDp(maxOf(rate(i), rate(i + 1))) * sp
+                c.drawLine(x(i), y(i), x(i + 1), y(i + 1), rain)
+            } else if (i == 0 || !wet[i - 1]) {
+                // A lone wet hour has no segment to sit on — give it a flat tick. (The
+                // last hour of a longer run is already covered by the segment into it.)
+                rain.strokeWidth = rainStrokeDp(rate(i)) * sp
+                c.drawLine(x(i) - barW / 3, y(i), x(i) + barW / 3, y(i), rain)
+            }
+        }
+
+        // Label each run of wet hours with its total, on a dark pill so it stays
+        // readable over a bright bar. Runs too close together drop their label rather
+        // than overprinting.
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = RAIN_BLUE; textSize = 8.5f * sp; isFakeBoldText = true; textAlign = Paint.Align.CENTER
+        }
+        val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 17, 24, 39) }
+        var lastRight = Float.NEGATIVE_INFINITY
+        var i = 0
+        while (i < n) {
+            if (!wet[i]) { i++; continue }
+            var j = i
+            var total = 0.0
+            var peak = i
+            while (j < n && wet[j]) {
+                total += rate(j)
+                if (p(j) > p(peak)) peak = j
+                j++
+            }
+            if (total >= 0.01) {
+                val label = fmtInches(total)
+                val tw = text.measureText(label)
+                // Clamp on-screen the same way flag() does — never coerceIn(min>max).
+                val hi = w - tw / 2 - 2f * sp
+                val cx = x(peak).coerceAtMost(hi).coerceAtLeast(minOf(axisW + tw / 2, hi))
+                // Sits above the line, or below it when the run peaks near the top.
+                var ly = y(peak) - 4.5f * sp
+                if (ly < plotTop + 9.5f * sp) ly = y(peak) + 12f * sp
+                ly = ly.coerceAtMost(base - 1.5f * sp)
+                if (cx - tw / 2 > lastRight) {
+                    c.drawRoundRect(
+                        cx - tw / 2 - 3f * sp, ly - 8.5f * sp, cx + tw / 2 + 3f * sp, ly + 2.5f * sp,
+                        3f * sp, 3f * sp, pill,
+                    )
+                    c.drawText(label, cx, ly, text)
+                    lastRight = cx + tw / 2 + 3f * sp
+                }
+            }
+            i = j
+        }
     }
 
     /** Draws a small rounded label "flag" in the top band, just right of [atX], clamped on-screen. */
