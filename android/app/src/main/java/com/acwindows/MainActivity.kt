@@ -329,7 +329,20 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     // crosses midnight is one continuous span — its boundary flags land on the real
     // start/end day, never split at midnight.
     val spans = remember(state, threshold) { openSpansTimes(state.forecast.points, threshold) }
-    var expanded by rememberSaveable { mutableStateOf(days.firstOrNull()?.date) }
+    // Default the expanded card to today (falling back to the first day). A progressive
+    // partial can land with current conditions but no hourly days yet, so seed once via a
+    // LaunchedEffect the first time `days` is non-empty — not in the initializer, which
+    // would lock in the day-less null. rememberSaveable + the `seeded` flag mean a later
+    // user toggle (including collapsing today) survives a config change and isn't re-seeded.
+    val todayDate = remember { LocalDate.now().toString() }
+    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
+    var seeded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(days) {
+        if (!seeded && days.isNotEmpty()) {
+            expanded = (days.firstOrNull { it.date == todayDate } ?: days.first()).date
+            seeded = true
+        }
+    }
     var showSources by rememberSaveable { mutableStateOf(false) }
 
     if (days.isEmpty()) {
@@ -914,7 +927,7 @@ private fun Legend() {
 private fun AbsoluteCharts(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
     if (points.isEmpty()) return
     Column {
-        AbsReadout(points, sel)
+        AbsReadout(points, sel, nowIdx)
         Spacer(Modifier.height(10.dp))
         TempChart(points, comfort, sel, nowIdx, onSel)
         Spacer(Modifier.height(12.dp))
@@ -937,15 +950,20 @@ private class ChartGeom(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AbsReadout(points: List<ForecastPoint>, sel: Int?) {
+private fun AbsReadout(points: List<ForecastPoint>, sel: Int?, nowIdx: Int) {
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    if (sel == null) {
+    // No hour picked → fall back to the current hour on today's card, so the readout opens
+    // on live "now" numbers instead of a prompt. Other days have no "now" (nowIdx = -1) and
+    // keep the tap hint.
+    val idx = sel ?: nowIdx.takeIf { it in points.indices }
+    if (idx == null) {
         Text("Tap a chart for the hour-by-hour readings", fontSize = 11.sp, color = onVar)
         return
     }
-    val p = points[sel]
+    val p = points[idx]
+    val label = if (sel == null) "now · ${fmt(p.time)}" else fmt(p.time)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Chip(fmt(p.time), FontWeight.Bold, MaterialTheme.colorScheme.onSurface)
+        Chip(label, FontWeight.Bold, MaterialTheme.colorScheme.onSurface)
         Chip("score ${p.score.roundToInt()}", FontWeight.Bold, ScoreInk)
         p.tempF?.let { Chip("${it.roundToInt()}°F", color = FactorTemp) }
         p.dewPointF?.let { Chip("dew ${it.roundToInt()}°", color = FactorHumid) }
