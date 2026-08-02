@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon (Android 13+) layer. The system tints this with one colour drawn from the
+  wallpaper, so the mercury can't be a second colour — the shape alone has to say
+  "thermometer". Hence a solid silhouette plus the scale marks, matching the foreground's
+  geometry exactly so the themed and full-colour icons sit at the same size and position.
+
+  Black is a placeholder: only the alpha channel survives the tint.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#000000"
+        android:pathData="M50,33 A8,8 0 0 1 66,33 L66,76 L50,76 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M44,70 A14,14 0 1 0 72,70 A14,14 0 1 0 44,70 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M39.7,32.8 L44.3,32.8 A1.7,1.7 0 0 1 44.3,36.2 L39.7,36.2 A1.7,1.7 0 0 1 39.7,32.8 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M39.7,43.8 L44.3,43.8 A1.7,1.7 0 0 1 44.3,47.2 L39.7,47.2 A1.7,1.7 0 0 1 39.7,43.8 Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M39.7,54.8 L44.3,54.8 A1.7,1.7 0 0 1 44.3,58.2 L39.7,58.2 A1.7,1.7 0 0 1 39.7,54.8 Z" />
+</vector>

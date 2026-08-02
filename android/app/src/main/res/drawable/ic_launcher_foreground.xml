@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher icon foreground: a stylized thermometer, drawn flat (no outlines) as a slate
+  casing with a warm-red column sitting on top of it — the same construction the Material
+  Symbols "thermostat" glyph uses, redrawn here on the 108dp adaptive-icon canvas so the
+  geometry can be kept inside the safe zone rather than scaled into it.
+
+  Adaptive-icon geometry: the canvas is 108x108dp, launchers mask the central 72dp and only
+  the central 66dp CIRCLE (radius 33 about 54,54) is guaranteed visible. Every point of this
+  artwork sits within ~30 of the centre, so no mask shape can clip it. The bulb is nudged
+  right of centre (x=58) to balance the tick marks on the left; the whole composition spans
+  x 38..72, centring on 55.
+
+  The casing's bottom corners and the mercury column's bottom end are deliberately left
+  running past the top of the bulb circle — the circle covers them, which is what fuses the
+  two shapes into one silhouette without needing a single merged path.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Casing: stem capsule (semicircular cap, radius = half its width) … -->
+    <path
+        android:fillColor="@color/ic_launcher_casing"
+        android:pathData="M50,33 A8,8 0 0 1 66,33 L66,76 L50,76 Z" />
+    <!-- … and the bulb, whose overlap with the stem forms the silhouette. -->
+    <path
+        android:fillColor="@color/ic_launcher_casing"
+        android:pathData="M44,70 A14,14 0 1 0 72,70 A14,14 0 1 0 44,70 Z" />
+
+    <!-- Mercury, inset 4 units inside the casing so the slate reads as the glass tube. -->
+    <path
+        android:fillColor="@color/ic_launcher_mercury"
+        android:pathData="M54,44 A4,4 0 0 1 62,44 L62,74 L54,74 Z" />
+    <path
+        android:fillColor="@color/ic_launcher_mercury"
+        android:pathData="M49,70 A9,9 0 1 0 67,70 A9,9 0 1 0 49,70 Z" />
+
+    <!-- Scale marks: three stubby rounded bars, straddling the mercury's top so the
+         column reads as a level rather than as a plain stripe. -->
+    <path
+        android:fillColor="@color/ic_launcher_casing"
+        android:pathData="M39.7,32.8 L44.3,32.8 A1.7,1.7 0 0 1 44.3,36.2 L39.7,36.2 A1.7,1.7 0 0 1 39.7,32.8 Z" />
+    <path
+        android:fillColor="@color/ic_launcher_casing"
+        android:pathData="M39.7,43.8 L44.3,43.8 A1.7,1.7 0 0 1 44.3,47.2 L39.7,47.2 A1.7,1.7 0 0 1 39.7,43.8 Z" />
+    <path
+        android:fillColor="@color/ic_launcher_casing"
+        android:pathData="M39.7,54.8 L44.3,54.8 A1.7,1.7 0 0 1 44.3,58.2 L39.7,58.2 A1.7,1.7 0 0 1 39.7,54.8 Z" />
+</vector>

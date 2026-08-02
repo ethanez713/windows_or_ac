@@ -289,8 +289,12 @@ This follows a proportionate, personal-project security posture:
 
 Notes on getting this into other people's hands — what's already safe to make
 public, and the concrete blockers between here and a Google Play listing
-(app icon, `targetSdk`, release signing, privacy policy, and the 14-day closed
-test) — are in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+(`targetSdk`, release signing, privacy policy, feature graphic, and the 14-day
+closed test) — are in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+
+The launcher icon is an adaptive icon (with a themed-icon `monochrome` layer);
+the Play Store's 512×512 PNG is generated from the same geometry by
+`python3 tools/make_play_icon.py`, so the two can't drift apart.
 
 ## License
 

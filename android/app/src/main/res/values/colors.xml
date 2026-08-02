@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon palette. Warm off-white paper behind a slate thermometer with a
+         warm-red column; the red is kin to the temperature factor's orange used in the
+         app's charts (Graph.FACTOR_COLORS), so the icon reads as part of the same set. -->
+    <color name="ic_launcher_background">#F4F1EA</color>
+    <color name="ic_launcher_casing">#2F3A45</color>
+    <color name="ic_launcher_mercury">#E2552F</color>
+</resources>
