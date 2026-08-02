@@ -51,7 +51,10 @@ class AcWindowsProvider : AppWidgetProvider() {
     override fun onAppWidgetOptionsChanged(
         context: Context, mgr: AppWidgetManager, id: Int, newOptions: Bundle,
     ) {
-        drawId(context, mgr, id, refreshing = false)   // re-fit bars to the new size
+        // Re-fit bars to the new size. The launcher also sends this right after onUpdate when
+        // the widget is first placed, so with no snapshot yet it lands mid-first-fetch —
+        // report that as still loading rather than flashing the "couldn't fetch" state.
+        drawId(context, mgr, id, refreshing = WidgetCache.load(context) == null)
     }
 
     override fun onEnabled(context: Context) {
@@ -200,7 +203,7 @@ class AcWindowsProvider : AppWidgetProvider() {
 
         private fun drawId(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean) {
             val snap = WidgetCache.load(context)
-            val views = if (snap == null) loadingView(context)
+            val views = if (snap == null) loadingView(context, refreshing)
                 else buildViews(context, snap, refreshing, sizeOf(mgr, id))
             mgr.updateAppWidget(id, views)
         }
@@ -227,16 +230,28 @@ class AcWindowsProvider : AppWidgetProvider() {
             return (color and 0x00FFFFFF) or (a shl 24)
         }
 
-        private fun loadingView(context: Context): RemoteViews =
+        /**
+         * The pre-first-data view. [refreshing] false means a fetch has already been tried
+         * and came back with nothing, so this says so and offers the refresh button — the
+         * only way back. It used to hard-code the spinner and hide that button, which left a
+         * widget whose first fetch failed sitting on "fetching weather…" with no tap target
+         * but the body, and that only opens the app (which has its own fetch and never
+         * writes the widget's cache).
+         */
+        private fun loadingView(context: Context, refreshing: Boolean): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
-                setTextViewText(R.id.headline, "Loading…")
+                setTextViewText(R.id.headline, if (refreshing) "Loading…" else "No data yet")
                 setTextViewText(R.id.readings, "")
                 setViewVisibility(R.id.readings, View.GONE)
                 setTextViewCompoundDrawablesRelative(R.id.sources, 0, 0, 0, 0)
-                setTextViewText(R.id.sources, "fetching weather…")
-                setTextViewText(R.id.updated, "")
-                setViewVisibility(R.id.refresh_spinner, View.VISIBLE)
-                setViewVisibility(R.id.refresh_button, View.GONE)
+                setTextViewText(
+                    R.id.sources,
+                    if (refreshing) "fetching weather…" else "couldn't reach the weather sources",
+                )
+                setTextViewText(R.id.updated, if (refreshing) "" else "tap ⟳ to retry")
+                setTextColor(R.id.updated, if (refreshing) FOOTER_DIM else STALE_AMBER)
+                setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
+                setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
                 // Must clear the graph and set the background explicitly — see [buildViews].
                 // Neutral slate while loading: the first paint shouldn't imply a verdict.
                 setImageViewBitmap(R.id.graph, null)

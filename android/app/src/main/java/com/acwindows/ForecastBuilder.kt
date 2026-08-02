@@ -20,7 +20,22 @@ object ForecastBuilder {
 
     fun fmtHour(iso: String): String {
         val h = hour(iso)
-        if (h < 0) return iso
+        return if (h < 0) iso else fmtHourOf(h)
+    }
+
+    /**
+     * A window's CLOSING label. [bestWindow] reports the last hour that is still open,
+     * and an hourly row covers the whole hour it names — so a window whose last open row
+     * is 6 AM actually runs until 7 AM. Labelling that row with its own hour under-reports
+     * every window by an hour and collapses a one-hour window into a meaningless
+     * "6 AM–6 AM", which is what the widget headline was showing.
+     */
+    fun fmtHourEnd(iso: String): String {
+        val h = hour(iso)
+        return if (h < 0) iso else fmtHourOf((h + 1) % 24)
+    }
+
+    private fun fmtHourOf(h: Int): String {
         val ampm = if (h < 12) "AM" else "PM"
         val h12 = (h % 12).let { if (it == 0) 12 else it }
         return "$h12 $ampm"
@@ -114,8 +129,8 @@ object ForecastBuilder {
             out.add("Outdoor air won't beat the AC in the next ${points.size}h — keep closed / run AC.")
             return out
         }
-        if (bStart == points[0].time) out.add("Good to open now (through ${fmtHour(bEnd!!)}).")
-        else out.add("Best window to open: ${fmtHour(bStart)}–${fmtHour(bEnd!!)} (avg ${bAvg!!.toInt()}).")
+        if (bStart == points[0].time) out.add("Good to open now (through ${fmtHourEnd(bEnd!!)}).")
+        else out.add("Best window to open: ${fmtHour(bStart)}–${fmtHourEnd(bEnd!!)} (avg ${bAvg!!.toInt()}).")
 
         val sh = hour(bStart)
         if (sh >= NIGHT_START || sh < NIGHT_END)

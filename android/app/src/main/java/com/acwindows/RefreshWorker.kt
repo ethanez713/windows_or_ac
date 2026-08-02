@@ -25,11 +25,24 @@ import java.time.ZoneId
 class RefreshWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params) {
 
+    /**
+     * Always finishes successfully, even when the fetch came back empty — the failure is
+     * logged and the widget says so, but WorkManager is told the run is over.
+     *
+     * [Result.retry] is actively harmful here. A retrying unique work stays ENQUEUED for
+     * the whole of its backoff (30s, doubling towards hours), and every refresh trigger
+     * goes through [AcWindowsProvider.enqueueRefresh], which uses KEEP — so while that
+     * backoff ran, each 10-minute tick was silently dropped instead of retrying. One
+     * transient DNS failure could therefore strand a widget with no cached snapshot on
+     * "fetching weather…" for hours. The tick is the retry mechanism (re-armed at the top
+     * of [refresh] on every run); reaching a terminal state is what lets the next one in.
+     */
     override suspend fun doWork(): Result = try {
         running.withLock { refresh() }
     } catch (e: Exception) {
-        Log.w(TAG, "refresh failed, will retry", e)
-        Result.retry()
+        Log.w(TAG, "refresh failed; next tick will retry", e)
+        AcWindowsProvider.refreshDone(applicationContext)
+        Result.success()
     }
 
     private suspend fun refresh(): Result {
@@ -47,13 +60,11 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         // A final paint covers the case where no progressive frame ever published (e.g. the
         // soft deadline passed with exactly 3 sources and they all failed). publish() applies
         // the same empty-data guard, so a dead refresh never clobbers the last good snapshot.
-        return if (publish(applicationContext, cfg, result, final = true)) {
-            if (con.confidence == "none") Result.retry() else Result.success()
-        } else {
+        if (!publish(applicationContext, cfg, result, final = true)) {
             Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${con.sourcesFailed}")
             AcWindowsProvider.refreshDone(applicationContext)
-            Result.retry()
         }
+        return Result.success()   // see [doWork] — never retry(), the tick drives retries
     }
 
     companion object {
@@ -206,7 +217,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             // it — that's the headline drifting away from what the bars show.
             val now = nowBarPos(series.firstHourMs) ?: 0.0
             if (endIdx >= 0 && endIdx + 1 < now) return rec.headline   // window is in the past
-            val to = ForecastBuilder.fmtHour(end)
+            val to = ForecastBuilder.fmtHourEnd(end)
             return if (startIdx in 0..now.toInt()) "Open your windows now–$to"
                 else "Open your windows from ${ForecastBuilder.fmtHour(start)}–$to"
         }
