@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import kotlinx.coroutines.MainScope
@@ -30,8 +31,8 @@ class ConfigActivity : Activity() {
     /** The location label stored in prefs when the screen opened; restored on discard. */
     private var savedPlaceName: String? = null
 
-    // The label + coordinates last resolved via "Use my location". We only persist the
-    // label if the saved lat/lon still match these (hand-editing them clears it).
+    // The label + coordinates last resolved from the device or an address lookup. We only
+    // persist the label if the saved lat/lon still match these (hand-editing them clears it).
     private var pendingPlaceName: String? = null
     private var pendingLat: Double? = null
     private var pendingLon: Double? = null
@@ -82,18 +83,26 @@ class ConfigActivity : Activity() {
         // Per-source trust weights (default 1.0).
         weightFields.forEach { (id, src) -> field(id).setText(trimNum(cfg.sourceWeights[src] ?: 1.0)) }
 
-        // Show the saved location label (if the coordinates came from device location).
+        // Show the saved location label (from a device fix or an address lookup).
         savedPlaceName = cfg.placeName
         setLocStatus(cfg.placeName?.let { "Using $it" } ?: "")
+        follow().isChecked = cfg.useDeviceLocation
 
         // Track edits from here on: whatever is in the fields now is the baseline.
         val discard = findViewById<Button>(R.id.discard)
-        staged = StagedEdits(valueFields.map { field(it) }) { dirty ->
+        staged = StagedEdits(
+            fields = valueFields.map { field(it) },
+            checks = listOf(follow()),
+            onToggle = { _, on -> onFollowToggled(on) },
+        ) { dirty ->
             discard.visibility = if (dirty) View.VISIBLE else View.GONE
         }
         discard.setOnClickListener { discardChanges() }
 
-        findViewById<Button>(R.id.use_location).setOnClickListener { onUseLocation() }
+        findViewById<Button>(R.id.lookup_address).setOnClickListener { onLookupAddress() }
+        // Reflect the loaded state without going through the toggle listener (which would
+        // prompt for permission just for opening the screen).
+        syncLocationFields(cfg.useDeviceLocation)
     }
 
     /** Back press: commit before the screen behind us resumes, so it sees the new config. */
@@ -117,7 +126,7 @@ class ConfigActivity : Activity() {
     }
 
     private fun discardChanges() {
-        staged.discard()
+        staged.discard()   // restores the fields and the follow checkbox (re-syncing enablement)
         pendingPlaceName = null
         pendingLat = null
         pendingLon = null
@@ -129,13 +138,35 @@ class ConfigActivity : Activity() {
         super.onDestroy()
     }
 
-    // ───────── on-device location ─────────
+    // ───────── location: follow the phone, look up an address, or type coordinates ─────────
 
-    private fun onUseLocation() {
+    private fun follow(): CheckBox = findViewById(R.id.use_device_location)
+
+    /**
+     * The checkbox changed. Turning it on needs location permission, so prompt when we
+     * don't hold it yet and leave the box on only if the grant comes back — a denial
+     * puts it straight back to manual coordinates rather than leaving a checkbox that
+     * silently does nothing.
+     */
+    private fun onFollowToggled(on: Boolean) {
+        syncLocationFields(on)
+        if (!on) {
+            setLocStatus(savedPlaceName?.let { "Using $it" } ?: "")
+            return
+        }
         // Gate on precise: if we don't yet have FINE, prompt — this also lets an
         // existing Approximate-only grant upgrade to Precise via the Android 12+ toggle.
         if (LocationProvider.hasPrecise(this)) fetchLocation()
         else requestPermissions(LocationProvider.permissions, REQ_LOCATION)
+    }
+
+    /** While the phone's location is in charge, the coordinates aren't yours to edit. */
+    private fun syncLocationFields(following: Boolean) {
+        listOf(R.id.lat, R.id.lon, R.id.address).forEach {
+            field(it).isEnabled = !following
+            field(it).alpha = if (following) 0.45f else 1f
+        }
+        findViewById<Button>(R.id.lookup_address).isEnabled = !following
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
@@ -144,8 +175,12 @@ class ConfigActivity : Activity() {
         // Fetch if we ended up with any grant (fetch uses the finest available); only a
         // full denial falls back to manual entry. Re-check live state rather than the
         // results array, since an already-held COARSE reads as granted here too.
-        if (LocationProvider.hasPermission(this)) fetchLocation()
-        else setLocStatus("Location permission denied — enter a lat/long by hand.")
+        if (LocationProvider.hasPermission(this)) {
+            fetchLocation()
+        } else {
+            follow().isChecked = false   // fires onFollowToggled → re-enables the fields
+            setLocStatus("Location permission denied — enter a lat/long or an address instead.")
+        }
     }
 
     private fun fetchLocation() {
@@ -156,23 +191,46 @@ class ConfigActivity : Activity() {
                 setLocStatus("Couldn't get a location — check location is on, or enter it by hand.")
                 return@launch
             }
-            // Round to ~11 m: enough for weather, and avoids storing a needlessly exact fix.
-            val lat = round4(loc.latitude)
-            val lon = round4(loc.longitude)
-            field(R.id.lat).setText(lat.toString())
-            field(R.id.lon).setText(lon.toString())
-            pendingLat = lat
-            pendingLon = lon
-            pendingPlaceName = null
+            val lat = AppConfig.round4(loc.latitude)
+            val lon = AppConfig.round4(loc.longitude)
+            applyResolved(lat, lon, label = null)
             val name = LocationProvider.placeName(this@ConfigActivity, lat, lon)
-            pendingPlaceName = name
+            applyResolved(lat, lon, name)
             setLocStatus(name?.let { "Using $it" } ?: "Location set")
         }
     }
 
-    private fun setLocStatus(msg: String) = findViewById<TextView>(R.id.loc_status).setText(msg)
+    /** Geocode whatever is in the address box into the lat/long fields. */
+    private fun onLookupAddress() {
+        val query = field(R.id.address).text.toString().trim()
+        if (query.isEmpty()) {
+            setLocStatus("Type an address, city, or ZIP first.")
+            return
+        }
+        setLocStatus("Looking up “$query”…")
+        scope.launch {
+            val hit = LocationProvider.geocodeAddress(this@ConfigActivity, query)
+            if (hit == null) {
+                setLocStatus("Couldn't find “$query” — try a city and state, or a ZIP.")
+                return@launch
+            }
+            val lat = AppConfig.round4(hit.lat)
+            val lon = AppConfig.round4(hit.lon)
+            applyResolved(lat, lon, hit.label)
+            setLocStatus("Using ${hit.label}  ($lat, $lon)")
+        }
+    }
 
-    private fun round4(d: Double) = Math.round(d * 10000.0) / 10000.0
+    /** Put a resolved coordinate into the fields and remember its label for [save]. */
+    private fun applyResolved(lat: Double, lon: Double, label: String?) {
+        field(R.id.lat).setText(lat.toString())
+        field(R.id.lon).setText(lon.toString())
+        pendingLat = lat
+        pendingLon = lon
+        pendingPlaceName = label
+    }
+
+    private fun setLocStatus(msg: String) = findViewById<TextView>(R.id.loc_status).setText(msg)
 
     /** The label to persist for the saved coordinates, or null if they're hand-entered. */
     private fun placeNameFor(cfg: AppConfig, lat: Double, lon: Double): String? = when {
@@ -201,8 +259,12 @@ class ConfigActivity : Activity() {
         val lat = field(R.id.lat).text.toString().toDoubleOrNull() ?: cfg.lat
         val lon = field(R.id.lon).text.toString().toDoubleOrNull() ?: cfg.lon
         val placeName = placeNameFor(cfg, lat, lon)
+        // Only honour the checkbox if the permission actually landed; the saved lat/lon
+        // stay written either way, as the fallback when a fix can't be had later.
+        val followDevice = follow().isChecked && LocationProvider.hasPermission(this)
 
         val ed = getSharedPreferences("ac_windows", MODE_PRIVATE).edit()
+            .putBoolean("useDeviceLocation", followDevice)
             .putString("tempIdealF", tempIdeal.toString())
             .putString("maxTempF", maxTemp.toString())
             .putString("openScoreMin", openScore.toString())

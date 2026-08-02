@@ -69,10 +69,10 @@ want indoors, comfortable, clean, and dry**. The engine checks, in order:
 
 ### Why dew point (and what else I considered)
 
-You asked whether "dew point" matters — it does, a lot. **Relative humidity is
-misleading** because it moves with temperature (70% at dawn and 35% at noon can
-be the *same* air). **Dew point measures absolute moisture**, so it's the honest
-"how muggy will it feel" gauge:
+Dew point matters here, a lot. **Relative humidity is misleading** because it
+moves with temperature (70% at dawn and 35% at noon can be the *same* air).
+**Dew point measures absolute moisture**, so it's the honest "how muggy will it
+feel" gauge:
 
 | Dew point | Feel |
 |---|---|
@@ -80,10 +80,10 @@ be the *same* air). **Dew point measures absolute moisture**, so it's the honest
 | ~60°F | getting sticky |
 | 65°F+ | oppressive |
 
-So the engine gates window-opening on **dew point**, and treats your 40–45%
+So the engine gates window-opening on **dew point**, and treats the 40–45%
 (30–50% acceptable) RH numbers as the *indoor* target they really are.
 
-Other factors I poll or considered, and why:
+Other factors polled or considered, and why:
 
 - **AQI + components (PM2.5, PM10, ozone)** — the whole point of "should I open
   up"; wildfire smoke makes ventilation a bad idea even on a cool day. *(polled)*
@@ -268,13 +268,29 @@ This follows a proportionate, personal-project security posture:
 - **Keyless by default** — all three default sources (Open-Meteo, NWS, met.no)
   need no API key, so the core path has no secrets to leak. The Android app can
   *optionally* add keyed hyperlocal sources; those keys are pasted into the app
-  and stored only on the device (a private `0600` file), never in the repo.
+  and stored only on the device (a private `0600` file), never in the repo, and
+  they're excluded from cloud backup and device-to-device transfer.
 - **`config.toml` is gitignored** — your coordinates pinpoint your home, so the
   real file stays untracked; only `config.example.toml` (placeholder coords) ships.
+  The checked-in Android defaults are likewise a placeholder (downtown Manhattan),
+  not anyone's home.
+- **Location is optional and local.** The Android location permission buys exactly
+  one thing: filling in your coordinates for you. You can decline it entirely and
+  type a latitude/longitude — or an address, which the *device's own* geocoder
+  resolves. Coordinates are rounded to ~11 m (four decimals), kept in app-private
+  storage, and sent only to the weather providers as query parameters.
 - **Zero third-party dependencies in the Python backend** — nothing to typosquat
   or supply-chain. (The Android app pins its AndroidX/Compose versions via the BOM.)
 - **Network use is explicit and minimal** — only the weather hosts above are
-  contacted; no telemetry, no analytics, no data sent anywhere else.
+  contacted; no telemetry, no analytics, no ad SDKs, no accounts, no data sent
+  anywhere else.
+
+## Publishing
+
+Notes on getting this into other people's hands — what's already safe to make
+public, and the concrete blockers between here and a Google Play listing
+(app icon, `targetSdk`, release signing, privacy policy, and the 14-day closed
+test) — are in [docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 ## License
 

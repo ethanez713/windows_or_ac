@@ -114,21 +114,47 @@
             android:textStyle="bold"
             android:paddingBottom="2dp" />
         <TextView style="@style/CfgHint"
-            android:text="Tap to fill from your device (coarse, city-level), or enter a lat/long by hand if you'd rather not share location. Nothing is sent anywhere but the weather lookup." />
+            android:text="Follow your phone, look up an address, or type a lat/long by hand. Your coordinates are only ever sent to the weather providers." />
 
-        <Button
-            android:id="@+id/use_location"
-            android:layout_width="wrap_content"
+        <CheckBox
+            android:id="@+id/use_device_location"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:drawableStart="@drawable/ic_location"
-            android:drawablePadding="6dp"
-            android:text="Use my location" />
+            android:text="Use my phone's location"
+            android:textSize="15sp" />
+        <TextView style="@style/CfgHint"
+            android:text="On: the forecast follows you — your location is re-read before every refresh. Off: the latitude/longitude below are used." />
+
         <TextView
             android:id="@+id/loc_status"
             style="@style/CfgHint"
             android:layout_marginTop="4dp"
             android:text="" />
+
+        <TextView style="@style/CfgLabel" android:text="Address or place" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:baselineAligned="false"
+            android:gravity="center_vertical">
+            <EditText
+                android:id="@+id/address"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="16sp"
+                android:inputType="textPostalAddress"
+                android:maxLines="1"
+                android:imeOptions="actionSearch"
+                android:hint="street, city, or ZIP" />
+            <Button
+                android:id="@+id/lookup_address"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Look up" />
+        </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="Converts an address to a latitude/longitude using Android's built-in geocoder." />
 
         <TextView style="@style/CfgLabel" android:text="Latitude" />
         <EditText

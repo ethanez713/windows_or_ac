@@ -1,31 +1,54 @@
 # AC / Windows — Android home-screen widget
 
-A self-contained native widget that shows whether to **open your windows** or
-**run the AC** — plus a **24-hour Open-Window Score graph** so you can see the
-best time to open up once. It fetches three weather sources (Open-Meteo + NWS +
-met.no) in parallel and runs an on-device port of the Python backend's scoring
-engine. No server, no account, no Play Store.
+A self-contained home-screen widget plus a companion app, showing whether to
+**open your windows** or **run the AC** — with an **Open-Window Score graph**
+(36 h by default, configurable 6–96 h) so you can see the best time to open up
+once. It fetches three keyless weather sources (Open-Meteo + NWS + met.no) in
+parallel and runs an on-device port of the Python backend's scoring engine. No
+server, no account, no telemetry.
 
 **Resizable** from 2×2 up to full-width: it shows as many forecast hours as fit
 the width, fills the available height, labels the left axis **win** (open) at the
 top / **ac** at the bottom, and marks each midnight with a dated divider.
 
-**On-device settings** — adding the widget opens a settings screen (re-openable
-later via long-press → reconfigure on Android 12+) where you set, *without
-rebuilding*: target max temp, the open-window score threshold, the muggy
-dew-point cap, max AQI, and your latitude/longitude. Saving refetches and
-redraws. The configured setpoints are shown on the widget (`open ≥ 60 · target ≤
-78°F`).
+**Settings, no rebuild needed.** The app's gear icon opens the global settings —
+comfort thresholds (each factor's "comfortable up to" and "cutoff"), the
+open-window score threshold, location, per-source trust weights, and optional API
+keys for hyperlocal sources. Long-press the gear (or add/reconfigure the widget)
+for the widget-only settings: forecast length and background opacity. There is no
+Save button — edits commit when you leave the screen, and a **Discard changes**
+button appears in the header once something is staged.
+
+**Three ways to set your location:**
+- **Use my phone's location** — a checkbox. While it's on, the current fix is
+  re-read before every refresh, so the forecast follows you; the coordinate fields
+  are locked and show what was last resolved. (Android only hands out a fix to an
+  app that's actually on screen, so the position updates when you open the app and
+  the widget picks it up on its next tick — this app deliberately doesn't request
+  the background-location permission, which Play gates behind a separate review.)
+- **Address lookup** — type a street, city, or ZIP and hit *Look up*; Android's
+  built-in geocoder converts it to a latitude/longitude.
+- **By hand** — type the coordinates directly, and grant no location permission
+  at all.
+
+Whichever you use, the resolved place name is shown on the widget's footer next
+to a pin, and the coordinates go nowhere but the weather providers.
 
 **Behavior:**
 - **Auto-refreshes every 10 min** on its own (an inexact AlarmManager tick that
   re-arms itself, with a 15-min WorkManager job as a backstop — WorkManager alone
-  can't go under 15 min).
+  can't go under 15 min). Refreshes are single-flight, so overlapping triggers
+  coalesce instead of racing each other into the cache.
 - **Caches** the last result and renders it instantly on every load; only hits
   the network when the cache is missing or older than **10 min** (or on tap).
-- **Refresh indicator** — a spinner + "updating…" shows while it's pulling data;
-  the footer shows the last-updated time.
-- **Tap** the widget to force an immediate refresh.
+- **Says what time it's showing.** The footer reads `as of 3:45 PM`, and a bright
+  vertical **now** line on the graph marks the present hour. Because the bars are
+  fixed clock hours, that line drifts right between refreshes — so if the widget
+  ever stops updating you can see it: past hours fade, the footer turns amber with
+  `⚠ as of 9:05 AM (5h old)`, and once the present runs off the end of the series
+  the marker pins to the edge and reads **stale**.
+- **Tap** the widget to force an immediate refresh; the refresh icon does the same
+  without opening the app.
 - Background color encodes the call; the graph bars above the dashed threshold
   line are the open-worthy hours, and the best contiguous window is underlined.
 - **Rain line** — when rain is in the forecast, a blue line traces the chance of it
@@ -39,30 +62,16 @@ redraws. The configured setpoints are shown on the widget (`open ≥ 60 · targe
 
 ## What you need (all free)
 
-- **Android Studio** (the only practical way to build an APK without a server):
-  <https://developer.android.com/studio>
+- A **JDK 17**, the **Android SDK** (compileSdk 34), and **Gradle 8.7** — or
+  **Android Studio**, which bundles all three:
+  <https://developer.android.com/studio>. Building entirely from the command
+  line works too; see [Local build & emulator](#local-build--emulator-no-android-studio).
 - Your phone, with **USB debugging** on: Settings → About phone → tap *Build
   number* 7× to unlock Developer options → Developer options → enable **USB
   debugging**. (Only needed for the `adb install` path; you can also just copy
   the APK to the phone and tap it.)
 
-## 1. Configure your location
-
-Edit `app/src/main/java/com/acwindows/AppConfig.kt` and set:
-
-```kotlin
-const val DEFAULT_LAT = 40.7128            // your latitude
-const val DEFAULT_LON = -74.0060           // your longitude
-const val DEFAULT_UA  = "ac-widget/0.1 (your-email@example.com)"  // NWS asks for a contact
-```
-
-Find your lat/lon at <https://www.latlong.net>. Comfort thresholds (max temp,
-dew point, AQI) default to the same values as the Python backend; change them in
-`Comfort()` in `Models.kt` if you like. (For the MVP these are baked in at build
-time — changing them means a rebuild. A later version can add an in-app settings
-screen.)
-
-## 2. Build the APK
+## 1. Build the APK
 
 **Android Studio (recommended):**
 1. *Open* → select this `android/` folder. Let Gradle sync finish (first sync
@@ -80,16 +89,21 @@ gradle wrapper            # one-time, only if ./gradlew is missing
 # -> app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## 3. Put it on your phone
+## 2. Put it on your phone
 
 Either path works — both are free and local:
 
 - **USB (adb):** `adb install -r app/build/outputs/apk/debug/app-debug.apk`
-  (Android Studio's **Run ▶** also installs it; if it warns "no default
-  activity", choose *Do not launch* / *Nothing* — this app is widget-only and has
-  no app screen to open.)
+  (Android Studio's **Run ▶** also installs it.)
 - **Copy + tap:** transfer `app-debug.apk` to the phone (USB, Drive, etc.), tap
   it in a file manager, and allow "install unknown apps" for that app.
+
+## 3. Set your location
+
+Open the app and tap the gear icon. Either tick **Use my phone's location**, or
+type an address and hit **Look up**, or enter a latitude/longitude by hand (find
+yours at <https://www.latlong.net>). Comfort thresholds default to the same
+values as the Python backend and are editable on the same screen — no rebuild.
 
 ## 4. Add the widget
 
@@ -178,13 +192,17 @@ apps while it runs.
 
 ## Troubleshooting
 
-- **Stuck on "Updating…" / not refreshing** — aggressive battery optimization can
-  pause the refresh (Doze also stretches the 10-min tick to ~15 when the phone is
+- **Footer says `⚠ as of …` / the graph's now-line reads "stale"** — the widget
+  hasn't managed a refresh in a while. Aggressive battery optimization is the
+  usual cause (Doze also stretches the 10-min tick to ~15 when the phone is
   idle). Tapping the widget forces an immediate refresh; to keep the automatic
   updates on schedule, exempt the app from battery optimization in Settings.
 - **"no sources reachable"** — check the phone's internet. NWS is US-only, so
   outside the US only Open-Meteo will respond (still fine — you'll see
   `degraded` confidence). Double-check your lat/lon.
+- **Address lookup finds nothing** — `Geocoder` is backed by the device's own
+  geocoding service, which some de-Googled ROMs don't ship. Enter a
+  latitude/longitude by hand instead; everything else works the same.
 - **Gradle/AGP version errors on first sync** — let Android Studio's upgrade
   assistant bump the versions; the code itself doesn't depend on the exact
   versions pinned here.

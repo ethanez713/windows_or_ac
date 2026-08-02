@@ -29,13 +29,41 @@ data class Snapshot(
     val bestStart: String?,
     val bestEnd: String?,
     val note: String,
+    /** When the readings in this snapshot were fetched. */
     val updatedAtMs: Long,
-)
+    /**
+     * Wall-clock time of the FIRST graph bar. The hourly series is a fixed set of absolute
+     * clock hours, so without this anchor there is no way to tell where "now" falls once
+     * the snapshot ages — bar 0 stops being now the moment a refresh is late, which is how
+     * the graph and the text ended up describing different times. 0 = unknown (a snapshot
+     * cached by an older build); the widget then falls back to labelling bar 0 "now".
+     */
+    val firstHourMs: Long = 0L,
+) {
+    /** How far past the readings' fetch time we are, in ms. */
+    fun ageMs(nowMs: Long = System.currentTimeMillis()): Long = nowMs - updatedAtMs
+}
+
+/**
+ * Where the current moment falls in an hourly series whose first bar starts at
+ * [firstHourMs], as a fractional bar index (1.5 = halfway through the second bar).
+ * Null when the anchor is unknown, and may fall outside 0..n when the series has aged
+ * out — callers decide whether to clamp or to flag it.
+ */
+fun nowBarPos(firstHourMs: Long, nowMs: Long = System.currentTimeMillis()): Double? =
+    if (firstHourMs <= 0L) null else (nowMs - firstHourMs) / 3_600_000.0
 
 object WidgetCache {
 
     /** Matches the widget's 10-minute auto-refresh tick (see AcWindowsProvider). */
     const val TTL_MS = 10 * 60 * 1000L
+
+    /**
+     * Past this age the widget is visibly out of date, not just due a refresh — three
+     * missed ticks means something is actually wrong (no network, aggressive Doze,
+     * background restrictions). The footer and the graph both say so at this point.
+     */
+    const val STALE_MS = 3 * TTL_MS
     private const val PREFS = "ac_windows"
     private const val KEY = "snapshot"
 
@@ -61,6 +89,7 @@ object WidgetCache {
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
             .put("note", s.note)
             .put("updatedAtMs", s.updatedAtMs)
+            .put("firstHourMs", s.firstHourMs)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, o.toString()).apply()
     }
@@ -99,16 +128,11 @@ object WidgetCache {
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),
                 note = o.optString("note", ""),
                 updatedAtMs = o.getLong("updatedAtMs"),
+                firstHourMs = o.optLong("firstHourMs", 0L),
             )
         } catch (e: Exception) {
             null
         }
-    }
-
-    /** True when a refresh is due: no cache, or it's older than the TTL. */
-    fun isStale(context: Context): Boolean {
-        val s = load(context) ?: return true
-        return System.currentTimeMillis() - s.updatedAtMs > TTL_MS
     }
 
     /** Drop the cache so the next render refetches (e.g. after a settings change). */

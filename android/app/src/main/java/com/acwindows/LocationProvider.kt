@@ -120,7 +120,7 @@ object LocationProvider {
             if (!Geocoder.isPresent()) return@withContext null
             val geo = Geocoder(context, Locale.getDefault())
             val addr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                geocodeAsync(geo, lat, lon)
+                geocodeAsync { l -> geo.getFromLocation(lat, lon, 1, l) }
             } else {
                 @Suppress("DEPRECATION")
                 runCatching { geo.getFromLocation(lat, lon, 1) }.getOrNull()?.firstOrNull()
@@ -128,19 +128,51 @@ object LocationProvider {
             addr?.let { format(it) }
         }
 
-    private suspend fun geocodeAsync(geo: Geocoder, lat: Double, lon: Double): Address? =
-        withTimeoutOrNull(8_000) {
-            suspendCancellableCoroutine { cont ->
-                geo.getFromLocation(lat, lon, 1, object : Geocoder.GeocodeListener {
-                    override fun onGeocode(addresses: MutableList<Address>) {
-                        if (cont.isActive) cont.resume(addresses.firstOrNull())
-                    }
-                    override fun onError(errorMessage: String?) {
-                        if (cont.isActive) cont.resume(null)
-                    }
-                })
+    /** A typed address resolved to coordinates plus the label to show for them. */
+    data class Geo(val lat: Double, val lon: Double, val label: String)
+
+    /**
+     * Forward-geocode a typed address ("221B Baker St", "Austin TX", a ZIP) to
+     * coordinates. Returns null when the query doesn't resolve or the device has no
+     * geocoder backend — the caller keeps the hand-entered lat/long. Off the main thread.
+     */
+    suspend fun geocodeAddress(context: Context, query: String): Geo? =
+        withContext(Dispatchers.IO) {
+            val q = query.trim()
+            if (q.isEmpty() || !Geocoder.isPresent()) return@withContext null
+            val geo = Geocoder(context, Locale.getDefault())
+            val addr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                geocodeAsync { l -> geo.getFromLocationName(q, 1, l) }
+            } else {
+                @Suppress("DEPRECATION")
+                runCatching { geo.getFromLocationName(q, 1) }.getOrNull()?.firstOrNull()
+            }
+            addr?.takeIf { it.hasLatitude() && it.hasLongitude() }?.let {
+                // Prefer the geocoder's own "City, ST" for the label; fall back to what
+                // the user typed so the widget footer always has something to show.
+                Geo(it.latitude, it.longitude, format(it) ?: q)
             }
         }
+
+    /**
+     * API 33+ geocoder calls are callback-based. [start] hands our listener to whichever
+     * of getFromLocation / getFromLocationName the caller wants; both deliver the same
+     * address list, so one wrapper covers forward and reverse lookups.
+     */
+    private suspend fun geocodeAsync(
+        start: (Geocoder.GeocodeListener) -> Unit,
+    ): Address? = withTimeoutOrNull(8_000) {
+        suspendCancellableCoroutine { cont ->
+            start(object : Geocoder.GeocodeListener {
+                override fun onGeocode(addresses: MutableList<Address>) {
+                    if (cont.isActive) cont.resume(addresses.firstOrNull())
+                }
+                override fun onError(errorMessage: String?) {
+                    if (cont.isActive) cont.resume(null)
+                }
+            })
+        }
+    }
 
     /** "City, ST" — city (or county) plus state, dropping either if missing/duplicated. */
     private fun format(a: Address): String? {

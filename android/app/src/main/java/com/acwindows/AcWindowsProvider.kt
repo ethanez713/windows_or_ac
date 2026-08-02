@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -37,8 +38,11 @@ import kotlin.math.roundToInt
 class AcWindowsProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
-        val stale = WidgetCache.isStale(context)
-        ids.forEach { id -> drawId(context, mgr, id, refreshing = stale && WidgetCache.load(context) == null) }
+        val snap = WidgetCache.load(context)
+        val stale = snap == null || snap.ageMs() > WidgetCache.TTL_MS
+        // Only spin when there's nothing to show yet; with a cached snapshot the old data
+        // stays readable while the refresh runs.
+        ids.forEach { id -> drawId(context, mgr, id, refreshing = snap == null) }
         if (stale) enqueueRefresh(context)   // only fetch when actually due
         scheduleTick(context)
         schedulePeriodic(context)
@@ -86,9 +90,13 @@ class AcWindowsProvider : AppWidgetProvider() {
         const val ACTION_REFRESH = "com.acwindows.ACTION_REFRESH"
         private const val ACTION_TICK = "com.acwindows.ACTION_TICK"
         private const val PERIODIC_WORK = "ac_windows_periodic"
+        private const val REFRESH_WORK = "ac_windows_refresh"
 
-        /** How often the widget refreshes itself, unprompted. */
-        const val TICK_INTERVAL_MS = 10 * 60 * 1000L
+        /**
+         * How often the widget refreshes itself, unprompted — and, by the same token, how
+         * long a cached snapshot is considered current (see [WidgetCache.TTL_MS]).
+         */
+        const val TICK_INTERVAL_MS = WidgetCache.TTL_MS
 
         /** Tapping the widget body opens the full app. */
         private fun appIntent(context: Context): PendingIntent {
@@ -112,9 +120,19 @@ class AcWindowsProvider : AppWidgetProvider() {
         /** Redraw every instance from cache with the spinner off (keeps last good data). */
         fun refreshDone(context: Context) = renderAll(context, refreshing = false)
 
+        /**
+         * Queue a refresh, coalescing with one already queued or running (KEEP). Every
+         * trigger funnels through here — a tap, the 10-minute tick, a settings save, and
+         * onUpdate, which the system can fire several times in a row on its own — so
+         * without a unique name a single moment could kick off four overlapping fetches
+         * that then fight over the snapshot. An in-flight refresh publishes within seconds
+         * anyway, so joining it is what the user wanted regardless.
+         */
         fun enqueueRefresh(context: Context) {
-            WorkManager.getInstance(context)
-                .enqueue(OneTimeWorkRequestBuilder<RefreshWorker>().build())
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                REFRESH_WORK, ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<RefreshWorker>().build(),
+            )
         }
 
         private fun alarms(context: Context) =
@@ -164,9 +182,6 @@ class AcWindowsProvider : AppWidgetProvider() {
             )
         }
 
-        /** Called by the worker (and on tap) — redraw every instance at its own size. */
-        fun render(context: Context, snap: Snapshot) = renderAll(context, refreshing = false)
-
         /** Draw immediately (spinner over current/loading view) and kick off a fetch. */
         fun refreshNow(context: Context) {
             renderAll(context, refreshing = true)
@@ -177,7 +192,8 @@ class AcWindowsProvider : AppWidgetProvider() {
             AppWidgetManager.getInstance(context)
                 .getAppWidgetIds(ComponentName(context, AcWindowsProvider::class.java))
 
-        private fun renderAll(context: Context, refreshing: Boolean) {
+        /** Redraw every instance from the cache — the single source of truth for what's shown. */
+        fun renderAll(context: Context, refreshing: Boolean) {
             val mgr = AppWidgetManager.getInstance(context)
             widgetIds(context).forEach { drawId(context, mgr, it, refreshing) }
         }
@@ -215,11 +231,16 @@ class AcWindowsProvider : AppWidgetProvider() {
             RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, "Loading…")
                 setTextViewText(R.id.readings, "")
+                setViewVisibility(R.id.readings, View.GONE)
                 setTextViewCompoundDrawablesRelative(R.id.sources, 0, 0, 0, 0)
                 setTextViewText(R.id.sources, "fetching weather…")
                 setTextViewText(R.id.updated, "")
                 setViewVisibility(R.id.refresh_spinner, View.VISIBLE)
                 setViewVisibility(R.id.refresh_button, View.GONE)
+                // Must clear the graph and set the background explicitly — see [buildViews].
+                // Neutral slate while loading: the first paint shouldn't imply a verdict.
+                setImageViewBitmap(R.id.graph, null)
+                setInt(R.id.widget_root, "setBackgroundColor", colorFor(Action.KEEP_CLOSED))
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
                 setOnClickPendingIntent(R.id.refresh_button, refreshIntent(context))
             }
@@ -246,16 +267,6 @@ class AcWindowsProvider : AppWidgetProvider() {
             val ivWdp = (wDp - 24).coerceAtLeast(60)
             val ivHdp = (hDp - reservedDp).coerceAtLeast(40)
 
-            // Show the whole configured forecast window, stretched to fill the width
-            // (bars get thinner on a small widget rather than the window getting shorter).
-            val hours = s.scores.size.coerceAtLeast(1)
-            val scores = s.scores.take(hours)
-            val times = s.times.take(hours)
-            val worst = s.worst.take(hours)
-            val isDay = s.isDay.take(hours)
-            val precipProb = s.precipProb.take(hours)
-            val precipIn = s.precipIn.take(hours)
-
             val readings = buildString {
                 s.tempF?.let { append("${it.roundToInt()}°F") }
                 s.dewPointF?.let { append("   ·   dew ${it.roundToInt()}°F") }
@@ -263,18 +274,16 @@ class AcWindowsProvider : AppWidgetProvider() {
                 append("   ·   score ${s.nowScore.roundToInt()}")
             }
             // With a location set, condense to fold the place into this one footer line
-            // ("📍 City, ST · 6/6 · high  3:45 PM"); without one, keep the verbose form.
+            // ("📍 City, ST · 6/6 · high"); without one, keep the verbose form.
             val sources = when {
                 s.sourcesOk.isEmpty() -> if (showLocation) "$place · no sources" else "no sources"
                 showLocation -> "$place · ${s.sourcesOk.size}/${s.sourcesTotal} · ${s.confidence}"
                 else -> "${s.sourcesOk.size}/${s.sourcesTotal} sources · ${s.confidence}"
             }
-            val updated = if (refreshing) "updating…"
-                else (if (showLocation) "" else "updated ") +
-                    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(s.updatedAtMs))
 
             val ivWpx = (ivWdp * density).toInt().coerceIn(120, 1600)
             val ivHpx = (ivHdp * density).toInt().coerceIn(56, 900)
+            val nowMs = System.currentTimeMillis()
 
             return RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, s.headline)
@@ -285,23 +294,48 @@ class AcWindowsProvider : AppWidgetProvider() {
                     R.id.sources, if (showLocation) R.drawable.ic_location else 0, 0, 0, 0,
                 )
                 setTextViewText(R.id.sources, sources)
-                setTextViewText(R.id.updated, updated)
+                setTextViewText(R.id.updated, asOfLabel(s, refreshing, nowMs))
+                setTextColor(R.id.updated, if (s.ageMs(nowMs) > WidgetCache.STALE_MS) STALE_AMBER else FOOTER_DIM)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 // Hide the manual refresh icon while a refresh is in flight (spinner shows instead).
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
                 setInt(R.id.widget_root, "setBackgroundColor", withOpacity(colorFor(s.action), cfg.widgetOpacity))
-                if (scores.isNotEmpty()) {
-                    setImageViewBitmap(
-                        R.id.graph,
-                        Graph.render(
-                            scores, times, worst, isDay, precipProb, precipIn,
-                            s.bestStart, s.bestEnd, threshold, ivWpx, ivHpx, density,
-                        ),
-                    )
-                }
+                // ALWAYS set the graph, even when there is nothing to draw. The launcher
+                // reapplies a RemoteViews onto the views already on screen rather than
+                // re-inflating, so any property we DON'T set keeps its previous value —
+                // an omitted setImageViewBitmap left the old chart sitting under freshly
+                // updated text, which is exactly the "bars and text disagree" symptom.
+                setImageViewBitmap(
+                    R.id.graph,
+                    if (s.scores.isEmpty()) null else Graph.render(
+                        s.scores, s.times, s.worst, s.isDay, s.precipProb, s.precipIn,
+                        s.bestStart, s.bestEnd, threshold, ivWpx, ivHpx, density,
+                        nowPos = nowBarPos(s.firstHourMs, nowMs),
+                    ),
+                )
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
                 setOnClickPendingIntent(R.id.refresh_button, refreshIntent(context))
             }
+        }
+
+        private val FOOTER_DIM = Color.parseColor("#B3FFFFFF")
+        private val STALE_AMBER = Color.parseColor("#FFFBBF24")
+
+        /**
+         * The footer's right-hand label: what time the widget's data is FROM. Says so
+         * explicitly ("as of 3:45 PM") rather than leaving a bare clock time that reads
+         * like the current time, and calls out its age once the data is properly stale, so
+         * a widget the system has stopped refreshing is obvious at a glance instead of
+         * quietly showing this morning's numbers.
+         */
+        private fun asOfLabel(s: Snapshot, refreshing: Boolean, nowMs: Long): String {
+            if (refreshing) return "updating…"
+            val at = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(s.updatedAtMs))
+            val age = s.ageMs(nowMs)
+            if (age <= WidgetCache.STALE_MS) return "as of $at"
+            val hours = age / 3_600_000
+            val ago = if (hours >= 1) "${hours}h" else "${age / 60_000}m"
+            return "⚠ as of $at ($ago old)"
         }
     }
 }

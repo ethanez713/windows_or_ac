@@ -66,12 +66,16 @@
             android:drawablePadding="4dp"
             android:text="tap to refresh" />
 
+        <!-- What time the shown data is FROM (recoloured amber when it's gone stale);
+             see AcWindowsProvider.asOfLabel. -->
         <TextView
             android:id="@+id/updated"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#B3FFFFFF"
             android:textSize="10sp"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:text="" />
 
         <ImageView

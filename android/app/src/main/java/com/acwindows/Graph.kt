@@ -15,6 +15,11 @@ import android.graphics.Paint
  * flag). The best contiguous window is underlined. When rain is in the forecast,
  * a blue line traces the chance of it on the same 0–100 axis (see [drawRain]).
  *
+ * A bright vertical line marks the present (see [drawNow]) and hours already gone
+ * are dimmed. The bars are fixed clock hours, so the marker is what keeps the chart
+ * honest as the snapshot ages — it moves right between refreshes, and if a refresh
+ * is badly overdue you can see the present has walked off into (or past) the bars.
+ *
  * The bitmap is rendered at the ImageView's true pixel aspect (see
  * AcWindowsProvider) and shown with fitCenter, so text never stretches on resize.
  */
@@ -50,6 +55,11 @@ object Graph {
     /** Below this chance, with no accumulation, there's no rain worth drawing. */
     private const val RAIN_MIN_PCT = 5.0
 
+    // The "now" marker (see [drawNow]) and how far elapsed hours fade behind it.
+    private val NOW_WHITE = Color.rgb(0xFF, 0xFF, 0xFF)
+    private val STALE_AMBER = Color.rgb(0xFB, 0xBF, 0x24)
+    private const val PAST_ALPHA = 90
+
     /**
      * Line thickness in dp for an hour's rain rate (inches in that hour): a hairline
      * for a trace, up to 4dp for an inch-plus downpour.
@@ -78,6 +88,12 @@ object Graph {
         widthPx: Int,
         heightPx: Int,
         density: Float,
+        /**
+         * Where the present falls in [scores], as a fractional bar index (see
+         * `nowBarPos`). Null for a snapshot with no wall-clock anchor — an older cache —
+         * in which case bar 0 is labelled "now" the way it always was.
+         */
+        nowPos: Double? = null,
     ): Bitmap {
         val w = widthPx.coerceAtLeast(80)
         val h = heightPx.coerceAtLeast(60)
@@ -152,6 +168,9 @@ object Graph {
                 val wf = worst.getOrElse(i) { -1 }
                 if (wf in FACTOR_COLORS.indices) detractorGrey(FACTOR_COLORS[wf]) else CLOSED_GREY
             }
+            // An hour that has already elapsed is history, not forecast — fade it so the
+            // eye starts at the present rather than at the left edge.
+            bar.alpha = if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
             val r = (2f * sp).coerceAtMost(barW / 2)
             c.drawRoundRect(x, base - bh, x + barW, base, r, r, bar)
             // When the score bottoms out (~0), mark the baseline with the dominant
@@ -159,12 +178,17 @@ object Graph {
             if (s < 0.5) {
                 val wf = worst.getOrElse(i) { -1 }
                 if (wf in FACTOR_COLORS.indices) {
-                    bar.color = FACTOR_COLORS[wf]
+                    bar.color = FACTOR_COLORS[wf]   // resets alpha, so re-apply the fade
+                    bar.alpha = if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
                     c.drawRect(x, base - 2.5f * sp, x + barW, base, bar)
                 }
             }
-            if (i == 0 || i % labelEvery == 0) {
-                val label = if (i == 0) "now" else ForecastBuilder.fmtHour(times.getOrElse(i) { "" })
+            bar.alpha = 255
+            if (i % labelEvery == 0) {
+                // Without an anchor there's nothing better to go on than the old assumption
+                // that the series starts at the present; with one, [drawNow] labels it.
+                val label = if (i == 0 && nowPos == null) "now"
+                    else ForecastBuilder.fmtHour(times.getOrElse(i) { "" })
                 c.drawText(label, x + barW / 2, h - 2f * sp, tick)
             }
         }
@@ -211,7 +235,50 @@ object Graph {
             }
             c.drawLine(barLeft(bi), base + 1.5f * sp, barLeft(bj) + barW, base + 1.5f * sp, u)
         }
+
+        // Last, so it sits above the bars, the rain line and every flag: this is the one
+        // mark that says which of these hours you're actually in.
+        if (nowPos != null) {
+            drawNow(c, nowPos, n, axisW, gap, barW, plotTop, base, h, sp)
+        }
         return bmp
+    }
+
+    /**
+     * The "now" marker: a bright vertical line at the present, tagged in the hour-label
+     * strip below. When the present has fallen outside the series — the snapshot is old
+     * enough that these bars no longer cover it — the marker pins to the nearest edge and
+     * turns amber, so a stale widget looks wrong rather than merely being wrong.
+     */
+    private fun drawNow(
+        c: Canvas, nowPos: Double, n: Int, axisW: Float, gap: Float, barW: Float,
+        plotTop: Float, base: Float, h: Int, sp: Float,
+    ) {
+        val outside = nowPos < 0.0 || nowPos > n.toDouble()
+        val clamped = nowPos.coerceIn(0.0, n.toDouble())
+        val x = axisW + gap + (clamped * (barW + gap)).toFloat()
+        val color = if (outside) STALE_AMBER else NOW_WHITE
+
+        val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color; strokeWidth = 1.8f * sp
+        }
+        c.drawLine(x, plotTop, x, base, line)
+
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = Color.rgb(17, 24, 39); textSize = 8.5f * sp
+            isFakeBoldText = true; textAlign = Paint.Align.CENTER
+        }
+        val label = if (outside) "stale" else "now"
+        val tw = text.measureText(label)
+        // Same on-screen clamp as flag(): never coerceIn with min > max on a narrow bitmap.
+        val hi = c.width - tw / 2 - 2f * sp
+        val cx = x.coerceAtMost(hi).coerceAtLeast(minOf(axisW + tw / 2 + 3f * sp, hi))
+        val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+        c.drawRoundRect(
+            cx - tw / 2 - 3f * sp, h - 11.5f * sp, cx + tw / 2 + 3f * sp, h - 0.5f * sp,
+            3f * sp, 3f * sp, pill,
+        )
+        c.drawText(label, cx, h - 3f * sp, text)
     }
 
     /**

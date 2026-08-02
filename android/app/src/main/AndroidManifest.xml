@@ -6,8 +6,12 @@
     <!-- Re-arm the widget's 10-minute auto-refresh alarm after a reboot (alarms don't
          survive one). No exact-alarm permission is needed: the tick is inexact. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Optional: lets the user fill lat/long from the device instead of typing it.
-         Coarse (city-level) only; the app works fully without it (manual entry). -->
+    <!-- Optional, and only ever used to fill in the forecast coordinates: either once,
+         or continuously if the user ticks "Use my phone's location". FINE is requested so
+         the hyperlocal sources are pinned to the right address, with COARSE alongside so
+         Android 12+ offers the Precise/Approximate choice and an Approximate grant still
+         works. The app is fully usable with neither: enter a lat/long or an address.
+         Location never leaves the device except as a weather-provider query parameter. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 

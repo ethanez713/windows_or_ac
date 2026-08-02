@@ -87,7 +87,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val result = runCatching {
                 // Progressive: surface the first state as soon as 3+ sources answer, then
                 // refresh it (and the "N/X sources" count + graphs) on every later arrival.
-                WeatherRepository.fetchAppStateProgressive(AppConfig.load(getApplication())) { partial ->
+                // loadResolved: honours "use my phone's location" by re-reading the fix
+                // before the fetch, so the app and the widget agree on where "here" is.
+                val cfg = AppConfig.loadResolved(getApplication())
+                WeatherRepository.fetchAppStateProgressive(cfg) { partial ->
                     val empty = partial.consensus.confidence == "none" && partial.forecast.points.isEmpty()
                     if (!empty) _ui.update {
                         // Keep refreshing=true across partials: an early partial may carry current
@@ -215,12 +218,20 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * Placeholder chips shown while the first forecast is still loading, sized to land on
  * the real layout rather than near it: same 84dp/96dp gutters, same 26dp open-window
  * flag strip, same 40dp sparkline, same stacked summary, and text rows that reserve the
- * real line box via [SkeletonTextChip]. A loaded [DayCard] measures 141dp
- * (14 + 26 + 53 + 6 + 28 + 14) and the header 48dp (10 + 28 + 10) — this matches both,
- * so data fills the placeholders instead of the list jumping.
+ * real line box via [SkeletonTextChip]. A loaded collapsed [DayCard] measures 141dp
+ * (14 + 26 + 53 + 6 + 28 + 14) and the header 48dp (10 + 28 + 10).
  *
- * Two deliberate assumptions, both the common case: the day has an open-window flag
- * (worth 26dp) and no rain line in its summary (a rain line would add another 28dp).
+ * The FIRST card is drawn EXPANDED, because today's card opens by default — so the
+ * placeholder has to reserve the open card's height or the list jumps the moment data
+ * lands. Its extra chrome is the Values-mode layout appended below the collapsed body,
+ * built from the same dp constants [DayCard]/[AbsoluteCharts] use: Spacer(14) + readout
+ * line (a ~28dp themed line box) + Spacer(10) + 124dp temp chart + Spacer(12) + 124dp
+ * combined chart = 312dp. That puts the expanded skeleton at 141 + 312 = 453dp, which
+ * matches the real expanded "today" card measured on device (452.6dp at 411dp width).
+ *
+ * Two deliberate assumptions for both the collapsed body and that 452.6dp target, both
+ * the common case: the day has an open-window flag (26dp) and no rain line in its summary
+ * (a rain line would add another 28dp); the expanded readout also assumes one line.
  */
 @Composable
 private fun SkeletonForecast() {
@@ -238,7 +249,7 @@ private fun SkeletonForecast() {
                 SkeletonTextChip(chip, width = 170.dp, fontSize = 13.sp, chipHeight = 14.dp)
             }
         }
-        repeat(5) {
+        repeat(5) { i ->
             // Gutters copied from DayCard so the swap is a fill, not a re-layout.
             val dateW = 84.dp
             val summaryW = 96.dp
@@ -280,6 +291,17 @@ private fun SkeletonForecast() {
                     Spacer(Modifier.height(6.dp))
                     // "N hours to open windows"
                     SkeletonTextChip(chip, width = 150.dp, fontSize = 12.sp, chipHeight = 14.dp)
+
+                    // First card = expanded today. Mirror AbsoluteCharts' exact dp scaffold
+                    // (see the doc comment) so data fills it instead of growing the list.
+                    if (i == 0) {
+                        Spacer(Modifier.height(14.dp))
+                        SkeletonTextChip(chip, width = 240.dp, fontSize = 11.sp, chipHeight = 12.dp)  // readout
+                        Spacer(Modifier.height(10.dp))
+                        SkeletonChip(chip, Modifier.fillMaxWidth().height(124.dp))                   // temp chart
+                        Spacer(Modifier.height(12.dp))
+                        SkeletonChip(chip, Modifier.fillMaxWidth().height(124.dp))                   // combined chart
+                    }
                 }
             }
         }
@@ -317,7 +339,9 @@ private enum class ChartMode { SCORE, VALUES }
 @Composable
 private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, refreshing: Boolean) {
     val context = LocalContext.current
-    val cfg = remember { AppConfig.load(context) }
+    // Keyed on the refresh time: with "use my phone's location" on, a fetch can move the
+    // coordinates and the place label, and the header has to follow.
+    val cfg = remember(updatedAtMs) { AppConfig.load(context) }
     val comfort = cfg.comfort
     val threshold = comfort.openScoreMin
     val days = remember(state) {
@@ -329,20 +353,21 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     // crosses midnight is one continuous span — its boundary flags land on the real
     // start/end day, never split at midnight.
     val spans = remember(state, threshold) { openSpansTimes(state.forecast.points, threshold) }
-    // Default the expanded card to today (falling back to the first day). A progressive
-    // partial can land with current conditions but no hourly days yet, so seed once via a
-    // LaunchedEffect the first time `days` is non-empty — not in the initializer, which
-    // would lock in the day-less null. rememberSaveable + the `seeded` flag mean a later
-    // user toggle (including collapsing today) survives a config change and isn't re-seeded.
+    // Which card is expanded. The default is today (falling back to the first day),
+    // computed synchronously so the very first frame with data already draws today open —
+    // seeding it from a post-composition LaunchedEffect made the card render collapsed for
+    // one frame and then expand, a visible jump. `userPicked` records that the user has
+    // taken over; until then we show the default. A real pick can be null (they collapsed
+    // the open card), so a separate flag — not a nullable sentinel — is what distinguishes
+    // "user chose nothing open" from "untouched". Both are saveable, so a config change
+    // keeps the user's choice.
     val todayDate = remember { LocalDate.now().toString() }
-    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
-    var seeded by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(days) {
-        if (!seeded && days.isNotEmpty()) {
-            expanded = (days.firstOrNull { it.date == todayDate } ?: days.first()).date
-            seeded = true
-        }
+    val defaultExpanded = remember(days) {
+        if (days.isEmpty()) null else (days.firstOrNull { it.date == todayDate } ?: days.first()).date
     }
+    var userPick by rememberSaveable { mutableStateOf<String?>(null) }
+    var userPicked by rememberSaveable { mutableStateOf(false) }
+    val expanded = if (userPicked) userPick else defaultExpanded
     var showSources by rememberSaveable { mutableStateOf(false) }
 
     if (days.isEmpty()) {
@@ -365,7 +390,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
                 mode = mode,
                 globalSpans = spans,
                 expanded = expanded == day.date,
-                onToggle = { expanded = if (expanded == day.date) null else day.date },
+                onToggle = { userPicked = true; userPick = if (expanded == day.date) null else day.date },
             )
         }
     }
