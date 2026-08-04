@@ -54,6 +54,14 @@
         <item name="android:visibility">gone</item>
     </style>
 
+    <!-- A settings toggle in a stacked list of them. -->
+    <style name="CfgCheck">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
     <!-- One column (label + field) of a range row; sits in a weighted parent. -->
     <style name="CfgRangeCol">
         <item name="android:layout_width">0dp</item>

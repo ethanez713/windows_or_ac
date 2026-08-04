@@ -50,6 +50,30 @@
         <TextView style="@style/CfgHint"
             android:text="0 = fully transparent (wallpaper shows through), 100 = solid." />
 
+        <TextView style="@style/CfgLabel" android:text="Show on the graph" />
+        <TextView style="@style/CfgHint"
+            android:text="Turn off whatever you don't want cluttering the chart. The day/night shading, date and noon flags, and the &quot;now&quot; line always stay." />
+
+        <CheckBox
+            android:id="@+id/show_bars"
+            style="@style/CfgCheck"
+            android:text="Score bars (win / ac)" />
+        <CheckBox
+            android:id="@+id/show_temp"
+            style="@style/CfgCheck"
+            android:text="Temperature line" />
+        <CheckBox
+            android:id="@+id/show_dew"
+            style="@style/CfgCheck"
+            android:text="Dew point line" />
+        <CheckBox
+            android:id="@+id/show_rain"
+            style="@style/CfgCheck"
+            android:text="Rain line (chance; thickness = amount)" />
+
+        <TextView style="@style/CfgHint"
+            android:text="Temperature and dew point share their own °F scale, labelled at the right edge." />
+
     </LinearLayout>
 </ScrollView>
 </LinearLayout>

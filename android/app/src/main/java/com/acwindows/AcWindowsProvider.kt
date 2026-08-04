@@ -325,6 +325,9 @@ class AcWindowsProvider : AppWidgetProvider() {
                     if (s.scores.isEmpty()) null else Graph.render(
                         s.scores, s.times, s.worst, s.isDay, s.precipProb, s.precipIn,
                         s.bestStart, s.bestEnd, threshold, ivWpx, ivHpx, density,
+                        tempF = s.tempSeries, dewF = s.dewSeries,
+                        showBars = cfg.widgetShowBars, showTemp = cfg.widgetShowTemp,
+                        showDew = cfg.widgetShowDew, showRain = cfg.widgetShowRain,
                         nowPos = nowBarPos(s.firstHourMs, nowMs),
                     ),
                 )

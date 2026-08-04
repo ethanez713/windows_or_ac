@@ -24,6 +24,12 @@ data class AppConfig(
     val useDeviceLocation: Boolean = false,  // follow the phone: re-read lat/lon before every fetch
     val widgetOpacity: Int = 100,         // widget background opacity, 0–100%
     val widgetForecastHours: Int = 36,    // how many hours the widget graph spans
+    // What the widget graph draws. Turning a layer off doesn't stop it being fetched or
+    // cached — it's purely how busy you want the chart (see Graph.render).
+    val widgetShowBars: Boolean = true,   // the Open-Window Score bars
+    val widgetShowTemp: Boolean = true,   // temperature line (°F axis)
+    val widgetShowDew: Boolean = true,    // dew point line (same °F axis)
+    val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
 ) {
     /**
      * The zone the hourly forecast timestamps are expressed in — the same one sent to
@@ -78,6 +84,10 @@ data class AppConfig(
                 widgetOpacity = p.getString("widgetOpacity", null)?.toIntOrNull()?.coerceIn(0, 100) ?: 100,
                 widgetForecastHours = p.getString("widgetForecastHours", null)?.toIntOrNull()
                     ?.coerceIn(6, 96) ?: DEFAULT_WIDGET_HOURS,
+                widgetShowBars = p.getBoolean("widgetShowBars", true),
+                widgetShowTemp = p.getBoolean("widgetShowTemp", true),
+                widgetShowDew = p.getBoolean("widgetShowDew", true),
+                widgetShowRain = p.getBoolean("widgetShowRain", true),
             )
         }
 

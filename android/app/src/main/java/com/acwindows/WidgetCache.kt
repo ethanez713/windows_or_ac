@@ -26,6 +26,13 @@ data class Snapshot(
     val isDay: List<Boolean>,   // per-hour sun-up flag (true sunrise→sunset) for the graph's day/night shading
     val precipProb: List<Double>,   // per-hour % chance of rain (0 when a source didn't supply it)
     val precipIn: List<Double>,     // per-hour rain amount, inches (that hour's rate; 0 when unknown)
+    /**
+     * Per-hour temperature / dew point in °F for the graph's optional overlay lines.
+     * Nullable per hour (and empty for a snapshot cached before these existed), because 0
+     * is a real reading here — the graph has to break the line at a gap, not plot it at 0.
+     */
+    val tempSeries: List<Double?> = emptyList(),
+    val dewSeries: List<Double?> = emptyList(),
     val bestStart: String?,
     val bestEnd: String?,
     val note: String,
@@ -67,6 +74,10 @@ object WidgetCache {
     private const val PREFS = "ac_windows"
     private const val KEY = "snapshot"
 
+    /** A double series that may have holes — a missing hour is written as JSON null. */
+    private fun nullableArray(xs: List<Double?>): JSONArray =
+        JSONArray().apply { xs.forEach { put(it ?: JSONObject.NULL) } }
+
     fun save(context: Context, s: Snapshot) {
         val o = JSONObject()
             .put("action", s.action.name)
@@ -85,6 +96,8 @@ object WidgetCache {
             .put("isDay", JSONArray(s.isDay))
             .put("precipProb", JSONArray(s.precipProb))
             .put("precipIn", JSONArray(s.precipIn))
+            .put("tempSeries", nullableArray(s.tempSeries))
+            .put("dewSeries", nullableArray(s.dewSeries))
             .put("bestStart", s.bestStart ?: JSONObject.NULL)
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
             .put("note", s.note)
@@ -105,6 +118,9 @@ object WidgetCache {
             // Optional (added after the first release): a snapshot cached by an older
             // build simply has no rain series, and the graph draws no rain line.
             fun optDblList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optDouble(it, 0.0) } } ?: emptyList()
+            fun optNullableDblList(k: String) = o.optJSONArray(k)?.let { a ->
+                (0 until a.length()).map { if (a.isNull(it)) null else a.optDouble(it).takeIf { v -> !v.isNaN() } }
+            } ?: emptyList()
             fun intList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getInt(it) } } ?: emptyList()
             fun boolList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getBoolean(it) } } ?: emptyList()
             Snapshot(
@@ -124,6 +140,8 @@ object WidgetCache {
                 isDay = boolList("isDay"),
                 precipProb = optDblList("precipProb"),
                 precipIn = optDblList("precipIn"),
+                tempSeries = optNullableDblList("tempSeries"),
+                dewSeries = optNullableDblList("dewSeries"),
                 bestStart = if (o.isNull("bestStart")) null else o.getString("bestStart"),
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),
                 note = o.optString("note", ""),

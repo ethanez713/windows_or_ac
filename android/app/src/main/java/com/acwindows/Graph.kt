@@ -4,16 +4,24 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * Renders the next-N-hours Open-Window Score as a bar-chart bitmap for the widget
  * (RemoteViews can't draw vector graphics, so we hand it a bitmap).
  *
- * Left axis: tall = "win" (open windows), short = "ac". A dashed line marks the
- * open threshold (labelled with its value). Dark vertical dividers mark day
- * changes (with a date flag); grey ones mark each day's noon (with a "noon"
+ * Left axis: tall = "win" (open windows), short = "ac". Dark vertical dividers mark
+ * day changes (with a date flag); grey ones mark each day's noon (with a "noon"
  * flag). The best contiguous window is underlined. When rain is in the forecast,
- * a blue line traces the chance of it on the same 0–100 axis (see [drawRain]).
+ * a blue line traces the chance of it on the same 0–100 axis (see [drawRain]), and
+ * temperature / dew point ride on their own shared °F axis (see [drawDegLine]).
+ *
+ * Which of those layers is drawn is up to the user — every one of bars, temp, dew
+ * and rain can be switched off in the widget's settings, so the same chart can be a
+ * score chart, a thermometer, or both. The layers that stay are the ones that place
+ * an hour in time: day/night shading, the date and noon flags, and "now".
  *
  * A bright vertical line marks the present (see [drawNow]) and hours already gone
  * are dimmed. The bars are fixed clock hours, so the marker is what keeps the chart
@@ -55,6 +63,9 @@ object Graph {
     /** Below this chance, with no accumulation, there's no rain worth drawing. */
     private const val RAIN_MIN_PCT = 5.0
 
+    /** Narrowest the shared temp/dew axis is allowed to get, in °F (see [degBounds]). */
+    private const val MIN_DEG_SPAN = 10.0
+
     // The "now" marker (see [drawNow]) and how far elapsed hours fade behind it.
     private val NOW_WHITE = Color.rgb(0xFF, 0xFF, 0xFF)
     private val STALE_AMBER = Color.rgb(0xFB, 0xBF, 0x24)
@@ -88,6 +99,14 @@ object Graph {
         widthPx: Int,
         heightPx: Int,
         density: Float,
+        /** Per-hour °F for the overlay lines; a null hour breaks the line rather than plotting 0. */
+        tempF: List<Double?> = emptyList(),
+        dewF: List<Double?> = emptyList(),
+        // Which layers the user wants drawn (widget settings).
+        showBars: Boolean = true,
+        showTemp: Boolean = true,
+        showDew: Boolean = true,
+        showRain: Boolean = true,
         /**
          * Where the present falls in [scores], as a fractional bar index (see
          * `nowBarPos`). Null for a snapshot with no wall-clock anchor — an older cache —
@@ -106,8 +125,9 @@ object Graph {
             color = Color.WHITE; textSize = 9.5f * sp; isFakeBoldText = true; textAlign = Paint.Align.LEFT
         }
         // Gutter sized to exactly fit the widest axis label, so the plot sits as
-        // far left as it can (just clears "win"/"ac") — no wasted left margin.
-        val axisW = axis.measureText("win") + 1.5f * sp
+        // far left as it can (just clears "win"/"ac") — no wasted left margin. With the
+        // bars off there is no "win"/"ac" to clear, so the plot gets the whole width.
+        val axisW = if (showBars) axis.measureText("win") + 1.5f * sp else 1.5f * sp
         val labelH = 13f * sp           // bottom strip for hour labels
         val topPad = 2f * sp
         val n = scores.size
@@ -127,7 +147,6 @@ object Graph {
         val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(180, 255, 255, 255); textSize = 8.5f * sp; textAlign = Paint.Align.CENTER
         }
-        val line = Paint().apply { color = Color.argb(110, 255, 255, 255); strokeWidth = 1f * sp }
 
         // Day/night background: shade each hour by whether the sun is up. Daytime
         // (sunrise→sunset) gets a light wash; overnight gets a darker one, so a bar's
@@ -141,49 +160,45 @@ object Graph {
             c.drawRect(x0, plotTop, x0 + cellStep, base, if (up) dayShade else nightShade)
         }
 
-        // Left axis labels (within the plot band).
-        c.drawText("win", 0f, plotTop + 9f * sp, axis)
-        c.drawText("ac", 0f, base - 1f * sp, axis)
-
-        // Dashed threshold line + its value.
-        val thY = base - (threshold / 100f).toFloat() * plotH
-        var gx = axisW
-        while (gx < w) { c.drawLine(gx, thY, gx + 5f * sp, thY, line); gx += 11f * sp }
-        val thLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(210, 255, 255, 255); textSize = 8f * sp; textAlign = Paint.Align.RIGHT
+        // Left axis labels (within the plot band) — they name the bars' 0–100 axis, so
+        // they go when the bars do.
+        if (showBars) {
+            c.drawText("win", 0f, plotTop + 9f * sp, axis)
+            c.drawText("ac", 0f, base - 1f * sp, axis)
         }
-        c.drawText(threshold.toInt().toString(), w - 1f * sp, thY - 1.5f * sp, thLabel)
 
         val labelEvery = maxOf(1, Math.round(n / 6f))
 
         for (i in 0 until n) {
             val x = barLeft(i)
-            val s = scores[i].coerceIn(0.0, 100.0)
-            val bh = (s / 100f).toFloat() * plotH
-            // Open hours stay the bright mint; closed hours become a desaturated grey tinted by
-            // their dominant detractor, so it's obvious at a glance which bars aren't "open".
-            bar.color = if (s >= threshold) {
-                Color.rgb(232, 245, 233)
-            } else {
-                val wf = worst.getOrElse(i) { -1 }
-                if (wf in FACTOR_COLORS.indices) detractorGrey(FACTOR_COLORS[wf]) else CLOSED_GREY
-            }
-            // An hour that has already elapsed is history, not forecast — fade it so the
-            // eye starts at the present rather than at the left edge.
-            bar.alpha = if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
-            val r = (2f * sp).coerceAtMost(barW / 2)
-            c.drawRoundRect(x, base - bh, x + barW, base, r, r, bar)
-            // When the score bottoms out (~0), mark the baseline with the dominant
-            // detracting factor's colour — same idea as the in-app sparkline.
-            if (s < 0.5) {
-                val wf = worst.getOrElse(i) { -1 }
-                if (wf in FACTOR_COLORS.indices) {
-                    bar.color = FACTOR_COLORS[wf]   // resets alpha, so re-apply the fade
-                    bar.alpha = if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
-                    c.drawRect(x, base - 2.5f * sp, x + barW, base, bar)
+            if (showBars) {
+                val s = scores[i].coerceIn(0.0, 100.0)
+                val bh = (s / 100f).toFloat() * plotH
+                // Open hours stay the bright mint; closed hours become a desaturated grey tinted by
+                // their dominant detractor, so it's obvious at a glance which bars aren't "open".
+                bar.color = if (s >= threshold) {
+                    Color.rgb(232, 245, 233)
+                } else {
+                    val wf = worst.getOrElse(i) { -1 }
+                    if (wf in FACTOR_COLORS.indices) detractorGrey(FACTOR_COLORS[wf]) else CLOSED_GREY
                 }
+                // An hour that has already elapsed is history, not forecast — fade it so the
+                // eye starts at the present rather than at the left edge.
+                bar.alpha = pastAlpha(i, nowPos)
+                val r = (2f * sp).coerceAtMost(barW / 2)
+                c.drawRoundRect(x, base - bh, x + barW, base, r, r, bar)
+                // When the score bottoms out (~0), mark the baseline with the dominant
+                // detracting factor's colour — same idea as the in-app sparkline.
+                if (s < 0.5) {
+                    val wf = worst.getOrElse(i) { -1 }
+                    if (wf in FACTOR_COLORS.indices) {
+                        bar.color = FACTOR_COLORS[wf]   // resets alpha, so re-apply the fade
+                        bar.alpha = pastAlpha(i, nowPos)
+                        c.drawRect(x, base - 2.5f * sp, x + barW, base, bar)
+                    }
+                }
+                bar.alpha = 255
             }
-            bar.alpha = 255
             if (i % labelEvery == 0) {
                 // Without an anchor there's nothing better to go on than the old assumption
                 // that the series starts at the present; with one, [drawNow] labels it.
@@ -193,11 +208,36 @@ object Graph {
             }
         }
 
+        // Temperature and dew point share ONE auto-scaled °F axis (they're the same
+        // quantity, and the gap between them IS the muggyness) — which is a different
+        // axis from the bars' 0–100. Only the visible ones set the range, so hiding the
+        // dew line lets the temp line use the full height.
+        val degVals = (if (showTemp) tempF.take(n).filterNotNull() else emptyList()) +
+            (if (showDew) dewF.take(n).filterNotNull() else emptyList())
+        if (degVals.isNotEmpty()) {
+            val (lo, hi) = degBounds(degVals)
+            val yDeg = { v: Double -> base - (((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)) * plotH }
+            // Dew first: it sits under the temp line as often as not, and temp is the
+            // headline series.
+            if (showDew) drawDegLine(c, dewF, FACTOR_COLORS[1], n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
+            if (showTemp) drawDegLine(c, tempF, FACTOR_COLORS[0], n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
+            // Range labels on the right edge, tinted to whichever line owns the axis, so
+            // the numbers can't be read as belonging to the bars' scale.
+            val degLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (showTemp) FACTOR_COLORS[0] else FACTOR_COLORS[1]
+                textSize = 8f * sp; isFakeBoldText = true; textAlign = Paint.Align.RIGHT
+            }
+            c.drawText("${hi.roundToInt()}°", w - 1f * sp, plotTop + 8f * sp, degLabel)
+            c.drawText("${lo.roundToInt()}°", w - 1f * sp, base - 1.5f * sp, degLabel)
+        }
+
         // Rain rides on top of the bars, under the day/noon markers.
-        drawRain(
-            c, precipProb, precipIn, n, { i -> barLeft(i) },
-            barW, base, plotTop, plotH, axisW, w, sp,
-        )
+        if (showRain) {
+            drawRain(
+                c, precipProb, precipIn, n, { i -> barLeft(i) },
+                barW, base, plotTop, plotH, axisW, w, sp,
+            )
+        }
 
         // Shared label paint for the date + noon flags (white on a coloured pill).
         val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -226,10 +266,11 @@ object Graph {
             flag(c, dayLabel(times[i]), dx, datePill, pillText, topPad, axisW, w, sp)
         }
 
-        // Underline the best window (if it falls within the shown range).
+        // Underline the best window (if it falls within the shown range). It annotates the
+        // score series, so it follows the bars off the chart.
         val bi = times.indexOf(bestStart)
         val bj = times.indexOf(bestEnd)
-        if (bi in 0 until n && bj in 0 until n && bj >= bi) {
+        if (showBars && bi in 0 until n && bj in 0 until n && bj >= bi) {
             val u = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.rgb(232, 245, 233); strokeWidth = 2.5f * sp
             }
@@ -242,6 +283,52 @@ object Graph {
             drawNow(c, nowPos, n, axisW, gap, barW, plotTop, base, h, sp)
         }
         return bmp
+    }
+
+    /** Hour [i] is history once "now" has passed its right edge — draw it faded. */
+    private fun pastAlpha(i: Int, nowPos: Double?): Int =
+        if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
+
+    /**
+     * The °F axis the temp and dew lines share: the data's range snapped out to whole
+     * 5° steps, widened to at least [MIN_DEG_SPAN] so a flat overnight doesn't get
+     * magnified into a mountain range by an axis two degrees tall.
+     */
+    private fun degBounds(values: List<Double>): Pair<Double, Double> {
+        val lo = floor(values.min() / 5.0) * 5.0
+        val hi = ceil(values.max() / 5.0) * 5.0
+        if (hi - lo >= MIN_DEG_SPAN) return lo to hi
+        val mid = (lo + hi) / 2.0
+        return (mid - MIN_DEG_SPAN / 2) to (mid + MIN_DEG_SPAN / 2)
+    }
+
+    /**
+     * Traces an hourly °F series on the shared temperature axis. Hours the forecast
+     * didn't supply break the line instead of dropping it to the floor, and an hour
+     * left stranded between two gaps gets a flat tick so it still shows up. Elapsed
+     * hours fade exactly as the bars do, so the whole chart ages together.
+     */
+    private fun drawDegLine(
+        c: Canvas, values: List<Double?>, color: Int, n: Int,
+        x: (Int) -> Float, y: (Double) -> Float, barW: Float, sp: Float, nowPos: Double?,
+    ) {
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color; style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+            strokeWidth = 1.8f * sp
+        }
+        fun v(i: Int) = values.getOrNull(i)
+        for (i in 0 until n) {
+            val a = v(i) ?: continue
+            val b = if (i + 1 < n) v(i + 1) else null
+            p.color = color                     // setting alpha alone survives; colour resets it
+            p.alpha = pastAlpha(i, nowPos)
+            if (b != null) {
+                c.drawLine(x(i), y(a), x(i + 1), y(b), p)
+            } else if (v(i - 1) == null) {
+                c.drawLine(x(i) - barW / 3, y(a), x(i) + barW / 3, y(a), p)
+            }
+        }
     }
 
     /**
