@@ -1,7 +1,5 @@
 package com.acwindows
 
-import kotlin.math.roundToInt
-
 /**
  * The recommendation engine — a faithful port of the Python backend's
  * decision.py. Pure (no I/O), so it's the natural seam for future smart-home
@@ -24,7 +22,7 @@ object Decision {
         else -> "hazardous"
     }
 
-    fun decide(c: Consensus, cfg: Comfort): Recommendation {
+    fun decide(c: Consensus, cfg: Comfort, unit: TempUnit = TempUnit.F): Recommendation {
         val temp = c.tempF ?: return Recommendation(
             Action.UNKNOWN,
             "No data",
@@ -50,15 +48,15 @@ object Decision {
         )
         if (raining) reasons.add("precipitation right now — opening windows risks letting rain in")
         if (muggy) reasons.add(
-            "dew point ${c.dewPointF!!.roundToInt()}°F is muggy " +
-                "(above ${cfg.dewPointMaxF.roundToInt()}°F) — fresh air would feel clammy"
+            "dew point ${unit.degUnit(c.dewPointF!!)} is muggy " +
+                "(above ${unit.degUnit(cfg.dewPointMaxF)}) — fresh air would feel clammy"
         )
 
         val windowsBlocked = aqiBad || raining || muggy
 
         // 1) Too warm to coast — ventilation can't cool below outdoor temp.
         if (tooWarm) {
-            reasons.add(0, "it's ${temp.roundToInt()}°F out, above your ${cfg.maxTempF.roundToInt()}°F max")
+            reasons.add(0, "it's ${unit.degUnit(temp)} out, above your ${unit.degUnit(cfg.maxTempF)} max")
             return Recommendation(
                 Action.RUN_AC,
                 "Turn on the AC",
@@ -84,8 +82,8 @@ object Decision {
 
         // 3) Cooler than your target, clean and dry — free cooling.
         if (coolEnough) {
-            reasons.add(0, "it's ${temp.roundToInt()}°F out, below your ${cfg.maxTempF.roundToInt()}°F max")
-            c.dewPointF?.let { reasons.add("dew point ${it.roundToInt()}°F is comfortable") }
+            reasons.add(0, "it's ${unit.degUnit(temp)} out, below your ${unit.degUnit(cfg.maxTempF)} max")
+            c.dewPointF?.let { reasons.add("dew point ${unit.degUnit(it)} is comfortable") }
             c.aqi?.let { reasons.add("AQI $it (${aqiCategory(it)})") }
             return Recommendation(
                 Action.OPEN_WINDOWS,
@@ -99,7 +97,7 @@ object Decision {
         return Recommendation(
             Action.COMFORTABLE,
             "You're comfortable — windows optional",
-            "It's ${temp.roundToInt()}°F out, near your ${cfg.maxTempF.roundToInt()}°F target; " +
+            "It's ${unit.degUnit(temp)} out, near your ${unit.degUnit(cfg.maxTempF)} target; " +
                 "open up if you'd like fresh air.",
             reasons.ifEmpty { listOf("conditions are within your comfort band") },
         )

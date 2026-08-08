@@ -3,8 +3,11 @@ package com.acwindows
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 // ── Modern dark palette (slate base + emerald accent, Tailwind-ish) ──
 private val Bg = Color(0xFF0E1217)
@@ -68,10 +71,22 @@ private val DarkColors = darkColorScheme(
     error = UnknownRed,
 )
 
-/** Always-dark, modern theme for the app. */
+/**
+ * Always-dark, modern theme for the app. [textScale] is the app text-size setting
+ * (60%–200%, default 1f) folded into the ambient font scale rather than threaded through
+ * every `fontSize` call site — it rides on top of the system's own accessibility font
+ * scale (multiplied, not replaced) and only touches `sp`, so `dp` layout is unaffected.
+ * That does mean fixed-`Dp` chart heights and [SkeletonForecast]'s hand-measured scaffold
+ * don't grow with it — see that composable's doc comment.
+ */
 @Composable
-fun AcWindowsTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = DarkColors, content = content)
+fun AcWindowsTheme(textScale: Float = 1f, content: @Composable () -> Unit) {
+    val d = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(density = d.density, fontScale = d.fontScale * textScale),
+    ) {
+        MaterialTheme(colorScheme = DarkColors, content = content)
+    }
 }
 
 /** Card surface a touch lighter than the background. */

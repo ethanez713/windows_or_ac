@@ -130,7 +130,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AcWindowsTheme { AppRoot() } }
+        // Read once at launch (not observed live) — same pattern as every other config
+        // read in this app; a change made in ConfigActivity takes effect on next launch.
+        val textScale = AppConfig.load(this).appTextScalePct / 100f
+        setContent { AcWindowsTheme(textScale) { AppRoot() } }
     }
 }
 
@@ -232,6 +235,10 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * Two deliberate assumptions for both the collapsed body and that 452.6dp target, both
  * the common case: the day has an open-window flag (26dp) and no rain line in its summary
  * (a rain line would add another 28dp); the expanded readout also assumes one line.
+ *
+ * None of this dp scaffold grows with the app text-size setting (see [AcWindowsTheme]) —
+ * that setting only scales `sp`, not `dp`. At 200% the skeleton's placeholder heights will
+ * drift a bit from the real, now-taller cards; not worth chasing for a loading placeholder.
  */
 @Composable
 private fun SkeletonForecast() {
@@ -342,6 +349,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     // Keyed on the refresh time: with "use my phone's location" on, a fetch can move the
     // coordinates and the place label, and the header has to follow.
     val cfg = remember(updatedAtMs) { AppConfig.load(context) }
+    val unit = remember(updatedAtMs) { TempUnit.load(context) }
     val comfort = cfg.comfort
     val threshold = comfort.openScoreMin
     val days = remember(state) {
@@ -390,11 +398,12 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
                 mode = mode,
                 globalSpans = spans,
                 expanded = expanded == day.date,
+                unit = unit,
                 onToggle = { userPicked = true; userPick = if (expanded == day.date) null else day.date },
             )
         }
     }
-    if (showSources) SourceDetailDialog(state.sources, state.consensus) { showSources = false }
+    if (showSources) SourceDetailDialog(state.sources, state.consensus, unit) { showSources = false }
 }
 
 @Composable
@@ -405,6 +414,7 @@ private fun DayCard(
     mode: ChartMode,
     globalSpans: List<Pair<String, String>>,
     expanded: Boolean,
+    unit: TempUnit,
     onToggle: () -> Unit,
 ) {
     val openHours = day.points.count { it.score >= threshold }
@@ -444,7 +454,7 @@ private fun DayCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(dayLabel(day.date), Modifier.width(dateW), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 DaySparkline(day.points, threshold, sel, nowIdx, Modifier.weight(1f).padding(horizontal = barPad).height(40.dp))
-                DaySummaryView(day.points, Modifier.width(summaryW))
+                DaySummaryView(day.points, unit, Modifier.width(summaryW))
             }
             Spacer(Modifier.height(6.dp))
             Text(
@@ -457,8 +467,8 @@ private fun DayCard(
             if (expanded) {
                 Spacer(Modifier.height(14.dp))
                 when (mode) {
-                    ChartMode.SCORE -> FactorChart(day.points, threshold, sel, nowIdx) { sel = it }
-                    ChartMode.VALUES -> AbsoluteCharts(day.points, comfort, sel, nowIdx) { sel = it }
+                    ChartMode.SCORE -> FactorChart(day.points, threshold, sel, nowIdx, unit) { sel = it }
+                    ChartMode.VALUES -> AbsoluteCharts(day.points, comfort, sel, nowIdx, unit) { sel = it }
                 }
             }
         }
@@ -468,7 +478,7 @@ private fun DayCard(
 // ───────────────────────── Collapsed weather summary (right side) ─────────────────────────
 
 @Composable
-private fun DaySummaryView(points: List<ForecastPoint>, modifier: Modifier = Modifier) {
+private fun DaySummaryView(points: List<ForecastPoint>, unit: TempUnit, modifier: Modifier = Modifier) {
     val s = remember(points) { summarize(points) }
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
@@ -479,8 +489,8 @@ private fun DaySummaryView(points: List<ForecastPoint>, modifier: Modifier = Mod
         }
         Spacer(Modifier.height(3.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text("${s.highF?.toString() ?: "—"}°", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = onSurface)
-            Text(" / ${s.lowF?.toString() ?: "—"}°", fontSize = 13.sp, color = onVar)
+            Text(s.highF?.let { unit.deg(it.toDouble()) } ?: "—°", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = onSurface)
+            Text(" / " + (s.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"), fontSize = 13.sp, color = onVar)
         }
         rainSummary(s)?.let { Text(it, fontSize = 11.sp, color = onVar, maxLines = 1, softWrap = false) }
     }
@@ -591,10 +601,10 @@ private fun sourceMeta(source: String): SourceMeta = when (source) {
 }
 
 /** One readable line of whatever a source actually returned. */
-private fun sourceValues(r: SourceReading): String {
+private fun sourceValues(r: SourceReading, unit: TempUnit): String {
     val parts = mutableListOf<String>()
-    r.tempF?.let { parts.add("${it.roundToInt()}°F") }
-    r.dewPointF?.let { parts.add("dew ${it.roundToInt()}°") }
+    r.tempF?.let { parts.add(unit.degUnit(it)) }
+    r.dewPointF?.let { parts.add("dew ${unit.deg(it)}") }
     r.humidityPct?.let { parts.add("${it.roundToInt()}% RH") }
     r.windMph?.let { parts.add("${it.roundToInt()} mph") }
     r.aqi?.let { parts.add("AQI $it") }
@@ -602,10 +612,10 @@ private fun sourceValues(r: SourceReading): String {
 }
 
 /** The merged numbers the app actually reports (the average across the OK sources). */
-private fun consensusValues(c: Consensus): String {
+private fun consensusValues(c: Consensus, unit: TempUnit): String {
     val parts = mutableListOf<String>()
-    c.tempF?.let { parts.add("${it.roundToInt()}°F") }
-    c.dewPointF?.let { parts.add("dew ${it.roundToInt()}°") }
+    c.tempF?.let { parts.add(unit.degUnit(it)) }
+    c.dewPointF?.let { parts.add("dew ${unit.deg(it)}") }
     c.humidityPct?.let { parts.add("${it.roundToInt()}% RH") }
     c.windMph?.let { parts.add("${it.roundToInt()} mph") }
     c.aqi?.let { parts.add("AQI $it") }
@@ -613,7 +623,7 @@ private fun consensusValues(c: Consensus): String {
 }
 
 @Composable
-private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensus, onDismiss: () -> Unit) {
+private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensus, unit: TempUnit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
     AlertDialog(
@@ -625,7 +635,7 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
                 // What the app reports = the average of the OK sources below. Surfaced up top
                 // so a value that looks off can be traced to which source is pulling it.
                 Text("Reported (averaged)", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text(consensusValues(consensus), fontSize = 12.sp, color = onVar)
+                Text(consensusValues(consensus, unit), fontSize = 12.sp, color = onVar)
                 Spacer(Modifier.height(8.dp))
                 Text("Per source", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 if (sources.isEmpty()) Text("No source detail available.", color = onVar)
@@ -646,7 +656,7 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
                             }
                         }
                         Spacer(Modifier.height(2.dp))
-                        if (r.ok) Text(sourceValues(r), fontSize = 12.sp, color = onVar)
+                        if (r.ok) Text(sourceValues(r, unit), fontSize = 12.sp, color = onVar)
                         else Text(r.error ?: "unavailable", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -789,7 +799,7 @@ private fun OpenWindowFlags(
 // ───────────────────────── Expanded factor chart (lines + scrub tooltip) ─────────────────────────
 
 @Composable
-private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
+private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
     if (points.isEmpty()) return
     val n = points.size
     val tm = rememberTextMeasurer()
@@ -889,7 +899,7 @@ private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int
                     cursorX >= ttW + gap -> cursorX - gap - ttW
                     else -> (maxWidth - ttW) / 2
                 }.coerceIn(0.dp, (maxWidth - ttW).coerceAtLeast(0.dp))
-                Tooltip(p, Modifier.width(ttW).offset(x = left, y = 6.dp).clickable { onSel(null) })
+                Tooltip(p, unit, Modifier.width(ttW).offset(x = left, y = 6.dp).clickable { onSel(null) })
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -898,7 +908,7 @@ private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int
 }
 
 @Composable
-private fun Tooltip(p: ForecastPoint, modifier: Modifier) {
+private fun Tooltip(p: ForecastPoint, unit: TempUnit, modifier: Modifier) {
     Surface(
         modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -917,7 +927,7 @@ private fun Tooltip(p: ForecastPoint, modifier: Modifier) {
                         modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(f.valueOf(p), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+                    Text(f.valueOf(p, unit), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -949,12 +959,12 @@ private fun Legend() {
  * fills the readout row.
  */
 @Composable
-private fun AbsoluteCharts(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
+private fun AbsoluteCharts(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
     if (points.isEmpty()) return
     Column {
-        AbsReadout(points, sel, nowIdx)
+        AbsReadout(points, sel, nowIdx, unit)
         Spacer(Modifier.height(10.dp))
-        TempChart(points, comfort, sel, nowIdx, onSel)
+        TempChart(points, comfort, sel, nowIdx, unit, onSel)
         Spacer(Modifier.height(12.dp))
         CombinedChart(points, sel, nowIdx, onSel)
     }
@@ -975,7 +985,7 @@ private class ChartGeom(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AbsReadout(points: List<ForecastPoint>, sel: Int?, nowIdx: Int) {
+private fun AbsReadout(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, unit: TempUnit) {
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
     // No hour picked → fall back to the current hour on today's card, so the readout opens
     // on live "now" numbers instead of a prompt. Other days have no "now" (nowIdx = -1) and
@@ -990,8 +1000,8 @@ private fun AbsReadout(points: List<ForecastPoint>, sel: Int?, nowIdx: Int) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Chip(label, FontWeight.Bold, MaterialTheme.colorScheme.onSurface)
         Chip("score ${p.score.roundToInt()}", FontWeight.Bold, ScoreInk)
-        p.tempF?.let { Chip("${it.roundToInt()}°F", color = FactorTemp) }
-        p.dewPointF?.let { Chip("dew ${it.roundToInt()}°", color = FactorHumid) }
+        p.tempF?.let { Chip(unit.degUnit(it), color = FactorTemp) }
+        p.dewPointF?.let { Chip("dew ${unit.deg(it)}", color = FactorHumid) }
         p.aqi?.let { Chip("AQI $it", color = FactorAqi) }
         p.precipProb?.let { Chip("${it.roundToInt()}% rain", color = AcBlue) }
         p.precipIn?.takeIf { it > 0 }?.let { Chip(fmtInches(it), color = FactorRain) }
@@ -1004,37 +1014,44 @@ private fun Chip(text: String, weight: FontWeight = FontWeight.Medium, color: Co
 }
 
 @Composable
-private fun TempChart(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
+private fun TempChart(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
     val temps = remember(points) { points.mapNotNull { it.tempF } }
-    if (temps.isEmpty()) { NoDataChart("Temp · Dew point (°F)", "No temperature data"); return }
+    if (temps.isEmpty()) { NoDataChart("Temp · Dew point (${unit.suffix})", "No temperature data"); return }
     val dews = points.mapNotNull { it.dewPointF }
+    // Convert every series to DISPLAY units before computing bounds, so a Celsius chart
+    // snaps to round Celsius gridlines instead of round-in-°F ones rendered as e.g. 23.9°C.
+    val dispTemps = temps.map { unit.fromF(it) }
+    val dispDews = dews.map { unit.fromF(it) }
+    val dispMaxTemp = unit.fromF(comfort.maxTempF)
     val (lo, hi) = niceBounds(
-        minOf(temps.min(), dews.minOrNull() ?: temps.min()),
-        maxOf(temps.max(), dews.maxOrNull() ?: temps.max(), comfort.maxTempF),
+        minOf(dispTemps.min(), dispDews.minOrNull() ?: dispTemps.min()),
+        maxOf(dispTemps.max(), dispDews.maxOrNull() ?: dispTemps.max(), dispMaxTemp),
     )
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    ChartFrame("Temp · Dew point (°F)", 124.dp, points, sel, showHourAxis = false, onSel = onSel) { g, tm ->
+    ChartFrame("Temp · Dew point (${unit.suffix})", 124.dp, points, sel, showHourAxis = false, onSel = onSel) { g, tm ->
         axisLabel(tm, "${hi.roundToInt()}°", onVar, 2f.dp.toPx(), g.plotTop)
         axisLabel(tm, "${lo.roundToInt()}°", onVar, 2f.dp.toPx(), g.plotBot - 10.dp.toPx())
-        dashed(g.plotLeft, g.plotRight, g.yAt(comfort.maxTempF, lo, hi), onVar.copy(alpha = 0.4f))
-        polyline(points.mapIndexedNotNull { i, p -> p.dewPointF?.let { g.xAt(i) to g.yAt(it, lo, hi) } }, FactorHumid, 2.dp.toPx())
-        // Temp drawn segment-by-segment so any stretch touching ≥90°F renders red.
+        dashed(g.plotLeft, g.plotRight, g.yAt(dispMaxTemp, lo, hi), onVar.copy(alpha = 0.4f))
+        polyline(points.mapIndexedNotNull { i, p -> p.dewPointF?.let { g.xAt(i) to g.yAt(unit.fromF(it), lo, hi) } }, FactorHumid, 2.dp.toPx())
+        // Temp drawn segment-by-segment so any stretch touching ≥90°F renders red. The
+        // HOT_F comparison stays in °F (that's what the constant means); only the plotted
+        // y and the label are converted.
         val w = 2.dp.toPx()
         for (k in 0 until points.size - 1) {
             val a = points[k].tempF ?: continue
             val b = points[k + 1].tempF ?: continue
             val color = if (a >= HOT_F || b >= HOT_F) HotRed else FactorTemp
-            drawLine(color, Offset(g.xAt(k), g.yAt(a, lo, hi)), Offset(g.xAt(k + 1), g.yAt(b, lo, hi)), strokeWidth = w)
+            drawLine(color, Offset(g.xAt(k), g.yAt(unit.fromF(a), lo, hi)), Offset(g.xAt(k + 1), g.yAt(unit.fromF(b), lo, hi)), strokeWidth = w)
         }
         // Static "now" marker (today only).
         if (nowIdx in points.indices) nowMarker(g.xAt(nowIdx), g.plotTop, g.plotBot, tm)
         // At the selected hour, label each series' value right where the cursor meets its line.
         sel?.let { s ->
             points[s].dewPointF?.let { d ->
-                valueAtLine(tm, "${d.roundToInt()}°", FactorHumid, g.xAt(s), g.yAt(d, lo, hi), g.plotLeft, g.plotRight)
+                valueAtLine(tm, unit.deg(d), FactorHumid, g.xAt(s), g.yAt(unit.fromF(d), lo, hi), g.plotLeft, g.plotRight)
             }
             points[s].tempF?.let { t ->
-                valueAtLine(tm, "${t.roundToInt()}°", if (t >= HOT_F) HotRed else FactorTemp, g.xAt(s), g.yAt(t, lo, hi), g.plotLeft, g.plotRight)
+                valueAtLine(tm, unit.deg(t), if (t >= HOT_F) HotRed else FactorTemp, g.xAt(s), g.yAt(unit.fromF(t), lo, hi), g.plotLeft, g.plotRight)
             }
         }
     }

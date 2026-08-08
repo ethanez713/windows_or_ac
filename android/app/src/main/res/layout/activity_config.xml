@@ -36,6 +36,51 @@
 
         <TextView style="@style/CfgHint" android:text="Changes save on their own when you leave this screen." />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Display"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:paddingBottom="2dp" />
+
+        <CheckBox
+            android:id="@+id/use_celsius"
+            style="@style/CfgCheck"
+            android:text="Use Celsius (°C)" />
+        <TextView style="@style/CfgHint"
+            android:text="Only changes how temperatures are shown — the setpoints below still work the same." />
+
+        <TextView style="@style/CfgLabel" android:text="App text size" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:gravity="center_vertical" android:baselineAligned="false">
+            <SeekBar
+                android:id="@+id/text_scale_slider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:min="60"
+                android:max="200" />
+            <TextView
+                android:id="@+id/text_scale_pct"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:gravity="end"
+                android:textSize="14sp"
+                android:textColor="#FFFFFFFF"
+                android:text="100%" />
+        </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="Applies to this app only — the widget has its own size setting on the widget settings screen." />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginBottom="14dp"
+            android:background="#33FFFFFF" />
+
         <TextView style="@style/CfgLabel" android:text="Open-window threshold (0–100)" />
         <EditText
             android:id="@+id/open_score"
@@ -47,7 +92,7 @@
         <TextView style="@style/CfgHint"
             android:text="Each factor scores 100% at/below its comfortable value and 0% at/above its cutoff, ramping linearly in between." />
 
-        <TextView style="@style/CfgLabel" android:text="Temperature (°F)" />
+        <TextView android:id="@+id/temp_unit_label" style="@style/CfgLabel" android:text="Temperature (°F)" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
@@ -60,7 +105,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <TextView style="@style/CfgLabel" android:text="Dew point (°F)" />
+        <TextView android:id="@+id/dew_unit_label" style="@style/CfgLabel" android:text="Dew point (°F)" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">

@@ -92,7 +92,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             val fc = result.forecast
             if (con.confidence == "none" && fc.points.isEmpty()) return false
 
-            val rec = Decision.decide(con, cfg.comfort)
+            val rec = Decision.decide(con, cfg.comfort, TempUnit.load(context))
             val nowScore = Score.windowScore(
                 cfg.comfort, tempF = con.tempF, dewPointF = con.dewPointF,
                 aqi = con.aqi, precipMm = con.precipMm,

@@ -30,6 +30,7 @@ data class AppConfig(
     val widgetShowTemp: Boolean = true,   // temperature line (°F axis)
     val widgetShowDew: Boolean = true,    // dew point line (same °F axis)
     val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
+    val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
 ) {
     /**
      * The zone the hourly forecast timestamps are expressed in — the same one sent to
@@ -88,6 +89,7 @@ data class AppConfig(
                 widgetShowTemp = p.getBoolean("widgetShowTemp", true),
                 widgetShowDew = p.getBoolean("widgetShowDew", true),
                 widgetShowRain = p.getBoolean("widgetShowRain", true),
+                appTextScalePct = p.getString("appTextScalePct", null)?.toIntOrNull()?.coerceIn(60, 200) ?: 100,
             )
         }
 
