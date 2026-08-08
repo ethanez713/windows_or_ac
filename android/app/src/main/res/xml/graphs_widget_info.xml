@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget metadata. Same reasoning as ac_windows_info.xml: updatePeriodMillis is 0
+     because the shared alarm tick + WorkManager drive refreshes, not the OS minimum.
+     minWidth/minHeight follow the standard "70*cells - 30" formula for a 4x2 default;
+     minResizeWidth/minResizeHeight the same formula for 2x2. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:maxResizeWidth="600dp"
+    android:maxResizeHeight="700dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_graphs"
+    android:previewLayout="@layout/widget_graphs"
+    android:description="@string/graphs_widget_description"
+    android:configure="com.acwindows.GraphsWidgetSettingsActivity"
+    android:widgetFeatures="reconfigurable"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

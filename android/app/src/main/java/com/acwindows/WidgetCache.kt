@@ -33,6 +33,13 @@ data class Snapshot(
      */
     val tempSeries: List<Double?> = emptyList(),
     val dewSeries: List<Double?> = emptyList(),
+    /**
+     * Per-hour AQI and WMO weather code for the graphs widget's hourly-row panels.
+     * Optional, same reasoning as [tempSeries]/[dewSeries] — empty for a snapshot cached
+     * before these existed, and the panels that need them degrade rather than crash.
+     */
+    val aqiSeries: List<Int?> = emptyList(),
+    val codeSeries: List<Int?> = emptyList(),
     val bestStart: String?,
     val bestEnd: String?,
     val note: String,
@@ -88,6 +95,10 @@ object WidgetCache {
     private fun nullableArray(xs: List<Double?>): JSONArray =
         JSONArray().apply { xs.forEach { put(it ?: JSONObject.NULL) } }
 
+    /** Same idea as [nullableArray] but for an int series (AQI, weather code). */
+    private fun nullableIntArray(xs: List<Int?>): JSONArray =
+        JSONArray().apply { xs.forEach { put(it ?: JSONObject.NULL) } }
+
     fun save(context: Context, s: Snapshot) {
         val o = JSONObject()
             .put("action", s.action.name)
@@ -108,6 +119,8 @@ object WidgetCache {
             .put("precipIn", JSONArray(s.precipIn))
             .put("tempSeries", nullableArray(s.tempSeries))
             .put("dewSeries", nullableArray(s.dewSeries))
+            .put("aqiSeries", nullableIntArray(s.aqiSeries))
+            .put("codeSeries", nullableIntArray(s.codeSeries))
             .put("bestStart", s.bestStart ?: JSONObject.NULL)
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
             .put("note", s.note)
@@ -131,6 +144,10 @@ object WidgetCache {
             fun optNullableDblList(k: String) = o.optJSONArray(k)?.let { a ->
                 (0 until a.length()).map { if (a.isNull(it)) null else a.optDouble(it).takeIf { v -> !v.isNaN() } }
             } ?: emptyList()
+            // Same pattern for an optional nullable-int series (AQI, weather code).
+            fun optNullableIntList(k: String) = o.optJSONArray(k)?.let { a ->
+                (0 until a.length()).map { if (a.isNull(it)) null else a.optInt(it) }
+            } ?: emptyList()
             fun intList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getInt(it) } } ?: emptyList()
             fun boolList(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getBoolean(it) } } ?: emptyList()
             Snapshot(
@@ -152,6 +169,8 @@ object WidgetCache {
                 precipIn = optDblList("precipIn"),
                 tempSeries = optNullableDblList("tempSeries"),
                 dewSeries = optNullableDblList("dewSeries"),
+                aqiSeries = optNullableIntList("aqiSeries"),
+                codeSeries = optNullableIntList("codeSeries"),
                 bestStart = if (o.isNull("bestStart")) null else o.getString("bestStart"),
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),
                 note = o.optString("note", ""),

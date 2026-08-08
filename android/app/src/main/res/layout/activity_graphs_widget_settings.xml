@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout style="@style/CfgHeader">
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Graphs widget settings"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+        <Button
+            android:id="@+id/discard"
+            style="@style/CfgDiscard"
+            android:text="Discard changes" />
+    </LinearLayout>
+
+<ScrollView
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="20dp">
+
+        <TextView style="@style/CfgHint" android:text="Changes save on their own when you leave this screen. This widget's settings only apply to THIS instance — place another one for a different mix of panels." />
+
+        <TextView style="@style/CfgLabel" android:text="Panels" />
+        <TextView style="@style/CfgHint"
+            android:text="Up to 3, shown in this order. Each can switch between a timeseries chart and an hourly list." />
+
+        <CheckBox
+            android:id="@+id/show_temp_dew"
+            style="@style/CfgCheck"
+            android:layout_marginTop="10dp"
+            android:text="Temperature · Dew point" />
+        <CheckBox
+            android:id="@+id/hourly_temp_dew"
+            style="@style/CfgCheck"
+            android:layout_marginStart="24dp"
+            android:text="Show as hourly list" />
+
+        <CheckBox
+            android:id="@+id/show_aqi_rain"
+            style="@style/CfgCheck"
+            android:layout_marginTop="10dp"
+            android:text="AQI · Rain chance · Rain amount" />
+        <CheckBox
+            android:id="@+id/hourly_aqi_rain"
+            style="@style/CfgCheck"
+            android:layout_marginStart="24dp"
+            android:text="Show as hourly list" />
+
+        <CheckBox
+            android:id="@+id/show_score"
+            style="@style/CfgCheck"
+            android:layout_marginTop="10dp"
+            android:text="Open-Window Score" />
+        <CheckBox
+            android:id="@+id/hourly_score"
+            style="@style/CfgCheck"
+            android:layout_marginStart="24dp"
+            android:text="Show as hourly list" />
+
+        <TextView style="@style/CfgLabel" android:text="Look-ahead (hours)" />
+        <EditText
+            android:id="@+id/graphs_hours"
+            style="@style/CfgField"
+            android:inputType="number" />
+        <TextView style="@style/CfgHint"
+            android:text="How many hours ahead each panel shows, from now (6–48)." />
+
+    </LinearLayout>
+</ScrollView>
+</LinearLayout>
