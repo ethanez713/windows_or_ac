@@ -55,10 +55,20 @@ data class Snapshot(
  * Where the current moment falls in an hourly series whose first bar starts at
  * [firstHourMs], as a fractional bar index (1.5 = halfway through the second bar).
  * Null when the anchor is unknown, and may fall outside 0..n when the series has aged
- * out — callers decide whether to clamp or to flag it.
+ * out — callers decide whether to clamp or to flag it. The hourly (60-minute) case of
+ * [nowBarPos] below; kept as its own overload because the widget's cached [Snapshot]
+ * stays hourly-only and every existing caller passes just these two args.
  */
 fun nowBarPos(firstHourMs: Long, nowMs: Long = System.currentTimeMillis()): Double? =
-    if (firstHourMs <= 0L) null else (nowMs - firstHourMs) / 3_600_000.0
+    nowBarPos(firstHourMs, nowMs, 60)
+
+/**
+ * Generalized bar-index math for a series whose rows are [stepMinutes] wide instead of
+ * a fixed hour — e.g. the 15-minute near-term series. Same semantics as the two-arg
+ * overload otherwise.
+ */
+fun nowBarPos(firstMs: Long, nowMs: Long, stepMinutes: Int): Double? =
+    if (firstMs <= 0L) null else (nowMs - firstMs) / (stepMinutes * 60_000L).toDouble()
 
 object WidgetCache {
 

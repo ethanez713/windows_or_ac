@@ -98,6 +98,13 @@ data class Forecast(
     val bestAvgScore: Double? = null,
     val tempAgreement: String = "none",
     val notes: List<String> = emptyList(),
+    /**
+     * Wall-clock span, in minutes, that each [ForecastPoint] covers — 60 for the
+     * hourly series, 15 for [AppState.nearTerm]. Any code that turns a *count* of
+     * points into a *duration*, or sums a per-step accumulation (e.g. precipIn),
+     * must go through this rather than assuming one point = one hour.
+     */
+    val stepMinutes: Int = 60,
 )
 
 /** Everything one refresh produces: the now-consensus and the look-ahead. */
@@ -128,4 +135,14 @@ data class AppState(
     val forecast: Forecast,
     val home: HomeState = HomeState(),
     val sources: List<SourceReading> = emptyList(),   // per-source readings, for the sources detail page
+    /**
+     * 15-minute-resolution look-ahead from now, covering the next ~24h; null when
+     * unavailable (fetch failed or hasn't landed yet). This is a SEPARATE series from
+     * [forecast], not a replacement for it or a splice into [Forecast.points] — the
+     * two have different resolutions (15 min vs 60 min) and different start times
+     * (now vs the top of the current hour), and mixing them into one list is exactly
+     * what this field exists to avoid. The hourly [forecast] remains the source of
+     * truth for anything spanning more than a day or two out.
+     */
+    val nearTerm: Forecast? = null,
 )

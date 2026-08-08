@@ -18,6 +18,9 @@ object ForecastBuilder {
     fun hour(iso: String): Int =
         if (iso.length >= 13) iso.substring(11, 13).toIntOrNull() ?: -1 else -1
 
+    private fun minute(iso: String): Int =
+        if (iso.length >= 16) iso.substring(14, 16).toIntOrNull() ?: 0 else 0
+
     fun fmtHour(iso: String): String {
         val h = hour(iso)
         return if (h < 0) iso else fmtHourOf(h)
@@ -30,9 +33,23 @@ object ForecastBuilder {
      * every window by an hour and collapses a one-hour window into a meaningless
      * "6 AM–6 AM", which is what the widget headline was showing.
      */
-    fun fmtHourEnd(iso: String): String {
+    fun fmtHourEnd(iso: String): String = fmtRowEnd(iso, 60)
+
+    /**
+     * Same closing-edge label as [fmtHourEnd], generalized to any row width: adds
+     * [stepMinutes] instead of a fixed hour. A whole-hour step (60, 120, ...) keeps the
+     * plain "7 AM" form — every row of that width lands back on the hour, so showing
+     * ":00" would just be noise. Anything sub-hour shows minutes explicitly ("6:15 AM",
+     * "7:00 AM") because the whole point of a 15-minute series is that it DOESN'T always
+     * land on the hour.
+     */
+    fun fmtRowEnd(iso: String, stepMinutes: Int): String {
         val h = hour(iso)
-        return if (h < 0) iso else fmtHourOf((h + 1) % 24)
+        if (h < 0) return iso
+        val total = ((h * 60 + minute(iso) + stepMinutes) % 1440 + 1440) % 1440
+        val eh = total / 60
+        val em = total % 60
+        return if (stepMinutes % 60 == 0) fmtHourOf(eh) else fmtClockOf(eh, em)
     }
 
     private fun fmtHourOf(h: Int): String {
@@ -41,7 +58,16 @@ object ForecastBuilder {
         return "$h12 $ampm"
     }
 
-    fun build(omHourly: List<Map<String, Any?>>, crossHourly: List<Map<String, Any?>>, c: Comfort): Forecast {
+    private fun fmtClockOf(h: Int, m: Int): String {
+        val ampm = if (h < 12) "AM" else "PM"
+        val h12 = (h % 12).let { if (it == 0) 12 else it }
+        return "$h12:${m.toString().padStart(2, '0')} $ampm"
+    }
+
+    fun build(
+        omHourly: List<Map<String, Any?>>, crossHourly: List<Map<String, Any?>>, c: Comfort,
+        stepMinutes: Int = 60,
+    ): Forecast {
         val crossTemp = crossHourly.mapNotNull { h ->
             val t = h["time"] as? String ?: return@mapNotNull null
             (h["tempF"] as? Double)?.let { t to it }
@@ -75,7 +101,7 @@ object ForecastBuilder {
                 breakdown = breakdown,
             )
         }
-        if (points.isEmpty()) return Forecast()
+        if (points.isEmpty()) return Forecast(stepMinutes = stepMinutes)
 
         val (bStart, bEnd, bAvg) = bestWindow(points, c.openScoreMin)
 
@@ -92,7 +118,8 @@ object ForecastBuilder {
         return Forecast(
             points = points, bestStart = bStart, bestEnd = bEnd, bestAvgScore = bAvg,
             tempAgreement = agreement,
-            notes = notes(points, bStart, bEnd, bAvg, c),
+            notes = notes(points, bStart, bEnd, bAvg, c, stepMinutes),
+            stepMinutes = stepMinutes,
         )
     }
 
@@ -120,17 +147,21 @@ object ForecastBuilder {
 
     private fun notes(
         points: List<ForecastPoint>, bStart: String?, bEnd: String?, bAvg: Double?, c: Comfort,
+        stepMinutes: Int,
     ): List<String> {
         val out = mutableListOf<String>()
         val thr = c.openScoreMin
         val nowOpen = points[0].score >= thr
 
         if (bStart == null) {
-            out.add("Outdoor air won't beat the AC in the next ${points.size}h — keep closed / run AC.")
+            // A count of points is only a duration once scaled by the row width — at 15-minute
+            // resolution "the next 96" would otherwise misreport a day as 96 hours.
+            val spanHours = Math.round(points.size * stepMinutes / 60.0)
+            out.add("Outdoor air won't beat the AC in the next ${spanHours}h — keep closed / run AC.")
             return out
         }
-        if (bStart == points[0].time) out.add("Good to open now (through ${fmtHourEnd(bEnd!!)}).")
-        else out.add("Best window to open: ${fmtHour(bStart)}–${fmtHourEnd(bEnd!!)} (avg ${bAvg!!.toInt()}).")
+        if (bStart == points[0].time) out.add("Good to open now (through ${fmtRowEnd(bEnd!!, stepMinutes)}).")
+        else out.add("Best window to open: ${fmtHour(bStart)}–${fmtRowEnd(bEnd!!, stepMinutes)} (avg ${bAvg!!.toInt()}).")
 
         val sh = hour(bStart)
         if (sh >= NIGHT_START || sh < NIGHT_END)

@@ -119,14 +119,22 @@ object WeatherRepository {
         // the rest "degraded". Open-Meteo alone still drives the score.
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
+        // The near-term 15-minute series for the app's "now → end of day" view. One more
+        // HTTP round trip per refresh, but it's just another feed in the progressive
+        // engine: a slow or failed fetch degrades to nearTerm = null in assemble() below
+        // rather than delaying the screen past SOURCE_SOFT_DEADLINE_MS.
+        val min15 = async(Dispatchers.IO) { fetchOpenMeteoMinutely15(cfg, 96) }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, home),
+            readingTasks, listOf(omH, nwsH, home, min15),
             assemble = { readings, feeds ->
+                val min15Rows = hourlyOf(feeds, min15)
                 AppState(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
                     ForecastBuilder.build(hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort),
                     feeds[home] as? HomeState ?: HomeState(),
                     readings.toList(),
+                    nearTerm = if (min15Rows.isEmpty()) null else
+                        ForecastBuilder.build(min15Rows, emptyList(), cfg.comfort, stepMinutes = 15),
                 )
             },
             onUpdate = onUpdate,
@@ -396,6 +404,65 @@ object WeatherRepository {
                 "weatherCode" to wcode?.dblAt(i)?.let { it.roundToInt() },
                 "isDay" to isDay?.dblAt(i)?.let { it >= 0.5 },
                 "shortwaveWm2" to sw?.dblAt(i), "aqi" to aqiByTime[t],
+            )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /**
+     * 15-minute-resolution near-term series for [AppState.nearTerm]. Unlike the hourly
+     * endpoint (which starts at local midnight), Open-Meteo's minutely_15 block starts at
+     * the CURRENT quarter-hour, so `forecast_minutely_15=steps` yields exactly `steps *
+     * 15` minutes from now — [steps]=96 is 24h. Same row shape as [fetchOpenMeteoHourlyRange]
+     * except AQI, which this endpoint doesn't offer at 15-minute resolution (backfilled
+     * below). NOTE: unlike the hourly `precipitation` field (an hourly rate), this
+     * endpoint's `precipitation` is the accumulation over just that 15-minute step — a
+     * caller summing it into an hourly-equivalent total must scale by [Forecast.stepMinutes],
+     * not treat it as already-hourly.
+     */
+    private fun fetchOpenMeteoMinutely15(cfg: AppConfig, steps: Int): List<Map<String, Any?>> = try {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
+            "&minutely_15=temperature_2m,dew_point_2m,precipitation,precipitation_probability," +
+            "weather_code,is_day,shortwave_radiation&forecast_minutely_15=$steps" +
+            "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" +
+            "&timezone=${cfg.timezone}"
+        val m = getJson(url, cfg.userAgent).getJSONObject("minutely_15")
+        val times = m.getJSONArray("time")
+        val temp = m.getJSONArray("temperature_2m")
+        val dew = m.getJSONArray("dew_point_2m")
+        val pop = m.optJSONArray("precipitation_probability")
+        val precip = m.optJSONArray("precipitation")
+        val wcode = m.optJSONArray("weather_code")
+        val isDay = m.optJSONArray("is_day")
+        val sw = m.optJSONArray("shortwave_radiation")
+
+        // AQI is hourly-only. Fetch it hourly and assign each 15-minute row the AQI of its
+        // containing hour (timestamp truncated to "yyyy-MM-ddTHH", same keying the rest of
+        // this file uses) — AQI moves slowly enough that carrying one hour's value across
+        // its four quarter-hour slots is a fine approximation, and there's no finer source.
+        val aqiByHour = HashMap<String, Int>()
+        try {
+            val aqUrl = "https://air-quality-api.open-meteo.com/v1/air-quality" +
+                // +2 hours of slack, not just steps/4: the AQI series starts at the top of the
+                // current hour while the 15-minute one starts at the current QUARTER hour, so an
+                // exactly-sized request runs out before the last few rows and leaves them with a
+                // null AQI (which scores as non-blocking, i.e. quietly optimistic).
+                "?latitude=${cfg.lat}&longitude=${cfg.lon}&hourly=us_aqi&forecast_hours=${steps / 4 + 2}" +
+                "&timezone=${cfg.timezone}"
+            val ah = getJson(aqUrl, cfg.userAgent).getJSONObject("hourly")
+            val at = ah.getJSONArray("time"); val av = ah.getJSONArray("us_aqi")
+            for (i in 0 until at.length()) av.dblAt(i)?.let { aqiByHour[at.getString(i).take(13)] = it.roundToInt() }
+        } catch (_: Exception) { /* AQI optional */ }
+
+        (0 until times.length()).map { i ->
+            val t = times.getString(i)
+            mapOf(
+                "time" to t, "tempF" to temp.dblAt(i), "dewPointF" to dew.dblAt(i),
+                "precipProb" to pop?.dblAt(i), "precipIn" to precip?.dblAt(i),
+                "weatherCode" to wcode?.dblAt(i)?.let { it.roundToInt() },
+                "isDay" to isDay?.dblAt(i)?.let { it >= 0.5 },
+                "shortwaveWm2" to sw?.dblAt(i), "aqi" to aqiByHour[t.take(13)],
             )
         }
     } catch (e: Exception) {
