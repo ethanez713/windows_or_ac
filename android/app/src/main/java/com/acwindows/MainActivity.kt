@@ -1066,7 +1066,7 @@ private fun CombinedChart(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, o
         // Static "now" marker (today only).
         if (nowIdx in points.indices) nowMarker(g.xAt(nowIdx), g.plotTop, g.plotBot, tm)
         // At the selected hour, label each series' value where the cursor meets it: AQI is
-        // unitless, rain chance is %, rain amount uses ′ (inches), each in its line's colour.
+        // unitless, rain chance is %, rain amount uses ″ (inches), each in its line's colour.
         sel?.let { s ->
             val p = points[s]
             p.aqi?.let {
@@ -1076,8 +1076,7 @@ private fun CombinedChart(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, o
                 valueAtLine(tm, "${it.roundToInt()}%", AcBlue, g.xAt(s), g.yAt(it, 0.0, 100.0), g.plotLeft, g.plotRight)
             }
             p.precipIn?.takeIf { it > 0 }?.let { v ->
-                val txt = (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "′"
-                valueAtLine(tm, txt, FactorRain, g.xAt(s), g.yAt(v, 0.0, inHi), g.plotLeft, g.plotRight)
+                valueAtLine(tm, fmtInches(v), FactorRain, g.xAt(s), g.yAt(v, 0.0, inHi), g.plotLeft, g.plotRight)
             }
         }
     }
