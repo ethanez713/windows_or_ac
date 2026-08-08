@@ -39,6 +39,7 @@ data class AppConfig(
     val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
     val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
     val dayViewMode: DayViewMode = DayViewMode.TODAY,  // today's card: full day, or now→EOD
+    val appShowHourlyRows: Boolean = false,  // hour-by-hour value strip above the Values charts
 ) {
     /**
      * The zone the hourly forecast timestamps are expressed in — the same one sent to
@@ -101,6 +102,7 @@ data class AppConfig(
                 dayViewMode = p.getString("dayViewMode", null)
                     ?.let { name -> runCatching { DayViewMode.valueOf(name) }.getOrNull() }
                     ?: DayViewMode.TODAY,
+                appShowHourlyRows = p.getBoolean("appShowHourlyRows", false),
             )
         }
 

@@ -32,10 +32,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -229,9 +231,12 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * placeholder has to reserve the open card's height or the list jumps the moment data
  * lands. Its extra chrome is the Values-mode layout appended below the collapsed body,
  * built from the same dp constants [DayCard]/[AbsoluteCharts] use: Spacer(14) + readout
- * line (a ~28dp themed line box) + Spacer(10) + 124dp temp chart + Spacer(12) + 124dp
- * combined chart = 312dp. That puts the expanded skeleton at 141 + 312 = 453dp, which
- * matches the real expanded "today" card measured on device (452.6dp at 411dp width).
+ * line (a ~28dp themed line box) + Spacer(10) + 124dp temp chart + Spacer(12) + a 140dp
+ * combined chart (the 124dp plot plus the 16dp [ICON_BAND] reserved below it for
+ * [CombinedChart]'s precip-type icons) = 328dp. That puts the expanded skeleton at
+ * 141 + 328 = 469dp — up 16dp from the 453dp (141 + 312) figure measured on device
+ * before the icon band existed; not reverified against a live device since this
+ * project's rule is no screenshots/emulator runs without being asked.
  *
  * Two deliberate assumptions for both the collapsed body and that 452.6dp target, both
  * the common case: the day has an open-window flag (26dp) and no rain line in its summary
@@ -308,7 +313,7 @@ private fun SkeletonForecast() {
                         Spacer(Modifier.height(10.dp))
                         SkeletonChip(chip, Modifier.fillMaxWidth().height(124.dp))                   // temp chart
                         Spacer(Modifier.height(12.dp))
-                        SkeletonChip(chip, Modifier.fillMaxWidth().height(124.dp))                   // combined chart
+                        SkeletonChip(chip, Modifier.fillMaxWidth().height(140.dp))                   // combined chart (124 plot + 16 icon band)
                     }
                 }
             }
@@ -455,6 +460,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
                 globalSpans = if (isToday && viewMode == DayViewMode.NOW) nowSpans else spans,
                 expanded = expanded == day.date,
                 unit = unit,
+                showHourlyRows = cfg.appShowHourlyRows,
                 isToday = isToday,
                 viewMode = viewMode,
                 onToggleView = onToggleView,
@@ -474,6 +480,7 @@ private fun DayCard(
     globalSpans: List<Pair<String, String>>,
     expanded: Boolean,
     unit: TempUnit,
+    showHourlyRows: Boolean,
     isToday: Boolean,
     viewMode: DayViewMode,
     onToggleView: () -> Unit,
@@ -570,7 +577,7 @@ private fun DayCard(
                 Spacer(Modifier.height(14.dp))
                 when (mode) {
                     ChartMode.SCORE -> FactorChart(day.points, threshold, sel, nowIdx, unit) { sel = it }
-                    ChartMode.VALUES -> AbsoluteCharts(day.points, comfort, sel, nowIdx, unit) { sel = it }
+                    ChartMode.VALUES -> AbsoluteCharts(day.points, comfort, sel, nowIdx, unit, showHourlyRows) { sel = it }
                 }
             }
         }
@@ -1068,16 +1075,52 @@ private fun Legend() {
  * fills the readout row.
  */
 @Composable
-private fun AbsoluteCharts(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
+private fun AbsoluteCharts(
+    points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit,
+    showHourlyRows: Boolean, onSel: (Int?) -> Unit,
+) {
     if (points.isEmpty()) return
     Column {
         AbsReadout(points, sel, nowIdx, unit)
         Spacer(Modifier.height(10.dp))
+        if (showHourlyRows) {
+            HourlyValueRow(tempHourlyCells(points, nowIdx, unit))
+            Spacer(Modifier.height(6.dp))
+        }
         TempChart(points, comfort, sel, nowIdx, unit, onSel)
         Spacer(Modifier.height(12.dp))
+        if (showHourlyRows) {
+            HourlyValueRow(precipHourlyCells(points, nowIdx))
+            Spacer(Modifier.height(6.dp))
+        }
         CombinedChart(points, sel, nowIdx, onSel)
     }
 }
+
+// A now-view series can carry up to 96 15-minute rows; a 96-column strip would just
+// scroll forever without adding anything readable, so the row is capped at the first
+// 48 columns (12h at that resolution, or 48h on the ordinary hourly cards).
+private const val HOURLY_ROW_CAP = 48
+
+private fun tempHourlyCells(points: List<ForecastPoint>, nowIdx: Int, unit: TempUnit): List<HourlyCell> =
+    points.take(HOURLY_ROW_CAP).mapIndexed { i, p ->
+        HourlyCell(
+            primary = p.tempF?.let { unit.deg(it) } ?: "—",
+            glyph = wxGlyph(p.weatherCode, p.isDay ?: true),
+            secondary = p.dewPointF?.let { "dew " + unit.deg(it) },
+            time = if (i == nowIdx) "Now" else shortHour(p.time),
+        )
+    }
+
+private fun precipHourlyCells(points: List<ForecastPoint>, nowIdx: Int): List<HourlyCell> =
+    points.take(HOURLY_ROW_CAP).mapIndexed { i, p ->
+        HourlyCell(
+            primary = p.precipProb?.let { "${it.roundToInt()}%" } ?: "—",
+            glyph = precipGlyph(p.weatherCode),
+            secondary = p.precipIn?.takeIf { it > 0 }?.let { fmtInches(it) },
+            time = if (i == nowIdx) "Now" else shortHour(p.time),
+        )
+    }
 
 /** Geometry for one stacked mini-chart's plot area. */
 private class ChartGeom(
@@ -1166,13 +1209,28 @@ private fun TempChart(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, 
     }
 }
 
+/** Height [ChartFrame] reserves below the plot for [CombinedChart]'s precip-type icons —
+ *  see [ChartFrame]'s `iconBandDp`. Every other chart passes 0.dp and is unaffected. */
+private val ICON_BAND = 16.dp
+
 @Composable
 private fun CombinedChart(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
     val maxIn = remember(points) { points.mapNotNull { it.precipIn }.maxOrNull() ?: 0.0 }
     val inHi = niceCeilIn(maxIn)
     val onVar = MaterialTheme.colorScheme.onSurfaceVariant
+    // painterResource is @Composable and can't be called from inside the Canvas draw
+    // lambda below, so every precip glyph this chart might need is resolved up here and
+    // looked up by drawable id when drawing (see precipGlyph's WxGlyph.res).
+    val precipPainters = mapOf(
+        R.drawable.ic_wx_rain to painterResource(R.drawable.ic_wx_rain),
+        R.drawable.ic_wx_sleet to painterResource(R.drawable.ic_wx_sleet),
+        R.drawable.ic_wx_snow to painterResource(R.drawable.ic_wx_snow),
+        R.drawable.ic_wx_thunder to painterResource(R.drawable.ic_wx_thunder),
+        R.drawable.ic_wx_hail to painterResource(R.drawable.ic_wx_hail),
+    )
     ChartFrame(
-        "US AQI · Rain Chance (%) · Rain amount (in)", 124.dp, points, sel, showHourAxis = true, onSel = onSel,
+        "US AQI · Rain Chance (%) · Rain amount (in)", 124.dp + ICON_BAND, points, sel,
+        showHourAxis = true, iconBandDp = ICON_BAND, onSel = onSel,
     ) { g, tm ->
         // Precip amount as bars on the right (″) scale, behind the lines.
         val bw = (g.plotW / g.n * 0.55f).coerceAtLeast(1.5f.dp.toPx())
@@ -1205,6 +1263,29 @@ private fun CombinedChart(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, o
                 valueAtLine(tm, fmtInches(v), FactorRain, g.xAt(s), g.yAt(v, 0.0, inHi), g.plotLeft, g.plotRight)
             }
         }
+        // Precip-type icon under each bar with real precipitation, so a wet stretch
+        // reads as rain vs snow vs thunder at a glance. Only drawn where there's
+        // meaningful precip (matches AbsReadout's rain-chip threshold); icons that would
+        // crowd their neighbour are skipped, same lastRight approach as Graph.kt's
+        // drawRain label loop.
+        val iconPx = 12.dp.toPx()
+        // Icons that merely don't overlap still read as a smear at 12dp, so require real
+        // space between them — on a 96-row now-view series this is what keeps the band
+        // showing a few legible marks rather than a solid strip of glyphs.
+        val iconGap = 3.dp.toPx()
+        var lastRight = Float.NEGATIVE_INFINITY
+        points.forEachIndexed { i, p ->
+            val glyph = precipGlyph(p.weatherCode) ?: return@forEachIndexed
+            val wet = (p.precipIn ?: 0.0) > 0 || (p.precipProb ?: 0.0) >= 20
+            if (!wet) return@forEachIndexed
+            val left = g.xAt(i) - iconPx / 2
+            if (left < lastRight + iconGap) return@forEachIndexed
+            val painter = precipPainters[glyph.res] ?: return@forEachIndexed
+            translate(left = left, top = g.plotBot + 2.dp.toPx()) {
+                with(painter) { draw(Size(iconPx, iconPx), colorFilter = ColorFilter.tint(glyph.tint)) }
+            }
+            lastRight = left + iconPx
+        }
     }
 }
 
@@ -1220,6 +1301,7 @@ private fun ChartFrame(
     showHourAxis: Boolean,
     leftGutter: Dp = 30.dp,
     rightGutter: Dp = 36.dp,
+    iconBandDp: Dp = 0.dp,
     onSel: (Int?) -> Unit,
     draw: DrawScope.(ChartGeom, TextMeasurer) -> Unit,
 ) {
@@ -1231,7 +1313,9 @@ private fun ChartFrame(
         val titleLayout = tm.measure(title, TextStyle(color = onVar, fontSize = 10.sp, fontWeight = FontWeight.Medium))
         drawText(titleLayout, topLeft = Offset(leftGutter.toPx(), 0f))
         val topPad = titleLayout.size.height + 6.dp.toPx()
-        val botPad = if (showHourAxis) 16.dp.toPx() else 4.dp.toPx()
+        // iconBandDp reserves a strip between the plot and the hour labels (only
+        // CombinedChart passes non-zero here) — every other caller sees no change.
+        val botPad = (if (showHourAxis) 16.dp.toPx() else 4.dp.toPx()) + iconBandDp.toPx()
         val geom = ChartGeom(leftGutter.toPx(), topPad, size.width - rightGutter.toPx(), size.height - botPad, n)
         // Panel background + reference gridlines at 1/3 and 2/3 height (glance aid).
         drawRoundRect(
@@ -1256,7 +1340,7 @@ private fun ChartFrame(
                 val l = tm.measure(shortHour(points[i].time), TextStyle(color = onVar, fontSize = 9.sp))
                 drawText(l, topLeft = Offset(
                     (geom.xAt(i) - l.size.width / 2).coerceIn(0f, size.width - l.size.width),
-                    geom.plotBot + 3.dp.toPx(),
+                    geom.plotBot + iconBandDp.toPx() + 3.dp.toPx(),
                 ))
                 i += step
             }
