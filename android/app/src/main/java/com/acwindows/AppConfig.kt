@@ -6,6 +6,13 @@ import java.time.ZoneId
 import kotlin.math.abs
 
 /**
+ * What today's card plots: the full day (hourly, same as every other card), or a
+ * "now → end of day" view built from the 15-minute [AppState.nearTerm] series. Persisted
+ * under the "dayViewMode" pref key as [DayViewMode.name] — see [AppConfig.saveDayViewMode].
+ */
+enum class DayViewMode { TODAY, NOW }
+
+/**
  * App configuration: your home location and comfort target.
  *
  * MVP: edit the DEFAULT_* constants below and rebuild. (Values are also read
@@ -31,6 +38,7 @@ data class AppConfig(
     val widgetShowDew: Boolean = true,    // dew point line (same °F axis)
     val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
     val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
+    val dayViewMode: DayViewMode = DayViewMode.TODAY,  // today's card: full day, or now→EOD
 ) {
     /**
      * The zone the hourly forecast timestamps are expressed in — the same one sent to
@@ -90,7 +98,21 @@ data class AppConfig(
                 widgetShowDew = p.getBoolean("widgetShowDew", true),
                 widgetShowRain = p.getBoolean("widgetShowRain", true),
                 appTextScalePct = p.getString("appTextScalePct", null)?.toIntOrNull()?.coerceIn(60, 200) ?: 100,
+                dayViewMode = p.getString("dayViewMode", null)
+                    ?.let { name -> runCatching { DayViewMode.valueOf(name) }.getOrNull() }
+                    ?: DayViewMode.TODAY,
             )
+        }
+
+        /**
+         * The card's own tap toggle writes this directly (no trip through the settings
+         * screen), so a switch made from the forecast list takes effect immediately without
+         * waiting on a settings save. [ConfigActivity]'s checkbox writes the same key.
+         */
+        fun saveDayViewMode(context: Context, mode: DayViewMode) {
+            context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE).edit()
+                .putString("dayViewMode", mode.name)
+                .apply()
         }
 
         /**

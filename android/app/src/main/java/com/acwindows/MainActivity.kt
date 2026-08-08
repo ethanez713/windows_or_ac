@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -338,10 +339,42 @@ private fun SkeletonChip(color: Color, modifier: Modifier) {
 
 // ───────────────────────── 14-Day forecast screen ─────────────────────────
 
-private data class DayForecast(val date: String, val points: List<ForecastPoint>)
+// stepMinutes defaults to 60 (the hourly case) so every existing call site that doesn't
+// know about the now-view still compiles unchanged.
+private data class DayForecast(val date: String, val points: List<ForecastPoint>, val stepMinutes: Int = 60)
 
 /** What the expanded detail chart plots: the 0-100 score breakdown, or raw values. */
 private enum class ChartMode { SCORE, VALUES }
+
+// DayViewMode (AppConfig.kt) isn't Parcelable, so rememberSaveable needs an explicit
+// Saver — round-trip it through its enum name, same trick as everywhere else in Android
+// that saves an enum across a config change.
+private val DayViewModeSaver = Saver<DayViewMode, String>(
+    save = { it.name },
+    restore = { DayViewMode.valueOf(it) },
+)
+
+/**
+ * Today's now-view series: from the current moment to the end of the local day, built
+ * from the highest-resolution data available (see the GOAL doc for the priority order).
+ * [todayHourly] is today's ordinary hourly [DayForecast] — used both as the fallback
+ * source and as the final fallback value, so a now-view card is never left with nothing
+ * to draw (e.g. the last hourly row of the day, right before midnight).
+ */
+private fun nowSeriesFor(state: AppState, todayHourly: DayForecast): DayForecast {
+    val date = todayHourly.date
+    val now = java.time.LocalDateTime.now()
+    val nowQuarterIso = now.withMinute((now.minute / 15) * 15).withSecond(0).withNano(0)
+        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
+    state.nearTerm?.let { nt ->
+        val pts = nt.points.filter { it.time.take(10) == date && it.time.take(16) >= nowQuarterIso }
+        if (pts.isNotEmpty()) return DayForecast(date, pts, nt.stepMinutes)
+    }
+    val nowHourIso = now.withMinute(0).withSecond(0).withNano(0)
+        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
+    val hourlyPts = todayHourly.points.filter { it.time.take(16) >= nowHourIso }
+    return if (hourlyPts.isNotEmpty()) DayForecast(date, hourlyPts, 60) else todayHourly
+}
 
 @Composable
 private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, refreshing: Boolean) {
@@ -354,7 +387,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     val threshold = comfort.openScoreMin
     val days = remember(state) {
         state.forecast.points.groupBy { it.time.take(10) }
-            .map { (d, pts) -> DayForecast(d, pts) }
+            .map { (d, pts) -> DayForecast(d, pts, state.forecast.stepMinutes) }
             .sortedBy { it.date }
     }
     // Open spans computed across the WHOLE forecast (not per-day), so a window that
@@ -378,6 +411,28 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     val expanded = if (userPicked) userPick else defaultExpanded
     var showSources by rememberSaveable { mutableStateOf(false) }
 
+    // Today's card only: whole-day (hourly, like every other card) vs. now-to-EOD. Seeded
+    // from the persisted default and re-persisted on every toggle — see AppConfig.DayViewMode.
+    var viewMode by rememberSaveable(stateSaver = DayViewModeSaver) { mutableStateOf(cfg.dayViewMode) }
+    val onToggleView: () -> Unit = {
+        viewMode = if (viewMode == DayViewMode.NOW) DayViewMode.TODAY else DayViewMode.NOW
+        AppConfig.saveDayViewMode(context, viewMode)
+    }
+    val todayHourly = remember(days, todayDate) { days.firstOrNull { it.date == todayDate } }
+    // The now-view series is a SEPARATE series from the hourly one (see AppState.nearTerm's
+    // doc comment) — only swapped into the displayed list for today's card, never spliced
+    // into `days` itself, so every other day keeps reading the plain hourly data.
+    val nowDay = remember(state, viewMode, todayHourly) {
+        if (viewMode == DayViewMode.NOW && todayHourly != null) nowSeriesFor(state, todayHourly) else null
+    }
+    val displayDays = remember(days, nowDay) {
+        if (nowDay == null) days else days.map { if (it.date == nowDay.date) nowDay else it }
+    }
+    // Spans for the now-view series are computed over THAT series, not the hourly one —
+    // otherwise a flag time from the hourly spans wouldn't exist in the now-view's rows
+    // and would just silently fail to draw (or land on the wrong row).
+    val nowSpans = remember(nowDay, threshold) { nowDay?.let { openSpansTimes(it.points, threshold) } ?: emptyList() }
+
     if (days.isEmpty()) {
         // A fetch in flight may have current conditions but no hourly forecast yet — show
         // skeletons rather than flashing "No forecast available" before the data lands.
@@ -390,15 +445,19 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { SourceStatusHeader(state, updatedAtMs, cfg.placeName) { showSources = true } }
-        items(days, key = { it.date }) { day ->
+        items(displayDays, key = { it.date }) { day ->
+            val isToday = day.date == todayDate
             DayCard(
                 day = day,
                 comfort = comfort,
                 threshold = threshold,
                 mode = mode,
-                globalSpans = spans,
+                globalSpans = if (isToday && viewMode == DayViewMode.NOW) nowSpans else spans,
                 expanded = expanded == day.date,
                 unit = unit,
+                isToday = isToday,
+                viewMode = viewMode,
+                onToggleView = onToggleView,
                 onToggle = { userPicked = true; userPick = if (expanded == day.date) null else day.date },
             )
         }
@@ -415,17 +474,24 @@ private fun DayCard(
     globalSpans: List<Pair<String, String>>,
     expanded: Boolean,
     unit: TempUnit,
+    isToday: Boolean,
+    viewMode: DayViewMode,
+    onToggleView: () -> Unit,
     onToggle: () -> Unit,
 ) {
-    val openHours = day.points.count { it.score >= threshold }
+    val openRows = day.points.count { it.score >= threshold }
     ElevatedCard(
         Modifier.fillMaxWidth().clickable { onToggle() },
         colors = CardDefaults.elevatedCardColors(containerColor = SurfaceElevated),
     ) {
         Column(Modifier.padding(14.dp)) {
             // Selected hour, shared between the collapsed sparkline cursor and the
-            // expanded detail charts so a pick in either reads across both.
-            var sel by rememberSaveable(day.date) { mutableStateOf<Int?>(null) }
+            // expanded detail charts so a pick in either reads across both. Keyed on the
+            // row count + resolution too, not just the date, so switching today's card
+            // between TODAY and NOW — which swaps in a differently-sized series under the
+            // same date — drops a selection instead of carrying over an index into a
+            // completely different set of rows.
+            var sel by rememberSaveable(day.date, day.points.size, day.stepMinutes) { mutableStateOf<Int?>(null) }
             // Fixed gutters keep every day's bar graph aligned with the others, with a
             // balanced buffer on each side of the bars (left to the date, right to the
             // weather summary).
@@ -438,32 +504,68 @@ private fun DayCard(
             val hasFlags = remember(globalSpans, flagTimes) {
                 globalSpans.any { (s, e) -> s in flagTimes || e in flagTimes }
             }
-            // Index of the current hour — only matches on the day containing "now" (the
-            // date is part of the prefix), so the marker lands on today's graphs only.
-            val nowIdx = remember(day) {
-                val pre = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH"))
-                day.points.indexOfFirst { it.time.startsWith(pre) }
-            }
+            // Index of the LAST row at/before now, resolution-aware (see [nowIdxOf]) — only
+            // matches on the day/series containing "now", so the marker lands on today's
+            // graphs only (and, in NOW mode, on the right 15-minute row rather than the
+            // hour-prefix match four rows could tie on).
+            val nowIdx = remember(day) { nowIdxOf(day.points) }
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.width(dateW))
-                    OpenWindowFlags(day.points, globalSpans, Modifier.weight(1f).padding(horizontal = barPad).height(26.dp))
+                    OpenWindowFlags(
+                        day.points, globalSpans, day.stepMinutes,
+                        Modifier.weight(1f).padding(horizontal = barPad).height(26.dp),
+                    )
                     Spacer(Modifier.width(summaryW))
                 }
             }
+            // "Now" only on today's card in NOW mode — every other card (and today's card
+            // in TODAY mode) keeps the ordinary date label.
+            val label = if (isToday && viewMode == DayViewMode.NOW) "Now" else dayLabel(day.date)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(dayLabel(day.date), Modifier.width(dateW), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text(label, Modifier.width(dateW), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 DaySparkline(day.points, threshold, sel, nowIdx, Modifier.weight(1f).padding(horizontal = barPad).height(40.dp))
                 DaySummaryView(day.points, unit, Modifier.width(summaryW))
             }
             Spacer(Modifier.height(6.dp))
-            Text(
-                if (openHours > 0) "$openHours ${if (openHours == 1) "hour" else "hours"} to open windows"
-                    else "No open-window hours",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (openHours > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // The view-switch hint rides in the SAME row as the open-hours line (weighted
+            // 1f so the hint doesn't steal its width) rather than a row of its own, so the
+            // card's height doesn't grow by adding it — which is the whole requirement here,
+            // and is fiddlier than it looks: a smaller fontSize does NOT mean a shorter Text.
+            // Compose merges only fontSize onto the ambient LocalTextStyle, so the 11sp hint
+            // inherits bodyLarge's 24sp lineHeight and lays out exactly as tall as the 12sp
+            // line beside it (the same quirk SkeletonTextChip's comment documents). The hint
+            // therefore carries NO vertical padding — 2dp of it would grow the card by 4dp
+            // and put SkeletonForecast's hand-measured scaffold out by the same amount. Its
+            // touch target is already the full ~28dp line box; only horizontal padding is
+            // needed, to widen the tap area and inset the rounded highlight.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    openWindowLabel(openRows, day.stepMinutes),
+                    Modifier.weight(1f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (openRows > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (isToday) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            // An inner clickable consumes the tap before it reaches the
+                            // card's own clickable (the expand/collapse toggle) — nesting
+                            // is enough, no explicit consume()/interaction-source needed.
+                            .clickable { onToggleView() }
+                            .padding(horizontal = 6.dp),
+                    ) {
+                        Text(
+                            if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             if (expanded) {
                 Spacer(Modifier.height(14.dp))
                 when (mode) {
@@ -742,11 +844,16 @@ private fun DaySparkline(
  * span's start flag shows on the day it begins, its end flag on the day it ends — so a
  * window across midnight is one continuous span with no boundary flag. The stagger is
  * bottom-anchored so the pills sit just over the bars.
+ *
+ * [stepMinutes] is [points]' own row width, needed for the end flag: [ForecastBuilder.fmtRowEnd]
+ * closes a row at its start + stepMinutes, not always +1 hour, so a 15-minute now-view row
+ * doesn't get labelled 45 minutes later than it actually ends.
  */
 @Composable
 private fun OpenWindowFlags(
     points: List<ForecastPoint>,
     globalSpans: List<Pair<String, String>>,
+    stepMinutes: Int,
     modifier: Modifier,
 ) {
     val tm = rememberTextMeasurer()
@@ -765,9 +872,11 @@ private fun OpenWindowFlags(
         val texts = mutableListOf<String>()
         globalSpans.forEach { (startIso, endIso) ->
             val si = timeOf.indexOf(startIso)
+            // Start flag keeps naming the row's own hour (unaffected by resolution — see
+            // the GOAL doc: only the end flag over-reports).
             if (si >= 0) { centers.add(si * bw); texts.add(hourLabelOf(ForecastBuilder.hour(startIso))) }
             val ei = timeOf.indexOf(endIso)
-            if (ei >= 0) { centers.add((ei + 1) * bw); texts.add(hourLabelOf(ForecastBuilder.hour(endIso) + 1)) }
+            if (ei >= 0) { centers.add((ei + 1) * bw); texts.add(ForecastBuilder.fmtRowEnd(endIso, stepMinutes)) }
         }
         if (centers.isEmpty()) return@Canvas
         val layouts = texts.map { tm.measure(it, pillStyle) }
@@ -1265,6 +1374,47 @@ private fun niceCeilIn(v: Double): Double = when {
 
 private fun idxAt(x: Float, w: Int, n: Int): Int =
     ((x / w.coerceAtLeast(1).toFloat()) * n).toInt().coerceIn(0, n - 1)
+
+/**
+ * Index of the LAST row whose start is <= now, resolution-aware: compares the full
+ * "yyyy-MM-ddTHH:mm" local prefix as a string rather than just the hour, since these are
+ * local ISO timestamps and lexicographic order matches chronological order. The old
+ * hour-prefix match tied on all four rows of a 15-minute hour and landed on the first
+ * (wrong) one; this lands on the row actually covering "now" at any resolution. -1 (no
+ * marker) whenever every row is in the future — which is every day but the one containing
+ * "now", exactly as before.
+ */
+private fun nowIdxOf(points: List<ForecastPoint>): Int {
+    val nowPrefix = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"))
+    val i = points.indexOfLast { it.time.take(16) <= nowPrefix }
+    // Every row being in the past doesn't mean one of them is "now" — for a day that has
+    // already finished, indexOfLast happily returns its final row. Only a row on today's
+    // date can be the current one, which is the invariant the old hour-prefix match had
+    // for free and this comparison has to restore explicitly.
+    return if (i >= 0 && points[i].time.take(10) == LocalDate.now().toString()) i else -1
+}
+
+/**
+ * "N hours to open windows" at any row width. A row COUNT isn't a duration once rows are
+ * shorter than an hour (see [Forecast.stepMinutes]), so this multiplies out to minutes
+ * first: a whole number of hours stays "N hours", a clean half becomes "N.5 hours", and
+ * anything under an hour is "N min". A remainder that's neither whole nor half (only
+ * reachable at 15-minute resolution, e.g. 7 open 15-minute rows = 1h45m) spells out both
+ * parts rather than inventing a quarter-hour decimal the rest of the app doesn't use.
+ */
+private fun openWindowLabel(rowCount: Int, stepMinutes: Int): String {
+    if (rowCount <= 0) return "No open-window hours"
+    val totalMin = rowCount * stepMinutes
+    if (totalMin < 60) return "$totalMin min to open windows"
+    val hours = totalMin / 60
+    val rem = totalMin % 60
+    val hourWord = if (hours == 1) "hour" else "hours"
+    return when (rem) {
+        0 -> "$hours $hourWord to open windows"
+        30 -> "$hours.5 hours to open windows"
+        else -> "$hours $hourWord $rem min to open windows"
+    }
+}
 
 /** Contiguous open-worthy runs across the whole forecast: (startIso, lastOpenIso). */
 private fun openSpansTimes(points: List<ForecastPoint>, thr: Double): List<Pair<String, String>> {

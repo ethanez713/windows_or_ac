@@ -89,6 +89,7 @@ class ConfigActivity : Activity() {
         tempFieldIds.forEach { renderTempField(it, initialTempF.getValue(it)) }
         updateTempLabels(currentUnit)
         celsiusCheck().isChecked = currentUnit == TempUnit.C
+        nowViewCheck().isChecked = cfg.dayViewMode == DayViewMode.NOW
         field(R.id.open_score).setText(cfg.comfort.openScoreMin.toInt().toString())
         field(R.id.aqi_ideal).setText(trimNum(cfg.comfort.aqiIdeal))
         field(R.id.aqi_max).setText(cfg.comfort.aqiMax.toString())
@@ -121,7 +122,7 @@ class ConfigActivity : Activity() {
         val discard = findViewById<Button>(R.id.discard)
         staged = StagedEdits(
             fields = valueFields.map { field(it) },
-            checks = listOf(follow(), celsiusCheck()),
+            checks = listOf(follow(), celsiusCheck(), nowViewCheck()),
             sliders = listOf(textScaleSlider()),
             onToggle = { btn, on ->
                 when (btn.id) {
@@ -286,6 +287,7 @@ class ConfigActivity : Activity() {
     // ───────── temperature unit + text size ─────────
 
     private fun celsiusCheck(): CheckBox = findViewById(R.id.use_celsius)
+    private fun nowViewCheck(): CheckBox = findViewById(R.id.start_at_now)
     private fun textScaleSlider(): SeekBar = findViewById(R.id.text_scale_slider)
 
     /**
@@ -387,6 +389,7 @@ class ConfigActivity : Activity() {
             .putString("lon", lon.toString())
             .putString("placeName", placeName ?: "")
             .putString("appTextScalePct", textScalePct.toString())
+            .putString("dayViewMode", (if (nowViewCheck().isChecked) DayViewMode.NOW else DayViewMode.TODAY).name)
         weightFields.forEach { (id, src) ->
             val w = field(id).text.toString().toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
             ed.putString("weight_$src", trimNum(w))

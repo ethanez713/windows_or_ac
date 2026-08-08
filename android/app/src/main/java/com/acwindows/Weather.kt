@@ -68,6 +68,12 @@ data class DaySummary(
     val totalPrecipIn: Double,
 )
 
+// Resolution-agnostic: every field below is either an extremum (max/min/nearest) or a
+// per-row sum, neither of which cares how many rows or how wide each one is — unlike a
+// ROW COUNT, which only means "N hours" when every row is an hour (see
+// [Forecast.stepMinutes]). That's what makes this safe to feed the 15-minute now-view
+// series unmodified. If a future field here ever counts rows instead of summing/extreming
+// them, it needs a stepMinutes-aware conversion like [ForecastBuilder.fmtRowEnd] uses.
 fun summarize(points: List<ForecastPoint>): DaySummary {
     val temps = points.mapNotNull { it.tempF }
     val nearestCodeTo = { target: Int ->
