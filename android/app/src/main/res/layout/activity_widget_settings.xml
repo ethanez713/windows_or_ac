@@ -74,6 +74,239 @@
         <TextView style="@style/CfgHint"
             android:text="Temperature and dew point share their own °F scale, labelled at the right edge." />
 
+        <TextView style="@style/CfgLabel" android:text="Widget text size" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <SeekBar
+                android:id="@+id/text_scale"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:min="50"
+                android:max="200" />
+            <TextView
+                android:id="@+id/text_scale_value"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:gravity="end"
+                android:textSize="14sp"
+                android:text="100%" />
+        </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="Scales every label the widget graph draws (50–200%)." />
+
+        <TextView style="@style/CfgLabel" android:text="Colours" />
+        <TextView style="@style/CfgHint"
+            android:text="Hex values (#RRGGBB). An invalid entry just falls back to whatever was last saved." />
+
+        <CheckBox
+            android:id="@+id/use_action_background"
+            style="@style/CfgCheck"
+            android:layout_marginTop="10dp"
+            android:text="Use the recommendation colour for the background" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Background" />
+            <EditText
+                android:id="@+id/color_background"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_background"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Open bars" />
+            <EditText
+                android:id="@+id/color_bar_open"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_bar_open"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Closed bars" />
+            <EditText
+                android:id="@+id/color_bar_closed"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_bar_closed"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Temperature line" />
+            <EditText
+                android:id="@+id/color_temp"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_temp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Dew point line" />
+            <EditText
+                android:id="@+id/color_dew"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_dew"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Rain line" />
+            <EditText
+                android:id="@+id/color_rain"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_rain"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="14sp"
+                android:text="Text" />
+            <EditText
+                android:id="@+id/color_text"
+                android:layout_width="90dp"
+                android:layout_height="wrap_content"
+                android:inputType="textNoSuggestions"
+                android:maxLength="7"
+                android:textSize="14sp"
+                android:hint="#RRGGBB" />
+            <View
+                android:id="@+id/swatch_text"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="10dp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/reset_colors"
+            style="@style/CfgDiscard"
+            android:visibility="visible"
+            android:layout_gravity="start"
+            android:layout_marginTop="14dp"
+            android:paddingStart="0dp"
+            android:text="Reset colours to defaults" />
+
     </LinearLayout>
 </ScrollView>
 </LinearLayout>

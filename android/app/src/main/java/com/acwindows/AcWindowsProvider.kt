@@ -9,6 +9,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.text.Spanned
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -238,9 +242,11 @@ class AcWindowsProvider : AppWidgetProvider() {
          * but the body, and that only opens the app (which has its own fetch and never
          * writes the widget's cache).
          */
-        private fun loadingView(context: Context, refreshing: Boolean): RemoteViews =
-            RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
+        private fun loadingView(context: Context, refreshing: Boolean): RemoteViews {
+            val theme = WidgetTheme.load(context)
+            return RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, if (refreshing) "Loading…" else "No data yet")
+                setTextColor(R.id.headline, theme.text)
                 setTextViewText(R.id.readings, "")
                 setViewVisibility(R.id.readings, View.GONE)
                 setTextViewCompoundDrawablesRelative(R.id.sources, 0, 0, 0, 0)
@@ -249,16 +255,21 @@ class AcWindowsProvider : AppWidgetProvider() {
                     if (refreshing) "fetching weather…" else "couldn't reach the weather sources",
                 )
                 setTextViewText(R.id.updated, if (refreshing) "" else "tap ⟳ to retry")
-                setTextColor(R.id.updated, if (refreshing) FOOTER_DIM else STALE_AMBER)
+                setTextColor(R.id.updated, if (refreshing) footerDim(theme) else STALE_AMBER)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
                 // Must clear the graph and set the background explicitly — see [buildViews].
                 // Neutral slate while loading: the first paint shouldn't imply a verdict.
                 setImageViewBitmap(R.id.graph, null)
-                setInt(R.id.widget_root, "setBackgroundColor", colorFor(Action.KEEP_CLOSED))
+                setInt(
+                    R.id.widget_root, "setBackgroundColor",
+                    if (theme.useActionBackground) colorFor(Action.KEEP_CLOSED) else theme.background,
+                )
+                applyTextSizes(this, theme)
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
                 setOnClickPendingIntent(R.id.refresh_button, refreshIntent(context))
             }
+        }
 
         private fun buildViews(
             context: Context, s: Snapshot, refreshing: Boolean, size: Pair<Int, Int>,
@@ -268,6 +279,9 @@ class AcWindowsProvider : AppWidgetProvider() {
             val cfg = AppConfig.load(context)
             val comfort = cfg.comfort
             val threshold = comfort.openScoreMin
+            val theme = WidgetTheme.load(context)
+            val unit = TempUnit.load(context)
+            val textScale = theme.textScalePct / 100f
 
             // Tier the text rows by height so a 2x2 still looks intentional.
             val showReadings = hDp >= 130
@@ -276,18 +290,14 @@ class AcWindowsProvider : AppWidgetProvider() {
 
             // Estimate the graph ImageView's true size so its bitmap matches the
             // view aspect (with fitCenter) — this is what keeps text from
-            // stretching/compressing when the widget is resized.
-            var reservedDp = 24 + 22 + 6 + 21          // padding + headline + graph margin + footer
-            if (showReadings) reservedDp += 19
+            // stretching/compressing when the widget is resized. The text rows
+            // (headline/readings/footer) grow with the text-size slider, so their share
+            // of reservedDp has to scale too, or the graph bitmap's aspect goes wrong.
+            var reservedDp = 24 + 6 + Math.round(22 * textScale) + Math.round(21 * textScale)
+            if (showReadings) reservedDp += Math.round(19 * textScale)
             val ivWdp = (wDp - 24).coerceAtLeast(60)
             val ivHdp = (hDp - reservedDp).coerceAtLeast(40)
 
-            val readings = buildString {
-                s.tempF?.let { append("${it.roundToInt()}°F") }
-                s.dewPointF?.let { append("   ·   dew ${it.roundToInt()}°F") }
-                s.aqi?.let { append("   ·   AQI $it") }
-                append("   ·   score ${s.nowScore.roundToInt()}")
-            }
             // With a location set, condense to fold the place into this one footer line
             // ("📍 City, ST · 6/6 · high"); without one, keep the verbose form.
             val sources = when {
@@ -302,7 +312,11 @@ class AcWindowsProvider : AppWidgetProvider() {
 
             return RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, s.headline)
-                setTextViewText(R.id.readings, readings)
+                setTextColor(R.id.headline, theme.text)
+                // Base colour first: buildReadings only spans the value segments, so the
+                // "dew"/"AQI"/"score" labels and the "·" separators fall through to this.
+                setTextColor(R.id.readings, theme.text)
+                setTextViewText(R.id.readings, buildReadings(s, unit, theme))
                 setViewVisibility(R.id.readings, if (showReadings) View.VISIBLE else View.GONE)
                 // Location pin sits as the footer line's leading compound drawable when set.
                 setTextViewCompoundDrawablesRelative(
@@ -310,11 +324,18 @@ class AcWindowsProvider : AppWidgetProvider() {
                 )
                 setTextViewText(R.id.sources, sources)
                 setTextViewText(R.id.updated, asOfLabel(s, refreshing, nowMs))
-                setTextColor(R.id.updated, if (s.ageMs(nowMs) > WidgetCache.STALE_MS) STALE_AMBER else FOOTER_DIM)
+                setTextColor(R.id.updated, if (s.ageMs(nowMs) > WidgetCache.STALE_MS) STALE_AMBER else footerDim(theme))
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 // Hide the manual refresh icon while a refresh is in flight (spinner shows instead).
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
-                setInt(R.id.widget_root, "setBackgroundColor", withOpacity(colorFor(s.action), cfg.widgetOpacity))
+                setInt(
+                    R.id.widget_root, "setBackgroundColor",
+                    withOpacity(
+                        if (theme.useActionBackground) colorFor(s.action) else theme.background,
+                        cfg.widgetOpacity,
+                    ),
+                )
+                applyTextSizes(this, theme)
                 // ALWAYS set the graph, even when there is nothing to draw. The launcher
                 // reapplies a RemoteViews onto the views already on screen rather than
                 // re-inflating, so any property we DON'T set keeps its previous value —
@@ -329,6 +350,7 @@ class AcWindowsProvider : AppWidgetProvider() {
                         showBars = cfg.widgetShowBars, showTemp = cfg.widgetShowTemp,
                         showDew = cfg.widgetShowDew, showRain = cfg.widgetShowRain,
                         nowPos = nowBarPos(s.firstHourMs, nowMs),
+                        theme = theme, unit = unit,
                     ),
                 )
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
@@ -336,8 +358,45 @@ class AcWindowsProvider : AppWidgetProvider() {
             }
         }
 
-        private val FOOTER_DIM = Color.parseColor("#B3FFFFFF")
         private val STALE_AMBER = Color.parseColor("#FFFBBF24")
+
+        // The app's FactorAqi colour. Fixed, unlike temp/dew/rain — AQI isn't one of the
+        // widget's themeable series, it's a fourth reading riding along on the same line.
+        private val AQI_GREEN = Color.rgb(0x4A, 0xDE, 0x80)
+
+        /** The footer's dimmed variant: [theme]'s text colour at ~70% alpha (was hardcoded #B3FFFFFF). */
+        private fun footerDim(theme: WidgetTheme): Int = (0xB3 shl 24) or (theme.text and 0x00FFFFFF)
+
+        /** Scale every RemoteViews text row to [theme]'s text-size slider. */
+        private fun applyTextSizes(views: RemoteViews, theme: WidgetTheme) {
+            val scale = theme.textScalePct / 100f
+            views.setTextViewTextSize(R.id.headline, TypedValue.COMPLEX_UNIT_SP, 16f * scale)
+            views.setTextViewTextSize(R.id.readings, TypedValue.COMPLEX_UNIT_SP, 12f * scale)
+            views.setTextViewTextSize(R.id.sources, TypedValue.COMPLEX_UNIT_SP, 10f * scale)
+            views.setTextViewTextSize(R.id.updated, TypedValue.COMPLEX_UNIT_SP, 10f * scale)
+        }
+
+        /**
+         * The readings line, coloured to match the graph's series — the same idea as the
+         * app's AbsReadout chips. Only the value segments carry a span; the "dew"/"AQI"/
+         * "score" labels and the "·" separators fall through to the view's base colour
+         * (set to [WidgetTheme.text] at the call site). Structure mirrors the old plain
+         * string exactly, including that the score segment is unconditional.
+         */
+        private fun buildReadings(s: Snapshot, unit: TempUnit, theme: WidgetTheme): CharSequence {
+            val sb = SpannableStringBuilder()
+            fun value(text: String, color: Int) {
+                val start = sb.length
+                sb.append(text)
+                sb.setSpan(ForegroundColorSpan(color), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            s.tempF?.let { value(unit.degUnit(it), theme.temp) }
+            s.dewPointF?.let { sb.append("   ·   dew "); value(unit.degUnit(it), theme.dew) }
+            s.aqi?.let { sb.append("   ·   AQI "); value(it.toString(), AQI_GREEN) }
+            sb.append("   ·   score ")
+            value(s.nowScore.roundToInt().toString(), theme.text)
+            return sb
+        }
 
         /**
          * The footer's right-hand label: what time the widget's data is FROM. Says so
