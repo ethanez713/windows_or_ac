@@ -68,7 +68,7 @@ class SnapshotTimeTest {
         assertTrue(snap(now, 4 * WidgetCache.TTL_MS, now).ageMs(now) > WidgetCache.STALE_MS)
     }
 
-    // ── the config zone is what makes an hourly row's local time absolute ──
+    // The config zone is what makes an hourly row's local time absolute.
 
     private fun cfg(tz: String) = AppConfig(
         lat = 0.0, lon = 0.0, timezone = tz, userAgent = "test", comfort = Comfort(),

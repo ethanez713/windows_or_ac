@@ -66,8 +66,6 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-// ───────────────────────── State + ViewModel ─────────────────────────
-
 data class AppUiState(
     val loading: Boolean = true,
     val refreshing: Boolean = false,
@@ -127,8 +125,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
-
-// ───────────────────────── Activity + root ─────────────────────────
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -341,8 +337,6 @@ private fun SkeletonTextChip(color: Color, width: Dp, fontSize: TextUnit, chipHe
 private fun SkeletonChip(color: Color, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(8.dp)).background(color))
 }
-
-// ───────────────────────── 14-Day forecast screen ─────────────────────────
 
 // stepMinutes defaults to 60 (the hourly case) so every existing call site that doesn't
 // know about the now-view still compiles unchanged.
@@ -584,8 +578,6 @@ private fun DayCard(
     }
 }
 
-// ───────────────────────── Collapsed weather summary (right side) ─────────────────────────
-
 @Composable
 private fun DaySummaryView(points: List<ForecastPoint>, unit: TempUnit, modifier: Modifier = Modifier) {
     val s = remember(points) { summarize(points) }
@@ -621,8 +613,6 @@ private fun fmtInches(inches: Double): String {
     val s = if (inches >= 0.1) String.format("%.1f", inches) else String.format("%.2f", inches)
     return "$s″"
 }
-
-// ───────────────────────── Data-source counter + detail dialog ─────────────────────────
 
 /**
  * Prominent header for the current data view: how many sources were successfully polled
@@ -780,8 +770,6 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
     )
 }
 
-// ───────────────────────── Collapsed sparkline + open-window flags ─────────────────────────
-
 /**
  * Score bars for one day. Bars use the full canvas height (the open-window flags now
  * live in their own strip ABOVE — see [OpenWindowFlags] — so they no longer steal bar
@@ -911,8 +899,6 @@ private fun OpenWindowFlags(
         }
     }
 }
-
-// ───────────────────────── Expanded factor chart (lines + scrub tooltip) ─────────────────────────
 
 @Composable
 private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
@@ -1063,8 +1049,6 @@ private fun Legend() {
         }
     }
 }
-
-// ───────────────────────── Absolute-value charts (stacked, shared scrub) ─────────────────────────
 
 /**
  * The "Values" detail view: the raw weather behind the score, as small multiples
@@ -1453,8 +1437,6 @@ private fun niceCeilIn(v: Double): Double = when {
     v <= 1.0 -> 1.0
     else -> ceil(v * 2) / 2
 }
-
-// ───────────────────────── helpers ─────────────────────────
 
 private fun idxAt(x: Float, w: Int, n: Int): Int =
     ((x / w.coerceAtLeast(1).toFloat()) * n).toInt().coerceIn(0, n - 1)

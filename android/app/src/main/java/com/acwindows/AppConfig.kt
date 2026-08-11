@@ -54,7 +54,6 @@ data class AppConfig(
         // Every source the consensus can see — keyless first, then the optional keyed ones.
         // Used for the per-source trust weights (weighted-median consensus).
         val KNOWN_SOURCES = listOf("open-meteo", "nws", "metno", "tomorrowio", "pirateweather", "airnow")
-        // ───────── EDIT THESE FOR YOUR HOME ─────────
         const val DEFAULT_LAT = 40.7128            // your latitude (look it up at latlong.net)
         const val DEFAULT_LON = -74.0060           // your longitude
         const val DEFAULT_TZ = "America/New_York"  // "auto" or an IANA tz name
@@ -64,7 +63,6 @@ data class AppConfig(
         const val DEFAULT_OPEN_SCORE_MIN = 60.0    // open windows when the score is ≥ this (0-100)
         const val DEFAULT_WIDGET_HOURS = 36        // widget graph look-ahead (configurable)
         // Other comfort defaults live in Comfort() (dew point max 60°F, AQI max 100).
-        // ────────────────────────────────────────────
 
         fun load(context: Context): AppConfig {
             val p = context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE)

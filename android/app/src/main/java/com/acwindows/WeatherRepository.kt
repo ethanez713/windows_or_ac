@@ -202,7 +202,7 @@ object WeatherRepository {
         }
     }
 
-    // ---- HTTP helpers (HttpURLConnection + org.json, both built into Android) ----
+    // HTTP helpers: HttpURLConnection + org.json, both built into Android.
 
     private fun httpGet(urlStr: String, userAgent: String, timeoutMs: Int = 15000): String {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
@@ -231,8 +231,6 @@ object WeatherRepository {
 
     private fun JSONArray.dblAt(i: Int): Double? =
         if (i < length() && !isNull(i)) optDouble(i) else null
-
-    // ---- Current-reading providers ----
 
     private fun fetchOpenMeteo(cfg: AppConfig): SourceReading = try {
         val base = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
@@ -304,8 +302,6 @@ object WeatherRepository {
         SourceReading(source = "metno", ok = false, error = e.message)
     }
 
-    // ---- Optional keyed hyperlocal providers (current reading only) ----
-
     /** Tomorrow.io realtime: hyperlocal model temp/dew/humidity/wind (+ EPA AQI if present). */
     private fun fetchTomorrowIo(cfg: AppConfig, key: String): SourceReading = try {
         val url = "https://api.tomorrow.io/v4/weather/realtime?location=${cfg.lat},${cfg.lon}" +
@@ -356,7 +352,7 @@ object WeatherRepository {
         SourceReading(source = "airnow", ok = false, error = e.message)
     }
 
-    // ---- Hourly forecast providers (return rows keyed by local ISO time) ----
+    // Hourly forecast providers return rows keyed by local ISO time.
 
     // Widget look-ahead: the next `hours` hours (from now).
     private fun fetchOpenMeteoHourly(cfg: AppConfig, hours: Int): List<Map<String, Any?>> =
@@ -487,8 +483,6 @@ object WeatherRepository {
         emptyList()
     }
 
-    // ---- shared math ----
-
     private fun cToF(c: Double?): Double? = c?.let { it * 9 / 5 + 32 }
 
     /** Magnus-formula dew point (°C) from temperature (°C) + RH (%). */
@@ -498,8 +492,6 @@ object WeatherRepository {
         val gamma = ln(rh / 100.0) + a * tempC / (b + tempC)
         return b * gamma / (a - gamma)
     }
-
-    // ---- Aggregation (current consensus) ----
 
     /**
      * Merges per-source readings into one consensus using a WEIGHTED MEDIAN per field

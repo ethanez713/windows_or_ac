@@ -80,8 +80,6 @@ fun WeatherGlyph(glyph: WxGlyph, size: Dp = 22.dp, modifier: Modifier = Modifier
     )
 }
 
-// ───────────────────────── Per-day weather summary ─────────────────────────
-
 /**
  * The compact "weather report" a collapsed day card shows on the right: morning and
  * night conditions, the day's high/low, and rain. Hours are local; "morning" is the

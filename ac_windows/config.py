@@ -35,7 +35,6 @@ class Comfort:
     # Above this US AQI, keep windows shut regardless of temperature.
     aqi_max: int = 100
 
-    # ── Forecast / scoring (the "should I open the windows" graph) ──
     # How many hours ahead to score and graph (widget shows as many as fit).
     forecast_hours: int = 48
     # Open-window score (0-100) at/above which opening is advised (vs AC/closed).
@@ -61,7 +60,6 @@ class Config:
 
 
 def _filter_known(cls, data: dict) -> dict:
-    """Keep only keys that are real fields of dataclass `cls`."""
     known = {f.name for f in fields(cls)}
     return {k: v for k, v in data.items() if k in known}
 

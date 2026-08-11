@@ -380,7 +380,7 @@ class AcWindowsProvider : AppWidgetProvider() {
         // widget's themeable series, it's a fourth reading riding along on the same line.
         private val AQI_GREEN = Color.rgb(0x4A, 0xDE, 0x80)
 
-        /** The footer's dimmed variant: [theme]'s text colour at ~70% alpha (was hardcoded #B3FFFFFF). */
+        /** The footer's dimmed variant: [theme]'s text colour at ~70% alpha. */
         private fun footerDim(theme: WidgetTheme): Int = (0xB3 shl 24) or (theme.text and 0x00FFFFFF)
 
         /** Scale every RemoteViews text row to [theme]'s text-size slider. */

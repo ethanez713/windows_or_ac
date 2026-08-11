@@ -120,7 +120,6 @@ def _notes(points: list[ForecastPoint], fc: Forecast, c: Comfort) -> list[str]:
             "keep windows closed / run AC.")
         return notes
 
-    # When to open.
     if fc.best_start == points[0].time:
         notes.append(f"Good to open now (through {fmt_hour(fc.best_end)}).")
     else:

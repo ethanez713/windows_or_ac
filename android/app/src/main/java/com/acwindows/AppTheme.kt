@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
-// ── Modern dark palette (slate base + emerald accent, Tailwind-ish) ──
+// Modern dark palette (slate base + emerald accent, Tailwind-ish)
 private val Bg = Color(0xFF0E1217)
 private val Surface = Color(0xFF161B22)
 private val SurfaceHi = Color(0xFF1E242D)
@@ -42,7 +42,6 @@ fun detractorGrey(factor: Color): Color = lerp(BarClosed, factor, 0.28f)
 const val HOT_F = 90.0
 val HotRed = Color(0xFFEF4444)   // red-500
 
-// Per-factor line colours — distinct, semantically apt, modern.
 val FactorTemp = Color(0xFFFB923C)   // orange-400     (warmth)
 val FactorHumid = Color(0xFFA5B4FC)  // periwinkle     (moisture)
 val FactorAqi = Color(0xFF4ADE80)    // green-400      (clean air)

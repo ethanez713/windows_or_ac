@@ -33,8 +33,6 @@ class ConfigActivity : Activity() {
     /** The location label stored in prefs when the screen opened; restored on discard. */
     private var savedPlaceName: String? = null
 
-    // ───────── temperature unit toggle ─────────
-
     /** The unit the four setpoint fields are CURRENTLY rendered in. */
     private lateinit var currentUnit: TempUnit
 
@@ -184,7 +182,7 @@ class ConfigActivity : Activity() {
         super.onDestroy()
     }
 
-    // ───────── location: follow the phone, look up an address, or type coordinates ─────────
+    // Location: follow the phone, look up an address, or type coordinates.
 
     private fun follow(): CheckBox = findViewById(R.id.use_device_location)
 
@@ -284,8 +282,6 @@ class ConfigActivity : Activity() {
         lat == cfg.lat && lon == cfg.lon -> cfg.placeName   // unchanged → keep the stored label
         else -> null                                        // changed by hand → no known label
     }
-
-    // ───────── temperature unit + text size ─────────
 
     private fun celsiusCheck(): CheckBox = findViewById(R.id.use_celsius)
     private fun nowViewCheck(): CheckBox = findViewById(R.id.start_at_now)

@@ -121,8 +121,6 @@ object PanelGraph {
         val code: List<Int?>,
     )
 
-    // ───────────────────────── shared chrome ─────────────────────────
-
     /** Row [i] is history once "now" has passed its right edge — draw it faded. */
     private fun pastAlpha(i: Int, nowPos: Double?): Int =
         if (nowPos != null && i + 1 <= nowPos) PAST_ALPHA else 255
@@ -232,8 +230,6 @@ object PanelGraph {
             else if (v(i - 1) == null) c.drawLine(x(i) - cellW / 3, y(a), x(i) + cellW / 3, y(a), p)
         }
     }
-
-    // ───────────────────────── TIMESERIES ─────────────────────────
 
     private fun renderTimeseries(
         c: Canvas, w: Int, h: Int, density: Float, theme: WidgetTheme, unit: TempUnit,
@@ -420,8 +416,6 @@ object PanelGraph {
         }
         c.drawLine(axisW, thrY, axisW + n * cellStep, thrY, dash)
     }
-
-    // ───────────────────────── HOURLY_ROW ─────────────────────────
 
     /**
      * A horizontal strip of per-hour columns: value, weather icon, an optional secondary
