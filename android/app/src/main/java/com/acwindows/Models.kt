@@ -13,10 +13,10 @@ package com.acwindows
 data class Comfort(
     val tempIdealF: Double = 76.0,        // temp: comfortable up to here
     val maxTempF: Double = 78.0,          // temp: ventilation can't win at/above
-    val dewPointIdealF: Double = 55.0,    // humidity: not muggy up to here
-    val dewPointMaxF: Double = 60.0,      // humidity: too muggy at/above
-    val aqiIdeal: Double = 50.0,          // air: clean up to here
-    val aqiMax: Int = 100,                // air: unhealthy at/above
+    val dewPointIdealF: Double = 60.0,    // humidity: not muggy up to here
+    val dewPointMaxF: Double = 65.0,      // humidity: too muggy at/above
+    val aqiIdeal: Double = 100.0,         // air: clean up to here
+    val aqiMax: Int = 150,                // air: unhealthy at/above
     val rainProbIdeal: Double = 20.0,     // rain: fine up to this % chance
     val rainProbMax: Double = 70.0,       // rain: likely at/above
     // Forecast / scoring (see Score.kt + README "Methodology").

@@ -9,7 +9,7 @@ import org.junit.Test
  */
 class ScoreTest {
 
-    private val c = Comfort()  // defaults: temp 76/78, dew 55/60, aqi 50/100, rain 20/70
+    private val c = Comfort()  // defaults: temp 76/78, dew 60/65, aqi 100/150, rain 20/70
 
     @Test fun coolDryCleanIsPerfect() {
         assertEquals(100.0, Score.windowScore(c, tempF = 70.0, dewPointF = 50.0, aqi = 20), 0.001)
@@ -22,11 +22,11 @@ class ScoreTest {
 
     @Test fun muggyZeroesIt() {
         // Dew point at the muggy cap kills favorability even when cool.
-        assertEquals(0.0, Score.windowScore(c, tempF = 70.0, dewPointF = 60.0, aqi = 20), 0.001)
+        assertEquals(0.0, Score.windowScore(c, tempF = 70.0, dewPointF = 65.0, aqi = 20), 0.001)
     }
 
     @Test fun badAirZeroesIt() {
-        assertEquals(0.0, Score.windowScore(c, tempF = 70.0, dewPointF = 50.0, aqi = 100), 0.001)
+        assertEquals(0.0, Score.windowScore(c, tempF = 70.0, dewPointF = 50.0, aqi = 150), 0.001)
     }
 
     @Test fun rainProbabilityRamps() {

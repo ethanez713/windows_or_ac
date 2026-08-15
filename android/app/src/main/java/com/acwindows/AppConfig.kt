@@ -1,6 +1,7 @@
 package com.acwindows
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import java.time.ZoneId
 import kotlin.math.abs
@@ -15,9 +16,9 @@ enum class DayViewMode { TODAY, NOW }
 /**
  * App configuration: your home location and comfort target.
  *
- * MVP: edit the DEFAULT_* constants below and rebuild. (Values are also read
- * from SharedPreferences first, so a future in-app settings screen can override
- * them without a rebuild.)
+ * The DEFAULT_* constants and [Comfort]'s defaults are a first-run *seed*, not a live
+ * source — see [Companion.freezeDefaults]. Once an install has been seeded its settings
+ * live on the device, so shipping a new APK can't move numbers out from under someone.
  */
 data class AppConfig(
     val lat: Double,
@@ -58,14 +59,15 @@ data class AppConfig(
         const val DEFAULT_LON = -74.0060           // your longitude
         const val DEFAULT_TZ = "America/New_York"  // "auto" or an IANA tz name
         const val DEFAULT_UA = "ac-widget/0.1 (your-email@example.com)" // NWS asks for a contact
-        // Comfort / decision setpoints (also editable here, then rebuild):
+        // Comfort / decision setpoints seeded on first run:
         const val DEFAULT_MAX_TEMP_F = 78.0        // don't let the house get warmer than this
         const val DEFAULT_OPEN_SCORE_MIN = 60.0    // open windows when the score is ≥ this (0-100)
         const val DEFAULT_WIDGET_HOURS = 36        // widget graph look-ahead (configurable)
-        // Other comfort defaults live in Comfort() (dew point max 60°F, AQI max 100).
+        // The rest live in Comfort() (dew point 60/65°F, AQI 100/150).
 
         fun load(context: Context): AppConfig {
             val p = context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE)
+            freezeDefaults(p)
             val base = Comfort()
             return AppConfig(
                 lat = p.getString("lat", null)?.toDoubleOrNull() ?: DEFAULT_LAT,
@@ -103,6 +105,56 @@ data class AppConfig(
                 appShowHourlyRows = p.getBoolean("appShowHourlyRows", false),
             )
         }
+
+        /**
+         * A tunable's first-run value, plus — when a release changes what we ship —
+         * [supersedes], the previously-shipped number this one is allowed to replace.
+         */
+        private class Seed(val key: String, val value: String, val supersedes: Double? = null)
+
+        private fun seeds(): List<Seed> {
+            val base = Comfort()
+            return listOf(
+                Seed("tempIdealF", base.tempIdealF.toString()),
+                Seed("maxTempF", DEFAULT_MAX_TEMP_F.toString()),
+                Seed("openScoreMin", DEFAULT_OPEN_SCORE_MIN.toString()),
+                Seed("dewPointIdealF", base.dewPointIdealF.toString(), supersedes = 55.0),
+                Seed("dewPointMaxF", base.dewPointMaxF.toString(), supersedes = 60.0),
+                Seed("aqiIdeal", base.aqiIdeal.toString(), supersedes = 50.0),
+                Seed("aqiMax", base.aqiMax.toString(), supersedes = 100.0),
+                Seed("rainProbIdeal", base.rainProbIdeal.toString()),
+                Seed("rainProbMax", base.rainProbMax.toString()),
+                Seed("appTextScalePct", "100"),
+                Seed("widgetOpacity", "100"),
+                Seed("widgetForecastHours", DEFAULT_WIDGET_HOURS.toString()),
+                Seed("lat", DEFAULT_LAT.toString()),
+                Seed("lon", DEFAULT_LON.toString()),
+            )
+        }
+
+        /**
+         * Write the shipped defaults into the prefs the first time an install reads its
+         * config, so from then on every tunable is answered from the device rather than
+         * from whatever the current build happens to be compiled with. Without this a new
+         * APK silently moves the settings of anyone who never opened the settings screen.
+         *
+         * [SETTINGS_VERSION] is the deliberate escape hatch for actually changing a shipped
+         * default: bumping it re-offers each seed, but only overwrites a value still sitting
+         * on the number that seed [Seed.supersedes] — anything the user chose is left alone.
+         * Adding a seed for a brand-new key needs no bump; an unset key is always seeded.
+         */
+        private fun freezeDefaults(p: SharedPreferences) {
+            if (p.getInt("settingsVersion", 0) >= SETTINGS_VERSION) return
+            val e = p.edit()
+            seeds().forEach { seed ->
+                val stored = p.getString(seed.key, null)?.toDoubleOrNull()
+                if (stored == null || stored == seed.supersedes) e.putString(seed.key, seed.value)
+            }
+            e.putInt("settingsVersion", SETTINGS_VERSION).apply()
+        }
+
+        /** 1: comfort window widened — dew point 55/60 → 60/65 °F, AQI 50/100 → 100/150. */
+        private const val SETTINGS_VERSION = 1
 
         /**
          * The card's own tap toggle writes this directly (no trip through the settings

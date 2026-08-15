@@ -9,7 +9,7 @@ import org.junit.Test
  */
 class DecisionTest {
 
-    private val c = Comfort()  // temp 76/78, dew max 60, aqi max 100
+    private val c = Comfort()  // temp 76/78, dew max 65, aqi max 150
 
     /** A consensus with sensible, non-blocking defaults (cf. Python's reading()). */
     private fun consensus(
