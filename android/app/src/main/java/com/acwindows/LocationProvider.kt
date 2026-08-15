@@ -43,6 +43,35 @@ object LocationProvider {
         Manifest.permission.ACCESS_COARSE_LOCATION,
     )
 
+    /**
+     * Where the forecast coordinates are coming from, for the pin the app and widget show.
+     *
+     * Deliberately answered from the settings and the permission/provider state rather than
+     * from whether the last fetch actually got a fix: without ACCESS_BACKGROUND_LOCATION the
+     * widget's background refresh is handed no fix at all (see [AppConfig.loadResolved]), so
+     * a per-fetch answer would flap between LIVE and UNAVAILABLE every ten minutes while
+     * following the phone perfectly well. [LIVE] therefore means "set to follow the phone,
+     * and able to" — a fix that is one app-launch stale is still live.
+     */
+    enum class LocationMode(val iconRes: Int, val label: String) {
+        LIVE(R.drawable.ic_location, "Live location"),
+        MANUAL(R.drawable.ic_location_off, "Manually set location"),
+        UNAVAILABLE(R.drawable.ic_location_off, "Location unavailable"),
+    }
+
+    fun mode(context: Context, useDeviceLocation: Boolean): LocationMode = when {
+        !useDeviceLocation -> LocationMode.MANUAL
+        !hasPermission(context) || !anyProviderEnabled(context) -> LocationMode.UNAVAILABLE
+        else -> LocationMode.LIVE
+    }
+
+    /** True while at least one fix source is switched on — i.e. location isn't off system-wide. */
+    private fun anyProviderEnabled(context: Context): Boolean = runCatching {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+            lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }.getOrDefault(false)
+
     fun hasPermission(context: Context): Boolean =
         granted(context, Manifest.permission.ACCESS_COARSE_LOCATION) ||
             granted(context, Manifest.permission.ACCESS_FINE_LOCATION)

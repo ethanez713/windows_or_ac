@@ -443,7 +443,15 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { SourceStatusHeader(state, updatedAtMs, cfg.placeName) { showSources = true } }
+        item {
+            // Re-read per fetch rather than once: the permission or the system location
+            // switch can be changed while the app sits open, and each refresh is the
+            // cheapest honest moment to notice.
+            val locationMode = remember(cfg.useDeviceLocation, updatedAtMs) {
+                LocationProvider.mode(context, cfg.useDeviceLocation)
+            }
+            SourceStatusHeader(state, updatedAtMs, cfg.placeName, locationMode) { showSources = true }
+        }
         items(displayDays, key = { it.date }) { day ->
             val isToday = day.date == todayDate
             DayCard(
@@ -621,7 +629,13 @@ private fun fmtInches(inches: Double): String {
  * per-source breakdown — handy when the reported numbers look off versus a local reading.
  */
 @Composable
-private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, place: String?, onClick: () -> Unit) {
+private fun SourceStatusHeader(
+    state: AppState,
+    updatedAtMs: Long,
+    place: String?,
+    locationMode: LocationProvider.LocationMode,
+    onClick: () -> Unit,
+) {
     val c = state.consensus
     val ok = c.sourcesOk.size
     val total = maxOf(c.sourcesAttempted, ok + c.sourcesFailed.size)
@@ -649,12 +663,7 @@ private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, place: String
                 // ellipsizes inside the weighted inner row so the count/time never get pushed
                 // off; the chevron stays pinned to the right edge.
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painterResource(R.drawable.ic_location),
-                        contentDescription = null,
-                        tint = onVar,
-                        modifier = Modifier.size(14.dp),
-                    )
+                    LocationPin(locationMode, onVar)
                     Spacer(Modifier.width(4.dp))
                     Text(
                         placeLabel,
@@ -673,6 +682,8 @@ private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, place: String
                 }
                 Text(" ›", fontSize = 13.sp, color = primary)
             } else {
+                LocationPin(locationMode, onVar)
+                Spacer(Modifier.width(6.dp))
                 Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
                 Spacer(Modifier.width(8.dp))
                 Text("$ok/$total sources", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
@@ -682,6 +693,16 @@ private fun SourceStatusHeader(state: AppState, updatedAtMs: Long, place: String
             }
         }
     }
+}
+
+@Composable
+private fun LocationPin(mode: LocationProvider.LocationMode, tint: Color) {
+    Icon(
+        painterResource(mode.iconRes),
+        contentDescription = mode.label,
+        tint = tint,
+        modifier = Modifier.size(14.dp),
+    )
 }
 
 private fun confidenceColor(confidence: String): Color = when (confidence) {

@@ -303,6 +303,7 @@ class AcWindowsProvider : AppWidgetProvider() {
             val showReadings = hDp >= 130
             val place = cfg.placeName?.trim().orEmpty()
             val showLocation = place.isNotEmpty()
+            val locationMode = LocationProvider.mode(context, cfg.useDeviceLocation)
 
             // Estimate the graph ImageView's true size so its bitmap matches the
             // view aspect (with fitCenter) — this is what keeps text from
@@ -334,10 +335,9 @@ class AcWindowsProvider : AppWidgetProvider() {
                 setTextColor(R.id.readings, theme.text)
                 setTextViewText(R.id.readings, buildReadings(s, unit, theme))
                 setViewVisibility(R.id.readings, if (showReadings) View.VISIBLE else View.GONE)
-                // Location pin sits as the footer line's leading compound drawable when set.
-                setTextViewCompoundDrawablesRelative(
-                    R.id.sources, if (showLocation) R.drawable.ic_location else 0, 0, 0, 0,
-                )
+                // Location pin sits as the footer line's leading compound drawable — crossed
+                // out for a hand-entered location or when the phone won't give us a fix.
+                setTextViewCompoundDrawablesRelative(R.id.sources, locationMode.iconRes, 0, 0, 0)
                 setTextViewText(R.id.sources, sources)
                 setTextViewText(R.id.updated, asOfLabel(s, refreshing, nowMs))
                 setTextColor(R.id.updated, if (s.ageMs(nowMs) > WidgetCache.STALE_MS) STALE_AMBER else footerDim(theme))
