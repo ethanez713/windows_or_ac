@@ -551,18 +551,19 @@ private fun DayCard(
                 if (isToday) {
                     Box(
                         Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                             // An inner clickable consumes the tap before it reaches the
                             // card's own clickable (the expand/collapse toggle) — nesting
                             // is enough, no explicit consume()/interaction-source needed.
                             .clickable { onToggleView() }
-                            .padding(horizontal = 6.dp),
+                            .padding(horizontal = 10.dp),
                     ) {
                         Text(
                             if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
