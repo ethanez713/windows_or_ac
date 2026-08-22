@@ -68,14 +68,15 @@ object WeatherRepository {
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourly(cfg, hrs) }
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, hrs) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, hrs) }
+        val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_hours=$hrs") }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, metnoH),
+            readingTasks, listOf(omH, nwsH, metnoH, ecmwfH),
             assemble = { readings, feeds ->
                 WeatherResult(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
                     ForecastBuilder.build(
                         hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
-                        extraHourly = listOf(hourlyOf(feeds, metnoH)),
+                        extraHourly = listOf(hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH)),
                     ),
                 )
             },
@@ -128,6 +129,7 @@ object WeatherRepository {
         // marks the missing temperature cross-check "degraded").
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, days * 24) }
+        val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_days=$days") }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
         // The near-term 15-minute series for the app's "now → end of day" view. One more
         // HTTP round trip per refresh, but it's just another feed in the progressive
@@ -135,14 +137,14 @@ object WeatherRepository {
         // rather than delaying the screen past SOURCE_SOFT_DEADLINE_MS.
         val min15 = async(Dispatchers.IO) { fetchOpenMeteoMinutely15(cfg, 96) }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, metnoH, home, min15),
+            readingTasks, listOf(omH, nwsH, metnoH, ecmwfH, home, min15),
             assemble = { readings, feeds ->
                 val min15Rows = hourlyOf(feeds, min15)
                 AppState(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
                     ForecastBuilder.build(
                         hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
-                        extraHourly = listOf(hourlyOf(feeds, metnoH)),
+                        extraHourly = listOf(hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH)),
                     ),
                     feeds[home] as? HomeState ?: HomeState(),
                     readings.toList(),
@@ -492,6 +494,33 @@ object WeatherRepository {
             mapOf(
                 "time" to p.optString("startTime").take(16),
                 "tempF" to temp, "dewPointF" to cToF(dewC), "precipProb" to pop,
+            )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /**
+     * A second Open-Meteo hourly call pinned to ECMWF, purely as an extra rain vote.
+     * Open-Meteo derives precipitation_probability from the GFS ensemble for every US
+     * model it serves — best_match, ncep_hrrr_conus and gfs_seamless return byte-identical
+     * probabilities — so naming ECMWF is the only way to get a second opinion out of this
+     * API, and it tracks NWS closely on hours the default model calls dry. Rain fields
+     * only: temperature, dew point and AQI already come from the best_match call, and
+     * asking for them again would just be a bigger payload.
+     */
+    private fun fetchOpenMeteoEcmwfRain(cfg: AppConfig, forecastRange: String): List<Map<String, Any?>> = try {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
+            "&hourly=precipitation_probability,precipitation&$forecastRange" +
+            "&models=ecmwf_ifs025&precipitation_unit=inch&timezone=${cfg.timezone}"
+        val h = getJson(url, cfg.userAgent).getJSONObject("hourly")
+        val times = h.getJSONArray("time")
+        val pop = h.optJSONArray("precipitation_probability")
+        val precip = h.optJSONArray("precipitation")
+        (0 until times.length()).map { i ->
+            mapOf<String, Any?>(
+                "time" to times.getString(i),
+                "precipProb" to pop?.dblAt(i), "precipIn" to precip?.dblAt(i),
             )
         }
     } catch (e: Exception) {

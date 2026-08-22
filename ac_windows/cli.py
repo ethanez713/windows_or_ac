@@ -53,12 +53,16 @@ def fetch_forecast(cfg: Config) -> Forecast:
     """
     hrs = cfg.comfort.forecast_hours
     ua = cfg.sources.user_agent
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         f_om = ex.submit(open_meteo.fetch_hourly, cfg.location, ua, hrs)
         f_nws = ex.submit(nws.fetch_hourly, cfg.location, ua, hrs)
         f_metno = ex.submit(metno.fetch_hourly, cfg.location, ua, hrs)
-        om_hourly, nws_hourly, metno_hourly = f_om.result(), f_nws.result(), f_metno.result()
-    return build_forecast(om_hourly, nws_hourly, cfg.comfort, extra_hourly=[metno_hourly])
+        f_ecmwf = ex.submit(open_meteo.fetch_hourly_rain, cfg.location, ua, hrs)
+        om_hourly, nws_hourly = f_om.result(), f_nws.result()
+        metno_hourly, ecmwf_hourly = f_metno.result(), f_ecmwf.result()
+    return build_forecast(
+        om_hourly, nws_hourly, cfg.comfort, extra_hourly=[metno_hourly, ecmwf_hourly]
+    )
 
 
 def _round(x, n=1):

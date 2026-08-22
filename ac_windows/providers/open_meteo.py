@@ -68,6 +68,38 @@ _HOURLY_FIELDS = (
 )
 
 
+def fetch_hourly_rain(
+    loc: Location, user_agent: str, hours: int = 8,
+    model: str = "ecmwf_ifs025", timeout: float = 15.0,
+) -> list[dict]:
+    """Rain fields only, from one named model, as an extra vote in forecast.py.
+
+    Open-Meteo derives precipitation_probability from the GFS ensemble for every
+    US model it serves — best_match, ncep_hrrr_conus and gfs_seamless return
+    byte-identical probabilities — so naming ECMWF is the only way to get a
+    second opinion out of this API, and it tracks NWS closely on hours the
+    default model calls dry. Everything else (temp, dew point, AQI) already
+    comes from `fetch_hourly`. Returns [] on any failure.
+    """
+    url = (
+        f"{FORECAST_URL}?latitude={loc.latitude}&longitude={loc.longitude}"
+        f"&hourly=precipitation_probability,precipitation&forecast_hours={hours}"
+        f"&models={model}&precipitation_unit=mm&timezone={loc.timezone}"
+    )
+    try:
+        h = get_json(url, user_agent, timeout).get("hourly", {})
+    except FetchError:
+        return []
+
+    times = h.get("time") or []
+    pop = h.get("precipitation_probability") or [None] * len(times)
+    precip = h.get("precipitation") or [None] * len(times)
+    return [
+        {"time": t, "precip_prob": pop[i], "precip_mm": precip[i]}
+        for i, t in enumerate(times)
+    ]
+
+
 def fetch_hourly(
     loc: Location, user_agent: str, hours: int = 8, timeout: float = 15.0
 ) -> list[dict]:
