@@ -11,6 +11,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
@@ -44,6 +46,8 @@ object WeatherRepository {
      */
     private const val SOURCE_SOFT_DEADLINE_MS = 5_000L
 
+    private const val MM_PER_INCH = 25.4
+
     /** One-shot fetch: returns the final result with no progressive callbacks. */
     suspend fun fetch(cfg: AppConfig): WeatherResult = fetchProgressive(cfg) {}
 
@@ -63,12 +67,16 @@ object WeatherRepository {
         val readingTasks = currentReadingTasks(cfg)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourly(cfg, hrs) }
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, hrs) }
+        val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, hrs) }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH),
+            readingTasks, listOf(omH, nwsH, metnoH),
             assemble = { readings, feeds ->
                 WeatherResult(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
-                    ForecastBuilder.build(hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort),
+                    ForecastBuilder.build(
+                        hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
+                        extraHourly = listOf(hourlyOf(feeds, metnoH)),
+                    ),
                 )
             },
             onUpdate = onUpdate,
@@ -115,9 +123,11 @@ object WeatherRepository {
     ): AppState = coroutineScope {
         val readingTasks = currentReadingTasks(cfg)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourlyDays(cfg, days) }
-        // NWS hourly tops out ~6.5 days; ask for what it has, ForecastBuilder marks
-        // the rest "degraded". Open-Meteo alone still drives the score.
+        // NWS hourly tops out ~6.5 days and met.no's hourly rain ~2.5; ask each for what
+        // it has, and the days past it fall back to Open-Meteo alone (ForecastBuilder
+        // marks the missing temperature cross-check "degraded").
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
+        val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, days * 24) }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
         // The near-term 15-minute series for the app's "now → end of day" view. One more
         // HTTP round trip per refresh, but it's just another feed in the progressive
@@ -125,12 +135,15 @@ object WeatherRepository {
         // rather than delaying the screen past SOURCE_SOFT_DEADLINE_MS.
         val min15 = async(Dispatchers.IO) { fetchOpenMeteoMinutely15(cfg, 96) }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, home, min15),
+            readingTasks, listOf(omH, nwsH, metnoH, home, min15),
             assemble = { readings, feeds ->
                 val min15Rows = hourlyOf(feeds, min15)
                 AppState(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
-                    ForecastBuilder.build(hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort),
+                    ForecastBuilder.build(
+                        hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
+                        extraHourly = listOf(hourlyOf(feeds, metnoH)),
+                    ),
                     feeds[home] as? HomeState ?: HomeState(),
                     readings.toList(),
                     nearTerm = if (min15Rows.isEmpty()) null else
@@ -474,10 +487,41 @@ object WeatherRepository {
             var temp = p.dblOrNull("temperature")
             if (temp != null && p.optString("temperatureUnit") == "C") temp = cToF(temp)
             val dewC = p.optJSONObject("dewpoint")?.let { if (it.isNull("value")) null else it.optDouble("value") }
+            val pop = p.optJSONObject("probabilityOfPrecipitation")
+                ?.let { if (it.isNull("value")) null else it.optDouble("value") }
             mapOf(
                 "time" to p.optString("startTime").take(16),
-                "tempF" to temp, "dewPointF" to cToF(dewC),
+                "tempF" to temp, "dewPointF" to cToF(dewC), "precipProb" to pop,
             )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /**
+     * met.no's hourly precipitation AMOUNT, as a second vote on precipIn (Open-Meteo
+     * regularly reports 0.00" for hours met.no puts real millimetres in). Amount only:
+     * `probability_of_precipitation` is a Nordic-area field and comes back null
+     * everywhere else, so there is nothing here to vote on the chance with.
+     *
+     * Two shape differences from the Open-Meteo rows this merges into, both handled
+     * here so ForecastBuilder sees one format: times are UTC and have to be moved into
+     * the forecast's own zone to key against it, and amounts are millimetres. Rows past
+     * met.no's ~2.5-day hourly horizon carry only a `next_6_hours` block; those are
+     * skipped rather than smeared across six hours it never forecast.
+     */
+    private fun fetchMetnoHourly(cfg: AppConfig, hours: Int): List<Map<String, Any?>> = try {
+        val url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${cfg.lat}&lon=${cfg.lon}"
+        val ts = getJson(url, cfg.userAgent).getJSONObject("properties").getJSONArray("timeseries")
+        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm").withZone(cfg.zone())
+        (0 until minOf(hours, ts.length())).mapNotNull { i ->
+            val e = ts.getJSONObject(i)
+            val mm = e.optJSONObject("data")?.optJSONObject("next_1_hours")
+                ?.optJSONObject("details")?.dblOrNull("precipitation_amount")
+                ?: return@mapNotNull null
+            val t = runCatching { fmt.format(Instant.parse(e.optString("time"))) }.getOrNull()
+                ?: return@mapNotNull null
+            mapOf<String, Any?>("time" to t, "precipIn" to mm / MM_PER_INCH)
         }
     } catch (e: Exception) {
         emptyList()

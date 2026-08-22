@@ -5,7 +5,7 @@ import kotlin.math.abs
 /**
  * Builds a scored [Forecast] from hourly series — a port of the Python backend's
  * forecast.py. Open-Meteo drives the score; NWS (and met.no) cross-check the
- * temperature track.
+ * temperature track and vote on the rain fields (see [rainConsensus]).
  *
  * Each hourly map carries: time, tempF, dewPointF, aqi, precipProb, shortwaveWm2.
  */
@@ -64,22 +64,32 @@ object ForecastBuilder {
         return "$h12:${m.toString().padStart(2, '0')} $ampm"
     }
 
+    /**
+     * [crossHourly] is NWS, [extraHourly] any further hourly feeds (today: met.no).
+     * Both are keyed by the same local-ISO `time` string Open-Meteo uses, and any
+     * row either of them lacks simply doesn't vote.
+     */
     fun build(
         omHourly: List<Map<String, Any?>>, crossHourly: List<Map<String, Any?>>, c: Comfort,
         stepMinutes: Int = 60,
+        extraHourly: List<List<Map<String, Any?>>> = emptyList(),
     ): Forecast {
         val crossTemp = crossHourly.mapNotNull { h ->
             val t = h["time"] as? String ?: return@mapNotNull null
             (h["tempF"] as? Double)?.let { t to it }
         }.toMap()
 
+        val rainVoters = (listOf(crossHourly) + extraHourly).map { feed ->
+            feed.mapNotNull { h -> (h["time"] as? String)?.let { it to h } }.toMap()
+        }
+
         val points = omHourly.mapNotNull { h ->
             val time = h["time"] as? String ?: return@mapNotNull null
             val tempF = h["tempF"] as? Double
             val dewPointF = h["dewPointF"] as? Double
             val aqi = h["aqi"] as? Int
-            val precipProb = h["precipProb"] as? Double
-            val precipIn = h["precipIn"] as? Double
+            val precipProb = rainConsensus(h["precipProb"] as? Double, rainVoters, time, "precipProb")
+            val precipIn = rainConsensus(h["precipIn"] as? Double, rainVoters, time, "precipIn")
             val weatherCode = h["weatherCode"] as? Int
             val isDay = h["isDay"] as? Boolean
             val shortwaveWm2 = h["shortwaveWm2"] as? Double
@@ -121,6 +131,28 @@ object ForecastBuilder {
             notes = notes(points, bStart, bEnd, bAvg, c, stepMinutes),
             stepMinutes = stepMinutes,
         )
+    }
+
+    /**
+     * The rain fields are the one place the sources genuinely disagree: Open-Meteo's
+     * deterministic model routinely reports a 0.00" hour that NWS calls 70% likely, and
+     * met.no puts real millimetres in hours Open-Meteo leaves empty. Taking Open-Meteo
+     * alone therefore understates both the chance and the amount, which feeds straight
+     * into the score's rain penalty. So every source that has a value for [key] at
+     * [time] votes, and the median wins — the same robustness argument as the
+     * current-conditions weighted median in WeatherRepository.aggregate.
+     *
+     * With an even number of voters the two middle values are averaged rather than one
+     * being picked: at the usual count of two, picking a side would just be choosing a
+     * single source again.
+     */
+    private fun rainConsensus(
+        omValue: Double?, voters: List<Map<String, Map<String, Any?>>>, time: String, key: String,
+    ): Double? {
+        val vals = (listOfNotNull(omValue) + voters.mapNotNull { it[time]?.get(key) as? Double }).sorted()
+        if (vals.isEmpty()) return null
+        val mid = vals.size / 2
+        return if (vals.size % 2 == 1) vals[mid] else (vals[mid - 1] + vals[mid]) / 2.0
     }
 
     private data class Best(val start: String?, val end: String?, val avg: Double?)
