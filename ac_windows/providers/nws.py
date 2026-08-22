@@ -65,9 +65,9 @@ def fetch(loc: Location, user_agent: str, timeout: float = 15.0) -> WeatherReadi
 def fetch_hourly(
     loc: Location, user_agent: str, hours: int = 8, timeout: float = 15.0
 ) -> list[dict]:
-    """Next `hours` of NWS hourly *forecast* (temp + dew point), for cross-checking
-    Open-Meteo's forecast trajectory. NWS gives no AQI/solar, so this is a
-    temperature/dew-point sanity check only. Returns [] on any failure.
+    """Next `hours` of NWS hourly *forecast* (temp, dew point, precip chance), for
+    cross-checking Open-Meteo's forecast trajectory and voting on rain probability.
+    NWS gives no hourly precip amount or AQI/solar. Returns [] on any failure.
     """
     try:
         pts = get_json(f"{BASE}/points/{loc.latitude},{loc.longitude}", user_agent, timeout)
@@ -85,5 +85,6 @@ def fetch_hourly(
             "time": (p.get("startTime") or "")[:16],  # "...T16:00" local, match Open-Meteo
             "temp_f": temp,
             "dew_point_f": _c_to_f(_val(p.get("dewpoint"))),
+            "precip_prob": _val(p.get("probabilityOfPrecipitation")),
         })
     return out

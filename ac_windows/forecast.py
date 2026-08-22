@@ -1,8 +1,14 @@
-"""Turn two hourly series (Open-Meteo, NWS) into a scored look-ahead Forecast.
+"""Turn hourly series (Open-Meteo, NWS, and optionally more) into a scored
+look-ahead Forecast.
 
 Open-Meteo drives the score (it's the only source with hourly cloud, solar and
 AQI); NWS's hourly forecast is folded in as a temperature cross-check so the
 trajectory has the same multi-source agreement guarantee as the "now" reading.
+The rain fields (precip_prob, precip_mm) are a MEDIAN across every source that
+supplies them — Open-Meteo alone routinely reports 0mm/low-probability hours
+that NWS or met.no disagree with; see `_rain_consensus`. Python stays in
+millimetres throughout (unlike the Kotlin port's inches) since precip_mm was
+already the unit `WeatherReading`/Open-Meteo used here.
 Pure function of its inputs — no I/O — so it's fully unit-tested.
 """
 
@@ -62,30 +68,55 @@ def _best_window(points: list[ForecastPoint], threshold: float):
     return points[a].time, points[b].time, avg
 
 
+def _rain_consensus(
+    om_value: float | None, voters: list[dict[str, dict]], time: str, key: str
+) -> float | None:
+    vals = [om_value] + [voter.get(time, {}).get(key) for voter in voters]
+    vals = sorted(v for v in vals if v is not None)
+    if not vals:
+        return None
+    mid = len(vals) // 2
+    if len(vals) % 2 == 1:
+        return vals[mid]
+    # Even voter count (the usual case, two sources): average the middle pair
+    # rather than picking a side, which would just be favoring one source again.
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
 def build_forecast(
-    om_hourly: list[dict], nws_hourly: list[dict], c: Comfort
+    om_hourly: list[dict], nws_hourly: list[dict], c: Comfort,
+    extra_hourly: list[list[dict]] | None = None,
 ) -> Forecast:
     nws_temp = {h["time"]: h.get("temp_f") for h in nws_hourly if h.get("time")}
 
+    rain_voters = [
+        {h["time"]: h for h in feed if h.get("time")}
+        for feed in [nws_hourly, *(extra_hourly or [])]
+    ]
+
     points: list[ForecastPoint] = []
     for h in om_hourly:
+        time = h["time"]
+        precip_prob = _rain_consensus(h.get("precip_prob"), rain_voters, time, "precip_prob")
+        precip_mm = _rain_consensus(h.get("precip_mm"), rain_voters, time, "precip_mm")
         sb = window_score(
             c,
             temp_f=h.get("temp_f"),
             dew_point_f=h.get("dew_point_f"),
             aqi=h.get("aqi"),
-            precip_prob=h.get("precip_prob"),
+            precip_prob=precip_prob,
         )
         points.append(ForecastPoint(
-            time=h["time"],
+            time=time,
             score=sb.score,
             temp_f=h.get("temp_f"),
             dew_point_f=h.get("dew_point_f"),
             aqi=h.get("aqi"),
-            precip_prob=h.get("precip_prob"),
+            precip_prob=precip_prob,
+            precip_mm=precip_mm,
             cloud_pct=h.get("cloud_pct"),
             shortwave_wm2=h.get("shortwave_wm2"),
-            nws_temp_f=nws_temp.get(h["time"]),
+            nws_temp_f=nws_temp.get(time),
         ))
 
     fc = Forecast(points=points)

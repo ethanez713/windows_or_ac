@@ -22,7 +22,7 @@ from .config import Config, load_config
 from .decision import aqi_category, decide
 from .forecast import build_forecast, fmt_hour
 from .models import AggregateReading, Forecast, Recommendation
-from .providers import REGISTRY, nws, open_meteo
+from .providers import REGISTRY, metno, nws, open_meteo
 from .score import window_score
 
 _ACTION_EMOJI = {
@@ -53,11 +53,12 @@ def fetch_forecast(cfg: Config) -> Forecast:
     """
     hrs = cfg.comfort.forecast_hours
     ua = cfg.sources.user_agent
-    with ThreadPoolExecutor(max_workers=2) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:
         f_om = ex.submit(open_meteo.fetch_hourly, cfg.location, ua, hrs)
         f_nws = ex.submit(nws.fetch_hourly, cfg.location, ua, hrs)
-        om_hourly, nws_hourly = f_om.result(), f_nws.result()
-    return build_forecast(om_hourly, nws_hourly, cfg.comfort)
+        f_metno = ex.submit(metno.fetch_hourly, cfg.location, ua, hrs)
+        om_hourly, nws_hourly, metno_hourly = f_om.result(), f_nws.result(), f_metno.result()
+    return build_forecast(om_hourly, nws_hourly, cfg.comfort, extra_hourly=[metno_hourly])
 
 
 def _round(x, n=1):
@@ -110,6 +111,7 @@ def build_payload(
                     "dew_point_f": _round(p.dew_point_f),
                     "aqi": p.aqi,
                     "precip_prob": p.precip_prob,
+                    "precip_mm": _round(p.precip_mm),
                     "cloud_pct": p.cloud_pct,
                     "shortwave_wm2": p.shortwave_wm2,
                     "nws_temp_f": _round(p.nws_temp_f),

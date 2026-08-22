@@ -19,12 +19,21 @@ Docs: https://api.met.no/weatherapi/locationforecast/2.0/documentation
 from __future__ import annotations
 
 import math
+from datetime import datetime, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..config import Location
 from ..http_util import FetchError, get_json
 from ..models import WeatherReading
 
 URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+
+
+def _zone(tz_name: str) -> tzinfo:
+    try:
+        return ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return datetime.now().astimezone().tzinfo
 
 
 def _dew_point_c(temp_c: float | None, rh_pct: float | None) -> float | None:
@@ -67,8 +76,35 @@ def fetch(loc: Location, user_agent: str, timeout: float = 15.0) -> WeatherReadi
     r.observed_at = now.get("time")
     return r
 
-# Note: met.no also returns an hourly timeseries, but the forecast track is built
-# from Open-Meteo (the score driver) cross-checked against NWS only — see
-# forecast.py — so no met.no `fetch_hourly` is wired in. (met.no's compact product
-# reports times in UTC, which would need converting to the local-time keys the
-# other sources use before it could join that track.)
+
+def fetch_hourly(
+    loc: Location, user_agent: str, hours: int = 8, timeout: float = 15.0
+) -> list[dict]:
+    """met.no's hourly precipitation amount, as another vote on precip_mm in
+    forecast.py (met.no puts real millimetres in hours Open-Meteo reports 0mm
+    for). No probability here: `probability_of_precipitation` is a Nordic-only
+    field and comes back null everywhere else. Returns [] on any failure.
+    """
+    url = f"{URL}?lat={loc.latitude}&lon={loc.longitude}"
+    try:
+        ts = get_json(url, user_agent, timeout)["properties"]["timeseries"]
+    except (FetchError, KeyError, TypeError):
+        return []
+
+    zone = _zone(loc.timezone)
+    out: list[dict] = []
+    for e in ts[:hours]:
+        # Rows past met.no's ~2.5-day hourly horizon carry only `next_6_hours`;
+        # skip them rather than spreading a 6-hour total across six hours it
+        # never actually forecast at hourly resolution.
+        details = e.get("data", {}).get("next_1_hours", {}).get("details")
+        if details is None:
+            continue
+        mm = details.get("precipitation_amount")
+        raw_time = e.get("time", "")
+        try:
+            local = datetime.fromisoformat(raw_time.replace("Z", "+00:00")).astimezone(zone)
+        except ValueError:
+            continue
+        out.append({"time": local.strftime("%Y-%m-%dT%H:%M"), "precip_mm": mm})
+    return out

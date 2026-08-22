@@ -68,6 +68,7 @@ class ForecastPoint:
     dew_point_f: Optional[float] = None
     aqi: Optional[int] = None
     precip_prob: Optional[float] = None
+    precip_mm: Optional[float] = None  # mm, unlike the Kotlin port's inches — see forecast.py
     cloud_pct: Optional[float] = None
     shortwave_wm2: Optional[float] = None
     nws_temp_f: Optional[float] = None      # cross-check from NWS hourly forecast

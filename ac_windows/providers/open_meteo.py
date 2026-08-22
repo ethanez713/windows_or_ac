@@ -64,7 +64,7 @@ def fetch(loc: Location, user_agent: str, timeout: float = 15.0) -> WeatherReadi
 
 _HOURLY_FIELDS = (
     "temperature_2m,dew_point_2m,relative_humidity_2m,precipitation_probability,"
-    "cloud_cover,shortwave_radiation,wind_speed_10m"
+    "precipitation,cloud_cover,shortwave_radiation,wind_speed_10m"
 )
 
 
@@ -110,7 +110,7 @@ def fetch_hourly(
         return h.get(name) or [None] * len(times)
 
     temp, dew, rh = col("temperature_2m"), col("dew_point_2m"), col("relative_humidity_2m")
-    pop, cloud = col("precipitation_probability"), col("cloud_cover")
+    pop, precip, cloud = col("precipitation_probability"), col("precipitation"), col("cloud_cover")
     sw, wind = col("shortwave_radiation"), col("wind_speed_10m")
 
     out: list[dict] = []
@@ -121,6 +121,7 @@ def fetch_hourly(
             "dew_point_f": dew[i],
             "rh": rh[i],
             "precip_prob": pop[i],
+            "precip_mm": precip[i],
             "cloud_pct": cloud[i],
             "shortwave_wm2": sw[i],
             "wind_mph": wind[i],
