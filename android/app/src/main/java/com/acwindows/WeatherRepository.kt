@@ -69,14 +69,18 @@ object WeatherRepository {
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, hrs) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, hrs) }
         val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_hours=$hrs") }
+        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k) } }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, metnoH, ecmwfH),
+            readingTasks, listOfNotNull(omH, nwsH, metnoH, ecmwfH, tioH),
             assemble = { readings, feeds ->
                 WeatherResult(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
                     ForecastBuilder.build(
                         hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
-                        extraHourly = listOf(hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH)),
+                        extraHourly = listOfNotNull(
+                            hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH),
+                            tioH?.let { hourlyOf(feeds, it) },
+                        ),
                     ),
                 )
             },
@@ -130,6 +134,7 @@ object WeatherRepository {
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, days * 24) }
         val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_days=$days") }
+        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k) } }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
         // The near-term 15-minute series for the app's "now → end of day" view. One more
         // HTTP round trip per refresh, but it's just another feed in the progressive
@@ -137,14 +142,17 @@ object WeatherRepository {
         // rather than delaying the screen past SOURCE_SOFT_DEADLINE_MS.
         val min15 = async(Dispatchers.IO) { fetchOpenMeteoMinutely15(cfg, 96) }
         driveProgressive(
-            readingTasks, listOf(omH, nwsH, metnoH, ecmwfH, home, min15),
+            readingTasks, listOfNotNull(omH, nwsH, metnoH, ecmwfH, tioH, home, min15),
             assemble = { readings, feeds ->
                 val min15Rows = hourlyOf(feeds, min15)
                 AppState(
                     aggregate(readings, cfg.sourceWeights, readingTasks.size),
                     ForecastBuilder.build(
                         hourlyOf(feeds, omH), hourlyOf(feeds, nwsH), cfg.comfort,
-                        extraHourly = listOf(hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH)),
+                        extraHourly = listOfNotNull(
+                            hourlyOf(feeds, metnoH), hourlyOf(feeds, ecmwfH),
+                            tioH?.let { hourlyOf(feeds, it) },
+                        ),
                     ),
                     feeds[home] as? HomeState ?: HomeState(),
                     readings.toList(),
@@ -539,18 +547,60 @@ object WeatherRepository {
      * met.no's ~2.5-day hourly horizon carry only a `next_6_hours` block; those are
      * skipped rather than smeared across six hours it never forecast.
      */
+    /** The local-ISO key the hourly feeds are joined on, from a source's UTC timestamp. */
+    private fun utcToLocalHour(fmt: DateTimeFormatter, utcIso: String): String? =
+        runCatching { fmt.format(Instant.parse(utcIso)) }.getOrNull()
+
+    private fun hourKeyFormat(cfg: AppConfig): DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm").withZone(cfg.zone())
+
     private fun fetchMetnoHourly(cfg: AppConfig, hours: Int): List<Map<String, Any?>> = try {
         val url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${cfg.lat}&lon=${cfg.lon}"
         val ts = getJson(url, cfg.userAgent).getJSONObject("properties").getJSONArray("timeseries")
-        val fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm").withZone(cfg.zone())
+        val fmt = hourKeyFormat(cfg)
         (0 until minOf(hours, ts.length())).mapNotNull { i ->
             val e = ts.getJSONObject(i)
             val mm = e.optJSONObject("data")?.optJSONObject("next_1_hours")
                 ?.optJSONObject("details")?.dblOrNull("precipitation_amount")
                 ?: return@mapNotNull null
-            val t = runCatching { fmt.format(Instant.parse(e.optString("time"))) }.getOrNull()
-                ?: return@mapNotNull null
+            val t = utcToLocalHour(fmt, e.optString("time")) ?: return@mapNotNull null
             mapOf<String, Any?>("time" to t, "precipIn" to mm / MM_PER_INCH)
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /**
+     * Tomorrow.io's hourly rain, as another vote in the forecast consensus.
+     *
+     * It forecasts for a POINT rather than an area, so under scattered convection it
+     * reads well below NWS's areal PoP (which is confidence x areal coverage — the
+     * chance of rain ANYWHERE in the zone). That is a difference in the question being
+     * answered, not an error: "will rain reach this house" is the one that decides
+     * whether the windows can stay open, so it votes like any other source.
+     *
+     * Amount comes from `rainIntensity` (in/hr over a 1-hour step) rather than
+     * `rainAccumulation`, which is unreliable here — it reports 0 for hours whose own
+     * intensity is the highest of the day.
+     *
+     * A second call per refresh on top of [fetchTomorrowIo]'s realtime one. The free
+     * tier allows 25 requests/hour and 500/day; two per 30-minute refresh sits well
+     * inside that, and a 429 returns empty and simply doesn't vote.
+     */
+    private fun fetchTomorrowIoHourly(cfg: AppConfig, key: String): List<Map<String, Any?>> = try {
+        val url = "https://api.tomorrow.io/v4/weather/forecast?location=${cfg.lat},${cfg.lon}" +
+            "&timesteps=1h&units=imperial&apikey=$key"
+        val hourly = getJson(url, cfg.userAgent).getJSONObject("timelines").getJSONArray("hourly")
+        val fmt = hourKeyFormat(cfg)
+        (0 until hourly.length()).mapNotNull { i ->
+            val row = hourly.getJSONObject(i)
+            val t = utcToLocalHour(fmt, row.optString("time")) ?: return@mapNotNull null
+            val v = row.optJSONObject("values") ?: return@mapNotNull null
+            mapOf<String, Any?>(
+                "time" to t,
+                "precipProb" to v.dblOrNull("precipitationProbability"),
+                "precipIn" to v.dblOrNull("rainIntensity"),
+            )
         }
     } catch (e: Exception) {
         emptyList()
