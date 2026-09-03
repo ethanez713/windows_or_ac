@@ -168,6 +168,18 @@ data class AppConfig(
         }
 
         /**
+         * The header's location chip writes this directly, the same way [saveDayViewMode]
+         * does, so a choice made from the forecast list takes effect on the next refresh
+         * without a trip through the settings screen. [ConfigActivity]'s checkbox writes
+         * the same key.
+         */
+        fun saveUseDeviceLocation(context: Context, on: Boolean) {
+            context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE).edit()
+                .putBoolean("useDeviceLocation", on)
+                .apply()
+        }
+
+        /**
          * [load], plus — when "use my phone's location" is on — a fresh device fix before
          * the weather fetch, so the forecast follows you instead of being pinned to
          * wherever you last opened settings. Every refresh path (widget worker and app)

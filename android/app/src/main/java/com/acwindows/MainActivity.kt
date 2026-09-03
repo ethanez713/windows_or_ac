@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -173,7 +175,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 }
                 // Still loading the first data → skeleton chips, not a spinner or empty message.
                 s == null -> SkeletonForecast()
-                else -> ForecastScreen(s, mode, ui.updatedAtMs, ui.refreshing)
+                else -> ForecastScreen(s, mode, ui.updatedAtMs, ui.refreshing, vm::refresh)
             }
             PullToRefreshContainer(ptr, Modifier.align(Alignment.TopCenter))
         }
@@ -376,7 +378,13 @@ private fun nowSeriesFor(state: AppState, todayHourly: DayForecast): DayForecast
 }
 
 @Composable
-private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, refreshing: Boolean) {
+private fun ForecastScreen(
+    state: AppState,
+    mode: ChartMode,
+    updatedAtMs: Long,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
     val context = LocalContext.current
     // Keyed on the refresh time: with "use my phone's location" on, a fetch can move the
     // coordinates and the place label, and the header has to follow.
@@ -409,6 +417,7 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
     var userPicked by rememberSaveable { mutableStateOf(false) }
     val expanded = if (userPicked) userPick else defaultExpanded
     var showSources by rememberSaveable { mutableStateOf(false) }
+    var showLocation by rememberSaveable { mutableStateOf(false) }
 
     // Today's card only: whole-day (hourly, like every other card) vs. now-to-EOD. Seeded
     // from the persisted default and re-persisted on every toggle — see AppConfig.DayViewMode.
@@ -450,7 +459,11 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
             val locationMode = remember(cfg.useDeviceLocation, updatedAtMs) {
                 LocationProvider.mode(context, cfg.useDeviceLocation)
             }
-            SourceStatusHeader(state, updatedAtMs, cfg.placeName, locationMode) { showSources = true }
+            SourceStatusHeader(
+                state, updatedAtMs, cfg.placeName, locationMode,
+                onLocationClick = { showLocation = true },
+                onClick = { showSources = true },
+            )
         }
         items(displayDays, key = { it.date }) { day ->
             val isToday = day.date == todayDate
@@ -471,6 +484,11 @@ private fun ForecastScreen(state: AppState, mode: ChartMode, updatedAtMs: Long, 
         }
     }
     if (showSources) SourceDetailDialog(state.sources, state.consensus, unit) { showSources = false }
+    if (showLocation) LocationDialog(
+        cfg,
+        onDismiss = { showLocation = false },
+        onSaved = { showLocation = false; onRefresh() },
+    )
 }
 
 @Composable
@@ -624,9 +642,10 @@ private fun fmtInches(inches: Double): String {
 }
 
 /**
- * Prominent header for the current data view: how many sources were successfully polled
- * (X/N), the consensus confidence colour, and when this data was fetched. Tap to open the
- * per-source breakdown — handy when the reported numbers look off versus a local reading.
+ * Prominent header for the current data view: where the forecast is for, how many sources
+ * were successfully polled (X/N), the consensus confidence colour, and when this data was
+ * fetched. Tap the place to change location; tap anywhere else for the per-source
+ * breakdown — handy when the reported numbers look off versus a local reading.
  */
 @Composable
 private fun SourceStatusHeader(
@@ -634,6 +653,7 @@ private fun SourceStatusHeader(
     updatedAtMs: Long,
     place: String?,
     locationMode: LocationProvider.LocationMode,
+    onLocationClick: () -> Unit,
     onClick: () -> Unit,
 ) {
     val c = state.consensus
@@ -659,21 +679,26 @@ private fun SourceStatusHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (placeLabel != null) {
-                // Condensed single line: "📍 City, ST · ● 6/6 · 3:45 PM  ›". The city name
+                // Condensed single line: "📍 City, ST ▾ · ● 6/6 · 3:45 PM  ›". The city name
                 // ellipsizes inside the weighted inner row so the count/time never get pushed
-                // off; the chevron stays pinned to the right edge.
+                // off; the chevron stays pinned to the right edge. The place is its own
+                // clickable — the tap that opens the location editor — and the rest of the
+                // row still opens the source breakdown.
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    LocationPin(locationMode, onVar)
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        placeLabel,
-                        Modifier.weight(1f, fill = false),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    LocationChip(Modifier.weight(1f, fill = false), onLocationClick) {
+                        LocationPin(locationMode, onVar)
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            placeLabel,
+                            Modifier.weight(1f, fill = false),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(" ▾", fontSize = 12.sp, color = primary)
+                    }
                     Text(" · ", fontSize = 13.sp, color = onVar)
                     Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
                     Spacer(Modifier.width(6.dp))
@@ -682,14 +707,18 @@ private fun SourceStatusHeader(
                 }
                 Text(" ›", fontSize = 13.sp, color = primary)
             } else {
-                LocationPin(locationMode, onVar)
-                Spacer(Modifier.width(6.dp))
+                LocationChip(onClick = onLocationClick) {
+                    LocationPin(locationMode, onVar)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Set location ▾", fontSize = 13.sp, color = primary, maxLines = 1)
+                }
+                Text(" · ", fontSize = 13.sp, color = onVar)
                 Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
                 Spacer(Modifier.width(8.dp))
-                Text("$ok/$total sources", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
-                updated?.let { Text(" · updated $it", fontSize = 12.sp, color = onVar) }
+                Text("$ok/$total", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
+                updated?.let { Text(" · $it", fontSize = 12.sp, color = onVar, maxLines = 1, softWrap = false) }
                 Spacer(Modifier.weight(1f))
-                Text("details ›", fontSize = 12.sp, color = primary)
+                Text("›", fontSize = 13.sp, color = primary)
             }
         }
     }
@@ -703,6 +732,165 @@ private fun LocationPin(mode: LocationProvider.LocationMode, tint: Color) {
         tint = tint,
         modifier = Modifier.size(14.dp),
     )
+}
+
+/** The header's tappable location area — its own click target inside the wider banner. */
+@Composable
+private fun LocationChip(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) = Row(
+    modifier.clip(RoundedCornerShape(6.dp)).clickable { onClick() }.padding(vertical = 3.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    content = content,
+)
+
+/**
+ * Change where the forecast is for, from the header rather than the settings screen:
+ * follow the phone, or resolve a typed place. The same box also takes a bare "lat, lon"
+ * pair, so the settings screen's two coordinate fields aren't the only way in.
+ *
+ * Nothing is written until Save, so dismissing leaves the current location alone.
+ */
+@Composable
+private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
+    var follow by remember { mutableStateOf(cfg.useDeviceLocation) }
+    var query by remember { mutableStateOf("") }
+    var picked by remember { mutableStateOf<LocationProvider.Geo?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    fun readDeviceFix() {
+        busy = true
+        status = "Finding your location…"
+        scope.launch {
+            val loc = LocationProvider.currentLocation(context)
+            if (loc == null) {
+                status = "Couldn't get a fix — check location is on, or type a place below."
+            } else {
+                val lat = AppConfig.round4(loc.latitude)
+                val lon = AppConfig.round4(loc.longitude)
+                val label = LocationProvider.placeName(context, lat, lon) ?: coordLabel(lat, lon)
+                picked = LocationProvider.Geo(lat, lon, label)
+                status = "Using $label"
+            }
+            busy = false
+        }
+    }
+
+    val askPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        if (grants.values.any { it }) {
+            readDeviceFix()
+        } else {
+            follow = false
+            status = "Location permission denied — type a place instead."
+        }
+    }
+
+    fun lookUp() {
+        val q = query.trim()
+        if (q.isEmpty()) return
+        busy = true
+        status = "Looking up “$q”…"
+        scope.launch {
+            val typedCoords = parseLatLon(q)
+            val hit = if (typedCoords != null) {
+                val (lat, lon) = typedCoords
+                LocationProvider.Geo(lat, lon, LocationProvider.placeName(context, lat, lon) ?: coordLabel(lat, lon))
+            } else {
+                LocationProvider.geocodeAddress(context, q)
+            }
+            if (hit == null) {
+                status = "Couldn't find “$q”."
+            } else {
+                picked = hit
+                // A place you typed is a place you want kept, so following the phone —
+                // which would overwrite it on the next refresh — goes off with it.
+                follow = false
+                status = "Using ${hit.label}  (${hit.lat}, ${hit.lon})"
+            }
+            busy = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Location") },
+        text = {
+            Column {
+                Text(
+                    picked?.label ?: cfg.placeName ?: coordLabel(cfg.lat, cfg.lon),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = follow,
+                        onCheckedChange = { on ->
+                            follow = on
+                            if (on) {
+                                if (LocationProvider.hasPermission(context)) readDeviceFix()
+                                else askPermission.launch(LocationProvider.permissions)
+                            }
+                        },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("Use my phone's location", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("City, address, ZIP, or lat, lon") },
+                    singleLine = true,
+                    trailingIcon = {
+                        TextButton(onClick = { lookUp() }, enabled = !busy && query.isNotBlank()) {
+                            Text("Find")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                status?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, fontSize = 12.sp, color = onVar)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && (picked != null || follow != cfg.useDeviceLocation),
+                onClick = {
+                    picked?.let { AppConfig.saveLocation(context, it.lat, it.lon, it.label) }
+                    // Only honour "follow" once the permission actually landed — same rule
+                    // the settings screen applies, so the two can't disagree.
+                    AppConfig.saveUseDeviceLocation(context, follow && LocationProvider.hasPermission(context))
+                    WidgetCache.clear(context)
+                    AcWindowsProvider.refreshNow(context)
+                    onSaved()
+                },
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** What the place box shows when nothing has a name: the coordinates themselves. */
+private fun coordLabel(lat: Double, lon: Double) = "$lat, $lon"
+
+/** "40.71, -74.01" typed into the place box is a coordinate pair, not a name to geocode. */
+private fun parseLatLon(q: String): Pair<Double, Double>? {
+    val parts = q.split(',', ' ').filter { it.isNotBlank() }
+    if (parts.size != 2) return null
+    val lat = parts[0].toDoubleOrNull() ?: return null
+    val lon = parts[1].toDoubleOrNull() ?: return null
+    return if (lat in -90.0..90.0 && lon in -180.0..180.0) lat to lon else null
 }
 
 private fun confidenceColor(confidence: String): Color = when (confidence) {
