@@ -38,9 +38,15 @@ data class AppConfig(
     val widgetShowTemp: Boolean = true,   // temperature line (°F axis)
     val widgetShowDew: Boolean = true,    // dew point line (same °F axis)
     val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
+    val widgetShowThreshold: Boolean = true,  // dashed rule + label at the open-score cutoff
     val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
     val dayViewMode: DayViewMode = DayViewMode.TODAY,  // today's card: full day, or now→EOD
     val appShowHourlyRows: Boolean = false,  // hour-by-hour value strip above the Values charts
+    // Shared by every surface that draws the forecast — the widget, its config preview and
+    // the app's drawer — so a reading means the same thing wherever it is drawn.
+    val aqiPalette: AqiPalette = AqiPalette.EPA,
+    val rainScaleInPerHr: Double = 0.50,   // in/hr that draws a full-width rain column
+    val thunderAlertPct: Double = 50.0,    // storm treatment at/above this thunder chance
 ) {
     /**
      * The zone the hourly forecast timestamps are expressed in — the same one sent to
@@ -63,6 +69,8 @@ data class AppConfig(
         const val DEFAULT_MAX_TEMP_F = 78.0        // don't let the house get warmer than this
         const val DEFAULT_OPEN_SCORE_MIN = 60.0    // open windows when the score is ≥ this (0-100)
         const val DEFAULT_WIDGET_HOURS = 36        // widget graph look-ahead (configurable)
+        const val DEFAULT_RAIN_SCALE = 0.50        // in/hr drawing a full-width rain column
+        const val DEFAULT_THUNDER_ALERT = 50.0     // % thunder chance that earns storm treatment
         // The rest live in Comfort() (dew point 60/65°F, AQI 100/150).
 
         fun load(context: Context): AppConfig {
@@ -98,11 +106,19 @@ data class AppConfig(
                 widgetShowTemp = p.getBoolean("widgetShowTemp", true),
                 widgetShowDew = p.getBoolean("widgetShowDew", true),
                 widgetShowRain = p.getBoolean("widgetShowRain", true),
+                widgetShowThreshold = p.getBoolean("widgetShowThreshold", true),
                 appTextScalePct = p.getString("appTextScalePct", null)?.toIntOrNull()?.coerceIn(60, 200) ?: 100,
                 dayViewMode = p.getString("dayViewMode", null)
                     ?.let { name -> runCatching { DayViewMode.valueOf(name) }.getOrNull() }
                     ?: DayViewMode.TODAY,
                 appShowHourlyRows = p.getBoolean("appShowHourlyRows", false),
+                aqiPalette = p.getString("aqiPalette", null)
+                    ?.let { name -> runCatching { AqiPalette.valueOf(name) }.getOrNull() }
+                    ?: AqiPalette.EPA,
+                rainScaleInPerHr = p.getString("rainScaleInPerHr", null)?.toDoubleOrNull()
+                    ?.coerceIn(0.15, 0.60) ?: DEFAULT_RAIN_SCALE,
+                thunderAlertPct = p.getString("thunderAlertPct", null)?.toDoubleOrNull()
+                    ?.coerceIn(10.0, 70.0) ?: DEFAULT_THUNDER_ALERT,
             )
         }
 
@@ -127,6 +143,8 @@ data class AppConfig(
                 Seed("appTextScalePct", "100"),
                 Seed("widgetOpacity", "100"),
                 Seed("widgetForecastHours", DEFAULT_WIDGET_HOURS.toString()),
+                Seed("rainScaleInPerHr", DEFAULT_RAIN_SCALE.toString()),
+                Seed("thunderAlertPct", DEFAULT_THUNDER_ALERT.toString()),
                 Seed("lat", DEFAULT_LAT.toString()),
                 Seed("lon", DEFAULT_LON.toString()),
             )

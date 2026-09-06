@@ -45,7 +45,7 @@ lightness step changes per theme, so each clears 4.5:1 on its own ground.
 | Score / open | `#047857` | `#34D399` |
 | Now marker | `#92400E` | `#FBBF24` |
 | Thunderstorm | `#6D28D9` | `#A78BFA` |
-| Blocked-bar base | `#98A1AD` | `#5A6472` |
+| Blocked-bar base | `#8893A1` | `#606B7A` |
 | Comfort-cutoff rule | `rgba(62,56,48,.45)` | `rgba(214,208,197,.5)` |
 
 A blocked score bar is `lerp(blockedBase, limitingFactorHue, 0.38)` in linear
@@ -63,7 +63,7 @@ breakpoints so anything under 50 reads flat green.
 0 → #00A400   50 → #A68A00   100 → #E86A00
 150 → #E00000  200 → #8F3F97  300 → #7E0023      (light)
 0 → #00E400   50 → #FFFF00   100 → #FF7E00
-150 → #FF0000  200 → #B060BC  300 → #C0335A      (dark)
+150 → #FF0000  200 → #B060BC  300 → #C2335B      (dark)
 ```
 
 Interpolate in sRGB between adjacent stops. The light ramp darkens the green and
