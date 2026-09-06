@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -28,40 +29,21 @@ import kotlin.math.roundToInt
  * honest as the snapshot ages — it moves right between refreshes, and if a refresh
  * is badly overdue you can see the present has walked off into (or past) the bars.
  *
- * Colours (bars, lines, text) and text size come from [WidgetTheme]; everything
- * defaults to the theme's DEFAULT, which reproduces the chart's original hardcoded
- * look exactly. The temp/dew/rain axis is drawn in [TempUnit]'s display unit, but
- * the data handed in is always raw °F — see the `unit` param.
+ * Colours come from the design system's §0.1/§0.3 tokens for the active light/dark
+ * theme; a per-element colour stored in [WidgetTheme] overrides its token, which is how
+ * a user keeps a palette they chose themselves. The temp/dew/rain axis is drawn in
+ * [TempUnit]'s display unit, but the data handed in is always raw °F — see the `unit` param.
  *
  * The bitmap is rendered at the ImageView's true pixel aspect (see
  * AcWindowsProvider) and shown with fitCenter, so text never stretches on resize.
  */
 object Graph {
 
-    // Per-factor detractor tint hues (match the app's FactorTemp/Humid/Aqi/Rain).
-    // These colour a CLOSED bar by why it's closed; they're fixed and not user-themed,
-    // which is why they're kept separate from the (themeable) temp/dew/rain line colours
-    // even though today's defaults happen to match.
-    private val FACTOR_COLORS = intArrayOf(
-        Color.rgb(0xFB, 0x92, 0x3C),  // temp
-        Color.rgb(0xA5, 0xB4, 0xFC),  // humidity
-        Color.rgb(0x4A, 0xDE, 0x80),  // air quality
-        Color.rgb(0x22, 0xD3, 0xEE),  // rain
-    )
-
-    // Fraction of the detractor hue kept on top of the (themeable) closed-bar grey.
-    // Strongly grey, faintly tinted by "why closed".
-    private const val DETRACTOR_TINT = 0.28f
-
-    /** [factor]'s hue pulled hard toward [base] (the theme's closed-bar grey). */
-    private fun detractorGrey(factor: Int, base: Int): Int {
-        fun mix(g: Int, c: Int) = Math.round(g * (1 - DETRACTOR_TINT) + c * DETRACTOR_TINT)
-        return Color.rgb(
-            mix(Color.red(base), Color.red(factor)),
-            mix(Color.green(base), Color.green(factor)),
-            mix(Color.blue(base), Color.blue(factor)),
-        )
-    }
+    /**
+     * Per-hour detractor hues, from the design system (§0.1) rather than a local copy —
+     * a closed bar's tint has to name the same factor the app's drawer does.
+     */
+    private fun factorColors(d: Tokens.Data) = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
 
     /** Below this chance, with no accumulation, there's no rain worth drawing. */
     private const val RAIN_MIN_PCT = 5.0
@@ -72,11 +54,7 @@ object Graph {
      */
     private const val MIN_DEG_SPAN_F = 10.0
 
-    // The "now" marker (see [drawNow]) and how far elapsed hours fade behind it. These
-    // are structural chrome, not themed — the marker has to stay legible against
-    // whatever colours the user picks.
-    private val NOW_WHITE = Color.rgb(0xFF, 0xFF, 0xFF)
-    private val STALE_AMBER = Color.rgb(0xFB, 0xBF, 0x24)
+    /** How far elapsed hours fade behind the now-marker (see [drawNow]). */
     private const val PAST_ALPHA = 90
 
     /**
@@ -115,17 +93,34 @@ object Graph {
         showTemp: Boolean = true,
         showDew: Boolean = true,
         showRain: Boolean = true,
+        showThreshold: Boolean = true,
         /**
          * Where the present falls in [scores], as a fractional bar index (see
          * `nowBarPos`). Null for a snapshot with no wall-clock anchor — an older cache —
          * in which case bar 0 is labelled "now" the way it always was.
          */
         nowPos: Double? = null,
-        /** Widget colours + text scale (see [WidgetTheme]). Defaults reproduce the original look. */
+        /** Widget colours + text scale (see [WidgetTheme]). */
         theme: WidgetTheme = WidgetTheme.DEFAULT,
-        /** Display unit for the temp/dew axis; the data above is always raw °F. */
+        /** Display unit for the temp/dew axis; the data handed in is always raw °F. */
         unit: TempUnit = TempUnit.F,
+        /** Which step of the §0.1 palette to draw — the host widget follows the system. */
+        dark: Boolean = true,
+        /** IBM Plex Mono, for every number and axis label on this chart (§0.4). */
+        mono: Typeface? = null,
     ): Bitmap {
+        val d = Tokens.data(dark)
+        val chrome = Tokens.chrome(dark)
+        // [WidgetTheme] arrives resolved: each element is the user's colour if they chose
+        // one, otherwise the §0.1/§0.3 token for the theme the phone is in.
+        val barOpenColor = theme.barOpen
+        val barClosedColor = theme.barClosed
+        val tempColor = theme.temp
+        val dewColor = theme.dew
+        val rainColor = theme.rain
+        val inkColor = theme.text
+        val headingInk = chrome.heading
+
         val w = widthPx.coerceAtLeast(80)
         val h = heightPx.coerceAtLeast(60)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -140,7 +135,7 @@ object Graph {
         val scale = theme.textScalePct / 100f
         val tsp = sp * scale
         val axis = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = theme.text; textSize = 9.5f * tsp; isFakeBoldText = true; textAlign = Paint.Align.LEFT
+            color = inkColor; textSize = 9.5f * tsp; typeface = mono; textAlign = Paint.Align.LEFT
         }
         // Gutter sized to exactly fit the widest axis label, so the plot sits as
         // far left as it can (just clears "win"/"ac") — no wasted left margin. With the
@@ -163,21 +158,20 @@ object Graph {
 
         val bar = Paint(Paint.ANTI_ALIAS_FLAG)
         val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(180, Color.red(theme.text), Color.green(theme.text), Color.blue(theme.text))
-            textSize = 8.5f * tsp; textAlign = Paint.Align.CENTER
+            color = chrome.faint; textSize = 8.5f * tsp; typeface = mono; textAlign = Paint.Align.CENTER
         }
 
-        // Day/night background: shade each hour by whether the sun is up. Daytime
-        // (sunrise→sunset) gets a light wash; overnight gets a darker one, so a bar's
-        // time-of-day reads at a glance. Adjacent same-state cells tile seamlessly.
-        // Structural, not themed — the wash has to work against any bar colour.
-        val dayShade = Paint().apply { color = Color.argb(22, 255, 255, 255) }
-        val nightShade = Paint().apply { color = Color.argb(55, 0, 0, 0) }
+        // Day/night background: one 6% ink lift, on the night half in light and the day
+        // half in dark (§0.3). The same tint darkens paper and lightens dark ground, so
+        // tinting a fixed half would make night read brighter than day in one of the two
+        // themes. Adjacent same-state cells tile seamlessly.
+        val bandShade = Paint().apply { color = chrome.bandTint }
         val cellStep = barW + gap
         for (i in 0 until n) {
             val up = isDay.getOrElse(i) { true }
+            if (up == chrome.bandOnNight) continue
             val x0 = axisW + i * cellStep
-            c.drawRect(x0, plotTop, x0 + cellStep, base, if (up) dayShade else nightShade)
+            c.drawRect(x0, plotTop, x0 + cellStep, base, bandShade)
         }
 
         // Left axis labels (within the plot band) — they name the bars' 0–100 axis, so
@@ -185,6 +179,21 @@ object Graph {
         if (showBars) {
             c.drawText("win", 0f, plotTop + 9f * sp, axis)
             c.drawText("ac", 0f, base - 1f * sp, axis)
+        }
+
+        // The line the whole chart is read against: above it the windows beat the AC.
+        // Dashed and labelled in the gutter so a bar's height is a value, not a guess.
+        if (showBars && showThreshold) {
+            val ty = base - (threshold.coerceIn(0.0, 100.0) / 100f).toFloat() * plotH
+            val rule = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = d.cutoffRule; strokeWidth = 1f * sp
+                pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f * sp, 4f * sp), 0f)
+            }
+            c.drawLine(axisW, ty, w.toFloat(), ty, rule)
+            val thresholdLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = chrome.faint; textSize = 8f * tsp; typeface = mono; textAlign = Paint.Align.LEFT
+            }
+            c.drawText(threshold.roundToInt().toString(), 0f, ty - 1.5f * sp, thresholdLabel)
         }
 
         val labelEvery = maxOf(1, Math.round(n / 6f))
@@ -197,11 +206,12 @@ object Graph {
                 // Open hours stay the (themeable) bright colour; closed hours become a
                 // desaturated grey tinted by their dominant detractor, so it's obvious at a
                 // glance which bars aren't "open".
+                val hues = factorColors(d)
                 bar.color = if (s >= threshold) {
-                    theme.barOpen
+                    barOpenColor
                 } else {
                     val wf = worst.getOrElse(i) { -1 }
-                    if (wf in FACTOR_COLORS.indices) detractorGrey(FACTOR_COLORS[wf], theme.barClosed) else theme.barClosed
+                    if (wf in hues.indices) Tokens.lerpLinear(barClosedColor, hues[wf], 0.38f) else barClosedColor
                 }
                 // An hour that has already elapsed is history, not forecast — fade it so the
                 // eye starts at the present rather than at the left edge.
@@ -212,8 +222,8 @@ object Graph {
                 // detracting factor's colour — same idea as the in-app sparkline.
                 if (s < 0.5) {
                     val wf = worst.getOrElse(i) { -1 }
-                    if (wf in FACTOR_COLORS.indices) {
-                        bar.color = FACTOR_COLORS[wf]   // resets alpha, so re-apply the fade
+                    if (wf in hues.indices) {
+                        bar.color = hues[wf]            // resets alpha, so re-apply the fade
                         bar.alpha = pastAlpha(i, nowPos)
                         c.drawRect(x, base - 2.5f * sp, x + barW, base, bar)
                     }
@@ -244,13 +254,13 @@ object Graph {
             val yDeg = { v: Double -> base - (((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)) * plotH }
             // Dew first: it sits under the temp line as often as not, and temp is the
             // headline series.
-            if (showDew) drawDegLine(c, dewDisp, theme.dew, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
-            if (showTemp) drawDegLine(c, tempDisp, theme.temp, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
+            if (showDew) drawDegLine(c, dewDisp, dewColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
+            if (showTemp) drawDegLine(c, tempDisp, tempColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
             // Range labels on the right edge, tinted to whichever line owns the axis, so
             // the numbers can't be read as belonging to the bars' scale.
             val degLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (showTemp) theme.temp else theme.dew
-                textSize = 8f * tsp; isFakeBoldText = true; textAlign = Paint.Align.RIGHT
+                color = if (showTemp) tempColor else dewColor
+                textSize = 8f * tsp; typeface = mono; textAlign = Paint.Align.RIGHT
             }
             c.drawText("${hi.roundToInt()}°", w - 1f * sp, plotTop + 8f * sp, degLabel)
             c.drawText("${lo.roundToInt()}°", w - 1f * sp, base - 1.5f * sp, degLabel)
@@ -260,19 +270,19 @@ object Graph {
         if (showRain) {
             drawRain(
                 c, precipProb, precipIn, n, { i -> barLeft(i) },
-                barW, base, plotTop, plotH, axisW, w, sp, tsp, theme.rain,
+                barW, base, plotTop, plotH, axisW, w, sp, tsp, rainColor, chrome.card, mono,
             )
         }
 
         // Shared label paint for the date + noon flags (white-on-theme text on a coloured pill).
         val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = theme.text; textSize = 8.5f * tsp; isFakeBoldText = true; textAlign = Paint.Align.CENTER
+            color = chrome.card; textSize = 8.5f * tsp; typeface = mono; textAlign = Paint.Align.CENTER
         }
 
         // Noon markers: a solid grey divider through the bars + a "noon" flag in
         // the top band, mirroring the date flags so midday is easy to spot. The divider
         // and pill background are structural, not themed.
-        val noonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(120, 124, 135); strokeWidth = 1.7f * sp }
+        val noonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = chrome.muted; strokeWidth = 1.7f * sp }
         for (i in 0 until n) {
             if (ForecastBuilder.hour(times.getOrElse(i) { "" }) != 12) continue
             val nx = barLeft(i) - gap / 2
@@ -282,8 +292,8 @@ object Graph {
 
         // Day changes: a dark divider through the bars (a light line vanishes
         // behind a 100-score bar), with the date tag in the reserved band ABOVE.
-        val divider = Paint().apply { color = Color.argb(225, 17, 24, 39); strokeWidth = 1.6f * sp }
-        val datePill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(235, 17, 24, 39) }
+        val divider = Paint().apply { color = headingInk; strokeWidth = 1.6f * sp }
+        val datePill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = headingInk }
         for (i in 1 until n) {
             if (day(times, i) == day(times, i - 1)) continue
             val dx = barLeft(i) - gap / 2
@@ -298,7 +308,7 @@ object Graph {
         val bj = times.indexOf(bestEnd)
         if (showBars && bi in 0 until n && bj in 0 until n && bj >= bi) {
             val u = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = theme.barOpen; strokeWidth = 2.5f * sp
+                color = barOpenColor; strokeWidth = 2.5f * sp
             }
             c.drawLine(barLeft(bi), base + 1.5f * sp, barLeft(bj) + barW, base + 1.5f * sp, u)
         }
@@ -306,7 +316,7 @@ object Graph {
         // Last, so it sits above the bars, the rain line and every flag: this is the one
         // mark that says which of these hours you're actually in.
         if (nowPos != null) {
-            drawNow(c, nowPos, n, axisW, gap, barW, plotTop, base, h, sp, tsp)
+            drawNow(c, nowPos, n, axisW, gap, barW, plotTop, base, h, sp, tsp, d, chrome, mono)
         }
         return bmp
     }
@@ -360,20 +370,20 @@ object Graph {
     }
 
     /**
-     * The "now" marker: a bright vertical line at the present, tagged in the hour-label
-     * strip below. When the present has fallen outside the series — the snapshot is old
-     * enough that these bars no longer cover it — the marker pins to the nearest edge and
-     * turns amber, so a stale widget looks wrong rather than merely being wrong. Structural
-     * chrome, not themed: it has to read against any bar/background colour the user picks.
+     * The "now" marker: a vertical line at the present, tagged in the hour-label strip
+     * below. When the present has fallen outside the series — the snapshot is old enough
+     * that these bars no longer cover it — the marker pins to the nearest edge and takes
+     * the now-marker hue, so a stale widget looks wrong rather than merely being wrong.
      */
     private fun drawNow(
         c: Canvas, nowPos: Double, n: Int, axisW: Float, gap: Float, barW: Float,
         plotTop: Float, base: Float, h: Int, sp: Float, tsp: Float,
+        d: Tokens.Data, chrome: Tokens.Chrome, mono: Typeface?,
     ) {
         val outside = nowPos < 0.0 || nowPos > n.toDouble()
         val clamped = nowPos.coerceIn(0.0, n.toDouble())
         val x = axisW + gap + (clamped * (barW + gap)).toFloat()
-        val color = if (outside) STALE_AMBER else NOW_WHITE
+        val color = if (outside) d.now else chrome.heading
 
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; strokeWidth = 1.8f * sp
@@ -381,8 +391,8 @@ object Graph {
         c.drawLine(x, plotTop, x, base, line)
 
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = Color.rgb(17, 24, 39); textSize = 8.5f * tsp
-            isFakeBoldText = true; textAlign = Paint.Align.CENTER
+            this.color = chrome.card; textSize = 8.5f * tsp
+            typeface = mono; textAlign = Paint.Align.CENTER
         }
         val label = if (outside) "stale" else "now"
         val tw = text.measureText(label)
@@ -408,7 +418,7 @@ object Graph {
     private fun drawRain(
         c: Canvas, prob: List<Double>, inches: List<Double>, n: Int,
         barLeft: (Int) -> Float, barW: Float, base: Float, plotTop: Float, plotH: Float,
-        axisW: Float, w: Int, sp: Float, tsp: Float, rainColor: Int,
+        axisW: Float, w: Int, sp: Float, tsp: Float, rainColor: Int, pillInk: Int, mono: Typeface?,
     ) {
         fun p(i: Int) = prob.getOrElse(i) { 0.0 }
         fun rate(i: Int) = inches.getOrElse(i) { 0.0 }
@@ -442,9 +452,9 @@ object Graph {
         // readable over a bright bar. Runs too close together drop their label rather
         // than overprinting.
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = rainColor; textSize = 8.5f * tsp; isFakeBoldText = true; textAlign = Paint.Align.CENTER
+            color = rainColor; textSize = 8.5f * tsp; typeface = mono; textAlign = Paint.Align.CENTER
         }
-        val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 17, 24, 39) }
+        val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pillInk }
         var lastRight = Float.NEGATIVE_INFINITY
         var i = 0
         while (i < n) {

@@ -1,91 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget layout. The root's background color is recolored at runtime per the
-     recommended action (green = open windows, blue = AC, etc.). The
-     Open-Window Score graph is drawn as a bitmap into @id/graph. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Widget layout. The card ground is an ImageView bitmap rather than a background
+     colour because RemoteViews cannot tint a rounded shape drawable below API 31, and
+     the design system's card is a 24dp-radius card, not a full-bleed rectangle — see
+     AcWindowsProvider.cardBitmap. The Open-Window Score graph is drawn as a bitmap
+     into @id/graph. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="12dp"
-    android:background="#2E7D32">
-
-    <TextView
-        android:id="@+id/headline"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="#FFFFFF"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:text="AC / Windows" />
-
-    <TextView
-        android:id="@+id/readings"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:text="" />
+    android:layout_height="match_parent">
 
     <ImageView
-        android:id="@+id/graph"
+        android:id="@+id/card_bg"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="4dp"
-        android:scaleType="fitCenter"
-        android:contentDescription="Open-window score for the next 48 hours" />
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <ProgressBar
-            android:id="@+id/refresh_spinner"
-            style="?android:attr/progressBarStyleSmall"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            android:layout_marginEnd="6dp"
-            android:visibility="gone"
-            android:indeterminateTint="#FFFFFF" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="10dp">
 
         <TextView
-            android:id="@+id/sources"
-            android:layout_width="0dp"
+            android:id="@+id/headline"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#B3FFFFFF"
-            android:textSize="10sp"
+            android:fontFamily="@font/instrument_sans_semibold"
+            android:textSize="16sp"
             android:maxLines="1"
             android:ellipsize="end"
-            android:drawablePadding="4dp"
-            android:text="tap to refresh" />
+            android:text="AC / Windows" />
 
-        <!-- What time the shown data is FROM (recoloured amber when it's gone stale);
-             see AcWindowsProvider.asOfLabel. -->
         <TextView
-            android:id="@+id/updated"
-            android:layout_width="wrap_content"
+            android:id="@+id/readings"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#B3FFFFFF"
-            android:textSize="10sp"
-            android:maxLines="1"
-            android:ellipsize="end"
+            android:fontFamily="@font/plex_mono_regular"
+            android:textSize="12sp"
             android:text="" />
 
         <ImageView
-            android:id="@+id/refresh_button"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_marginStart="8dp"
-            android:padding="2dp"
-            android:src="@drawable/ic_refresh"
-            android:contentDescription="Refresh now"
-            android:tint="#E6FFFFFF" />
+            android:id="@+id/graph"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="4dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="Open-window score for the next 48 hours" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <ProgressBar
+                android:id="@+id/refresh_spinner"
+                style="?android:attr/progressBarStyleSmall"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_marginEnd="6dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/sources"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="@font/instrument_sans_regular"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:drawablePadding="4dp"
+                android:text="tap to refresh" />
+
+            <!-- What time the shown data is FROM (recoloured when it's gone stale);
+                 see AcWindowsProvider.asOfLabel. -->
+            <TextView
+                android:id="@+id/updated"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/plex_mono_regular"
+                android:textSize="10sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="" />
+
+            <ImageView
+                android:id="@+id/refresh_button"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginStart="8dp"
+                android:padding="2dp"
+                android:src="@drawable/ic_refresh"
+                android:contentDescription="Refresh now" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>

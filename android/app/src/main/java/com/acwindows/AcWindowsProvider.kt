@@ -7,7 +7,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.os.Bundle
 import android.text.Spanned
 import android.text.SpannableStringBuilder
@@ -223,8 +226,9 @@ class AcWindowsProvider : AppWidgetProvider() {
 
         private fun drawId(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean) {
             val snap = WidgetCache.load(context)
-            val views = if (snap == null) loadingView(context, refreshing)
-                else buildViews(context, snap, refreshing, sizeOf(mgr, id))
+            val size = sizeOf(mgr, id)
+            val views = if (snap == null) loadingView(context, refreshing, size)
+                else buildViews(context, snap, refreshing, size)
             mgr.updateAppWidget(id, views)
         }
 
@@ -234,6 +238,33 @@ class AcWindowsProvider : AppWidgetProvider() {
             val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0).takeIf { it > 0 } ?: 250
             val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0).takeIf { it > 0 } ?: 180
             return w to h
+        }
+
+        /**
+         * The card's ground. The design system's neutral card is the default; an action
+         * colour is opt-in, because tinting the whole card by the verdict leaves every
+         * mark on it needing to clear 3:1 against five different grounds.
+         */
+        private fun cardColor(theme: WidgetTheme, action: Action, opacityPct: Int): Int =
+            withOpacity(if (theme.useActionBackground) colorFor(action) else theme.background, opacityPct)
+
+        /**
+         * The rounded card the widget sits on, as a bitmap. RemoteViews cannot tint a
+         * shape drawable before API 31, and the ground has to carry both a runtime colour
+         * and the user's opacity — so the card is drawn rather than styled. Rendered at
+         * the widget's true pixel size so `fitXY` scaling can't turn the corners elliptical.
+         */
+        private fun cardBitmap(context: Context, color: Int, wDp: Int, hDp: Int): Bitmap {
+            val density = context.resources.displayMetrics.density
+            val w = (wDp * density).toInt().coerceIn(80, 1200)
+            val h = (hDp * density).toInt().coerceIn(60, 800)
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val r = 24f * density
+            Canvas(bmp).drawRoundRect(
+                0f, 0f, w.toFloat(), h.toFloat(), r, r,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color },
+            )
+            return bmp
         }
 
         private fun colorFor(action: Action): Int = when (action) {
@@ -258,8 +289,11 @@ class AcWindowsProvider : AppWidgetProvider() {
          * but the body, and that only opens the app (which has its own fetch and never
          * writes the widget's cache).
          */
-        private fun loadingView(context: Context, refreshing: Boolean): RemoteViews {
+        private fun loadingView(
+            context: Context, refreshing: Boolean, size: Pair<Int, Int>,
+        ): RemoteViews {
             val theme = WidgetTheme.load(context)
+            val chrome = Tokens.chrome(Tokens.isDarkTheme(context))
             return RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, if (refreshing) "Loading…" else "No data yet")
                 setTextColor(R.id.headline, theme.text)
@@ -271,15 +305,17 @@ class AcWindowsProvider : AppWidgetProvider() {
                     if (refreshing) "fetching weather…" else "couldn't reach the weather sources",
                 )
                 setTextViewText(R.id.updated, if (refreshing) "" else "tap ⟳ to retry")
-                setTextColor(R.id.updated, if (refreshing) footerDim(theme) else STALE_AMBER)
+                setTextColor(R.id.updated, if (refreshing) chrome.faint else chrome.heading)
+                setTextColor(R.id.sources, chrome.muted)
+                setInt(R.id.refresh_spinner, "setIndeterminateTint", chrome.muted)
+                setInt(R.id.refresh_button, "setColorFilter", chrome.muted)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
-                // Must clear the graph and set the background explicitly — see [buildViews].
-                // Neutral slate while loading: the first paint shouldn't imply a verdict.
+                // Must clear the graph and set the card explicitly — see [buildViews].
                 setImageViewBitmap(R.id.graph, null)
-                setInt(
-                    R.id.widget_root, "setBackgroundColor",
-                    if (theme.useActionBackground) colorFor(Action.KEEP_CLOSED) else theme.background,
+                setImageViewBitmap(
+                    R.id.card_bg,
+                    cardBitmap(context, cardColor(theme, Action.KEEP_CLOSED, 100), size.first, size.second),
                 )
                 applyTextSizes(this, theme)
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
@@ -297,6 +333,8 @@ class AcWindowsProvider : AppWidgetProvider() {
             val threshold = comfort.openScoreMin
             val theme = WidgetTheme.load(context)
             val unit = TempUnit.load(context)
+            val dark = Tokens.isDarkTheme(context)
+            val chrome = Tokens.chrome(dark)
             val textScale = theme.textScalePct / 100f
 
             // Tier the text rows by height so a 2x2 still looks intentional.
@@ -310,9 +348,9 @@ class AcWindowsProvider : AppWidgetProvider() {
             // stretching/compressing when the widget is resized. The text rows
             // (headline/readings/footer) grow with the text-size slider, so their share
             // of reservedDp has to scale too, or the graph bitmap's aspect goes wrong.
-            var reservedDp = 24 + 6 + Math.round(22 * textScale) + Math.round(21 * textScale)
+            var reservedDp = 20 + 6 + Math.round(22 * textScale) + Math.round(21 * textScale)
             if (showReadings) reservedDp += Math.round(19 * textScale)
-            val ivWdp = (wDp - 24).coerceAtLeast(60)
+            val ivWdp = (wDp - 20).coerceAtLeast(60)
             val ivHdp = (hDp - reservedDp).coerceAtLeast(40)
 
             // With a location set, condense to fold the place into this one footer line
@@ -329,27 +367,30 @@ class AcWindowsProvider : AppWidgetProvider() {
 
             return RemoteViews(context.packageName, R.layout.widget_ac_windows).apply {
                 setTextViewText(R.id.headline, s.headline)
-                setTextColor(R.id.headline, theme.text)
+                setTextColor(R.id.headline, chrome.heading)
                 // Base colour first: buildReadings only spans the value segments, so the
                 // "dew"/"AQI"/"score" labels and the "·" separators fall through to this.
-                setTextColor(R.id.readings, theme.text)
-                setTextViewText(R.id.readings, buildReadings(s, unit, theme))
+                setTextColor(R.id.readings, chrome.body)
+                setTextViewText(R.id.readings, buildReadings(s, unit, theme, Tokens.data(dark), chrome))
                 setViewVisibility(R.id.readings, if (showReadings) View.VISIBLE else View.GONE)
                 // Location pin sits as the footer line's leading compound drawable — crossed
                 // out for a hand-entered location or when the phone won't give us a fix.
                 setTextViewCompoundDrawablesRelative(R.id.sources, locationMode.iconRes, 0, 0, 0)
                 setTextViewText(R.id.sources, sources)
+                setTextColor(R.id.sources, chrome.muted)
                 setTextViewText(R.id.updated, asOfLabel(s, refreshing, nowMs))
-                setTextColor(R.id.updated, if (s.ageMs(nowMs) > WidgetCache.STALE_MS) STALE_AMBER else footerDim(theme))
+                setTextColor(
+                    R.id.updated,
+                    if (s.ageMs(nowMs) > WidgetCache.STALE_MS) Tokens.data(dark).now else chrome.faint,
+                )
+                setInt(R.id.refresh_spinner, "setIndeterminateTint", chrome.muted)
+                setInt(R.id.refresh_button, "setColorFilter", chrome.muted)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 // Hide the manual refresh icon while a refresh is in flight (spinner shows instead).
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
-                setInt(
-                    R.id.widget_root, "setBackgroundColor",
-                    withOpacity(
-                        if (theme.useActionBackground) colorFor(s.action) else theme.background,
-                        cfg.widgetOpacity,
-                    ),
+                setImageViewBitmap(
+                    R.id.card_bg,
+                    cardBitmap(context, cardColor(theme, s.action, cfg.widgetOpacity), wDp, hDp),
                 )
                 applyTextSizes(this, theme)
                 // ALWAYS set the graph, even when there is nothing to draw. The launcher
@@ -365,8 +406,9 @@ class AcWindowsProvider : AppWidgetProvider() {
                         tempF = s.tempSeries, dewF = s.dewSeries,
                         showBars = cfg.widgetShowBars, showTemp = cfg.widgetShowTemp,
                         showDew = cfg.widgetShowDew, showRain = cfg.widgetShowRain,
+                        showThreshold = cfg.widgetShowThreshold,
                         nowPos = nowBarPos(s.firstHourMs, nowMs),
-                        theme = theme, unit = unit,
+                        theme = theme, unit = unit, dark = dark, mono = WidgetType.mono(context),
                     ),
                 )
                 setOnClickPendingIntent(R.id.widget_root, appIntent(context))
@@ -374,14 +416,6 @@ class AcWindowsProvider : AppWidgetProvider() {
             }
         }
 
-        private val STALE_AMBER = Color.parseColor("#FFFBBF24")
-
-        // The app's FactorAqi colour. Fixed, unlike temp/dew/rain — AQI isn't one of the
-        // widget's themeable series, it's a fourth reading riding along on the same line.
-        private val AQI_GREEN = Color.rgb(0x4A, 0xDE, 0x80)
-
-        /** The footer's dimmed variant: [theme]'s text colour at ~70% alpha. */
-        private fun footerDim(theme: WidgetTheme): Int = (0xB3 shl 24) or (theme.text and 0x00FFFFFF)
 
         /** Scale every RemoteViews text row to [theme]'s text-size slider. */
         private fun applyTextSizes(views: RemoteViews, theme: WidgetTheme) {
@@ -396,10 +430,12 @@ class AcWindowsProvider : AppWidgetProvider() {
          * The readings line, coloured to match the graph's series — the same idea as the
          * app's AbsReadout chips. Only the value segments carry a span; the "dew"/"AQI"/
          * "score" labels and the "·" separators fall through to the view's base colour
-         * (set to [WidgetTheme.text] at the call site). Structure mirrors the old plain
-         * string exactly, including that the score segment is unconditional.
+         * (set at the call site). Structure mirrors the old plain string exactly,
+         * including that the score segment is unconditional.
          */
-        private fun buildReadings(s: Snapshot, unit: TempUnit, theme: WidgetTheme): CharSequence {
+        private fun buildReadings(
+            s: Snapshot, unit: TempUnit, theme: WidgetTheme, d: Tokens.Data, chrome: Tokens.Chrome,
+        ): CharSequence {
             val sb = SpannableStringBuilder()
             fun value(text: String, color: Int) {
                 val start = sb.length
@@ -408,9 +444,9 @@ class AcWindowsProvider : AppWidgetProvider() {
             }
             s.tempF?.let { value(unit.degUnit(it), theme.temp) }
             s.dewPointF?.let { sb.append("   ·   dew "); value(unit.degUnit(it), theme.dew) }
-            s.aqi?.let { sb.append("   ·   AQI "); value(it.toString(), AQI_GREEN) }
+            s.aqi?.let { sb.append("   ·   AQI "); value(it.toString(), d.aqi) }
             sb.append("   ·   score ")
-            value(s.nowScore.roundToInt().toString(), theme.text)
+            value(s.nowScore.roundToInt().toString(), chrome.heading)
             return sb
         }
 

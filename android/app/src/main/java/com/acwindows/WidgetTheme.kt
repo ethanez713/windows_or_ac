@@ -8,32 +8,48 @@ import android.graphics.Color
  * file can be edited without touching it. Reads/writes the same `ac_windows`
  * SharedPreferences everything else uses — just its own key namespace.
  *
- * Colours are stored as `#RRGGBB` strings (no alpha; opacity is handled elsewhere via
+ * Every colour here is already RESOLVED: unset elements come back carrying the design
+ * system's value (§0.1/§0.3) for whichever theme the phone is in, so a widget nobody has
+ * customised follows light/dark on its own. Only a colour the user actually chose is
+ * stored, which is what [save] enforces — writing back a value that merely matches the
+ * current theme's token would silently pin the widget to that theme.
+ *
+ * Colours are `#RRGGBB` on disk (no alpha; opacity is handled elsewhere via
  * [AppConfig.widgetOpacity]) so they round-trip through a plain hex EditText.
  */
 data class WidgetTheme(
-    val useActionBackground: Boolean = true,  // background follows the recommendation colour
-    val background: Int = DEFAULT_BACKGROUND, // used only when useActionBackground is false
-    val barOpen: Int = DEFAULT_BAR_OPEN,
-    val barClosed: Int = DEFAULT_BAR_CLOSED,
-    val temp: Int = DEFAULT_TEMP,
-    val dew: Int = DEFAULT_DEW,
-    val rain: Int = DEFAULT_RAIN,
-    val text: Int = DEFAULT_TEXT,
+    val useActionBackground: Boolean = false, // opt in to a card tinted by the recommendation
+    val background: Int = DEFAULTS.background, // used only when useActionBackground is false
+    val barOpen: Int = DEFAULTS.barOpen,
+    val barClosed: Int = DEFAULTS.barClosed,
+    val temp: Int = DEFAULTS.temp,
+    val dew: Int = DEFAULTS.dew,
+    val rain: Int = DEFAULTS.rain,
+    val text: Int = DEFAULTS.text,
     val textScalePct: Int = 100,
 ) {
+    /** The colour every element takes when the user hasn't chosen one. */
+    class Defaults(dark: Boolean) {
+        private val d = Tokens.data(dark)
+        private val c = Tokens.chrome(dark)
+        val background = c.card
+        val barOpen = d.score
+        val barClosed = d.blockedBase
+        val temp = d.temp
+        val dew = d.dew
+        val rain = d.rain
+        val text = c.body
+    }
+
     companion object {
         private const val PREFS = "ac_windows"
 
-        private const val DEFAULT_BACKGROUND = 0xFF3E6B4C.toInt()  // OPEN_WINDOWS colour, only a fallback
-        private const val DEFAULT_BAR_OPEN = 0xFFE8F5E9.toInt()
-        private const val DEFAULT_BAR_CLOSED = 0xFF3A434F.toInt()
-        private const val DEFAULT_TEMP = 0xFFFB923C.toInt()
-        private const val DEFAULT_DEW = 0xFFA5B4FC.toInt()
-        private const val DEFAULT_RAIN = 0xFF7DD3FC.toInt()
-        private const val DEFAULT_TEXT = 0xFFFFFFFF.toInt()
+        /** Compile-time stand-in for [defaults]; the real one needs a Context to know the theme. */
+        private val DEFAULTS = Defaults(dark = true)
 
         val DEFAULT = WidgetTheme()
+
+        fun defaults(context: Context) = Defaults(Tokens.isDarkTheme(context))
 
         /**
          * Accepts `#RRGGBB` or `RRGGBB` (case-insensitive); anything else — unset, too
@@ -52,32 +68,39 @@ data class WidgetTheme(
 
         fun load(context: Context): WidgetTheme {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val def = defaults(context)
+            fun color(key: String, fallback: Int) = parseHex(p.getString(key, null), fallback)
             return WidgetTheme(
-                useActionBackground = p.getBoolean("widgetUseActionBackground", true),
-                background = parseHex(p.getString("widgetColorBackground", null), DEFAULT_BACKGROUND),
-                barOpen = parseHex(p.getString("widgetColorBarOpen", null), DEFAULT_BAR_OPEN),
-                barClosed = parseHex(p.getString("widgetColorBarClosed", null), DEFAULT_BAR_CLOSED),
-                temp = parseHex(p.getString("widgetColorTemp", null), DEFAULT_TEMP),
-                dew = parseHex(p.getString("widgetColorDew", null), DEFAULT_DEW),
-                rain = parseHex(p.getString("widgetColorRain", null), DEFAULT_RAIN),
-                text = parseHex(p.getString("widgetColorText", null), DEFAULT_TEXT),
+                useActionBackground = p.getBoolean("widgetUseActionBackground", false),
+                background = color("widgetColorBackground", def.background),
+                barOpen = color("widgetColorBarOpen", def.barOpen),
+                barClosed = color("widgetColorBarClosed", def.barClosed),
+                temp = color("widgetColorTemp", def.temp),
+                dew = color("widgetColorDew", def.dew),
+                rain = color("widgetColorRain", def.rain),
+                text = color("widgetColorText", def.text),
                 textScalePct = p.getString("widgetTextScalePct", null)?.toIntOrNull()
                     ?.coerceIn(50, 200) ?: 100,
             )
         }
 
         fun save(context: Context, theme: WidgetTheme) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putBoolean("widgetUseActionBackground", theme.useActionBackground)
-                .putString("widgetColorBackground", hex(theme.background))
-                .putString("widgetColorBarOpen", hex(theme.barOpen))
-                .putString("widgetColorBarClosed", hex(theme.barClosed))
-                .putString("widgetColorTemp", hex(theme.temp))
-                .putString("widgetColorDew", hex(theme.dew))
-                .putString("widgetColorRain", hex(theme.rain))
-                .putString("widgetColorText", hex(theme.text))
-                .putString("widgetTextScalePct", theme.textScalePct.toString())
-                .apply()
+            val def = defaults(context)
+            val e = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            // Storing a colour that equals the current theme's token would freeze the widget
+            // to this theme; leaving the key unset is what lets it keep following the system.
+            fun color(key: String, value: Int, default: Int) =
+                if (value == default) e.remove(key) else e.putString(key, hex(value))
+            e.putBoolean("widgetUseActionBackground", theme.useActionBackground)
+            color("widgetColorBackground", theme.background, def.background)
+            color("widgetColorBarOpen", theme.barOpen, def.barOpen)
+            color("widgetColorBarClosed", theme.barClosed, def.barClosed)
+            color("widgetColorTemp", theme.temp, def.temp)
+            color("widgetColorDew", theme.dew, def.dew)
+            color("widgetColorRain", theme.rain, def.rain)
+            color("widgetColorText", theme.text, def.text)
+            e.putString("widgetTextScalePct", theme.textScalePct.toString())
+            e.apply()
         }
     }
 }

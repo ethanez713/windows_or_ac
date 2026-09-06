@@ -46,6 +46,7 @@ class WidgetSettingsActivity : Activity() {
         check(R.id.show_temp).isChecked = cfg.widgetShowTemp
         check(R.id.show_dew).isChecked = cfg.widgetShowDew
         check(R.id.show_rain).isChecked = cfg.widgetShowRain
+        check(R.id.show_threshold).isChecked = cfg.widgetShowThreshold
 
         val theme = WidgetTheme.load(this)
         check(R.id.use_action_background).isChecked = theme.useActionBackground
@@ -122,6 +123,7 @@ class WidgetSettingsActivity : Activity() {
             .putBoolean("widgetShowTemp", check(R.id.show_temp).isChecked)
             .putBoolean("widgetShowDew", check(R.id.show_dew).isChecked)
             .putBoolean("widgetShowRain", check(R.id.show_rain).isChecked)
+            .putBoolean("widgetShowThreshold", check(R.id.show_threshold).isChecked)
             .apply()
 
         // A half-typed hex field falls back to whatever's already saved (not the global
@@ -177,7 +179,9 @@ class WidgetSettingsActivity : Activity() {
 
     private companion object {
         /** The graph's optional layers, in the order they're listed on screen. */
-        val LAYERS = listOf(R.id.show_bars, R.id.show_temp, R.id.show_dew, R.id.show_rain)
+        val LAYERS = listOf(
+            R.id.show_bars, R.id.show_temp, R.id.show_dew, R.id.show_rain, R.id.show_threshold,
+        )
 
         /** Each hex field, paired with the [WidgetTheme] property it edits. */
         val COLOR_IDS: List<Pair<Int, (WidgetTheme) -> Int>> = listOf(
