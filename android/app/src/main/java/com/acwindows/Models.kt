@@ -83,6 +83,7 @@ data class ForecastPoint(
     val aqi: Int? = null,
     val precipProb: Double? = null,          // % chance of precipitation
     val precipIn: Double? = null,            // forecast precipitation amount, inches
+    val thunderProb: Double? = null,         // % chance of thunder this hour, when a source supplies one
     val weatherCode: Int? = null,            // WMO weather code (for the summary icons)
     val isDay: Boolean? = null,              // true sunrise→sunset, false overnight (for graph shading)
     val shortwaveWm2: Double? = null,

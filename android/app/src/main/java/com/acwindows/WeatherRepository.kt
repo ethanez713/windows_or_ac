@@ -579,6 +579,10 @@ object WeatherRepository {
      * answered, not an error: "will rain reach this house" is the one that decides
      * whether the windows can stay open, so it votes like any other source.
      *
+     * It is also the only source here that publishes a per-hour thunderstorm probability,
+     * which is what the storm treatment in the forecast surfaces keys off; without a key
+     * for it, ForecastBuilder falls back to the WMO code.
+     *
      * Amount comes from `rainIntensity` (in/hr over a 1-hour step) rather than
      * `rainAccumulation`, which is unreliable here — it reports 0 for hours whose own
      * intensity is the highest of the day.
@@ -600,6 +604,7 @@ object WeatherRepository {
                 "time" to t,
                 "precipProb" to v.dblOrNull("precipitationProbability"),
                 "precipIn" to v.dblOrNull("rainIntensity"),
+                "thunderProb" to v.dblOrNull("thunderstormProbability"),
             )
         }
     } catch (e: Exception) {

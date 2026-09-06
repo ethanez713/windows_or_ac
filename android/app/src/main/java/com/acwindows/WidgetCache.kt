@@ -40,6 +40,8 @@ data class Snapshot(
      */
     val aqiSeries: List<Int?> = emptyList(),
     val codeSeries: List<Int?> = emptyList(),
+    /** Per-hour thunderstorm chance, %, for the forecast widget's storm treatment. */
+    val thunderSeries: List<Double?> = emptyList(),
     val bestStart: String?,
     val bestEnd: String?,
     val note: String,
@@ -121,6 +123,7 @@ object WidgetCache {
             .put("dewSeries", nullableArray(s.dewSeries))
             .put("aqiSeries", nullableIntArray(s.aqiSeries))
             .put("codeSeries", nullableIntArray(s.codeSeries))
+            .put("thunderSeries", nullableArray(s.thunderSeries))
             .put("bestStart", s.bestStart ?: JSONObject.NULL)
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
             .put("note", s.note)
@@ -171,6 +174,7 @@ object WidgetCache {
                 dewSeries = optNullableDblList("dewSeries"),
                 aqiSeries = optNullableIntList("aqiSeries"),
                 codeSeries = optNullableIntList("codeSeries"),
+                thunderSeries = optNullableDblList("thunderSeries"),
                 bestStart = if (o.isNull("bestStart")) null else o.getString("bestStart"),
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),
                 note = o.optString("note", ""),

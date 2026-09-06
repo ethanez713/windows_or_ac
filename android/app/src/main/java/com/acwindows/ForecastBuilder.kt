@@ -91,6 +91,7 @@ object ForecastBuilder {
             val precipProb = rainConsensus(h["precipProb"] as? Double, rainVoters, time, "precipProb")
             val precipIn = rainConsensus(h["precipIn"] as? Double, rainVoters, time, "precipIn")
             val weatherCode = h["weatherCode"] as? Int
+            val thunderProb = thunderConsensus(rainVoters, time, weatherCode)
             val isDay = h["isDay"] as? Boolean
             val shortwaveWm2 = h["shortwaveWm2"] as? Double
             val breakdown = Score.windowScoreBreakdown(
@@ -104,6 +105,7 @@ object ForecastBuilder {
                 aqi = aqi,
                 precipProb = precipProb,
                 precipIn = precipIn,
+                thunderProb = thunderProb,
                 weatherCode = weatherCode,
                 isDay = isDay,
                 shortwaveWm2 = shortwaveWm2,
@@ -153,6 +155,28 @@ object ForecastBuilder {
         if (vals.isEmpty()) return null
         val mid = vals.size / 2
         return if (vals.size % 2 == 1) vals[mid] else (vals[mid - 1] + vals[mid]) / 2.0
+    }
+
+    /**
+     * Thunder is a "does anyone see storms" signal, so it takes the MAXIMUM across voters
+     * rather than the median the rain fields use: a single model that resolves a cell the
+     * others smear away is the one worth listening to when the question is whether to
+     * leave the windows open unattended.
+     *
+     * Falls back to the WMO code when no source reports a probability at all — 95 is
+     * thunderstorm, 96/99 thunderstorm with hail — so a deployment without a Tomorrow.io
+     * key still marks storm hours, just coarsely.
+     */
+    private fun thunderConsensus(
+        voters: List<Map<String, Map<String, Any?>>>, time: String, weatherCode: Int?,
+    ): Double? {
+        val reported = voters.mapNotNull { it[time]?.get("thunderProb") as? Double }.maxOrNull()
+        if (reported != null) return reported
+        return when (weatherCode) {
+            96, 99 -> 80.0
+            95 -> 60.0
+            else -> null
+        }
     }
 
     private data class Best(val start: String?, val end: String?, val avg: Double?)
