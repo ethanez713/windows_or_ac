@@ -47,6 +47,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -142,7 +143,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(vm: AppViewModel = viewModel()) {
     val ui by vm.ui.collectAsState()
-    var mode by rememberSaveable { mutableStateOf(ChartMode.VALUES) }
 
     // Pull down anywhere on the list to refresh (replaces the old top-bar button).
     val ptr = rememberPullToRefreshState()
@@ -153,11 +153,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("AC / Windows", fontWeight = FontWeight.Bold) },
-                actions = {
-                    DetailModeToggle(mode) { mode = it }
-                    SettingsButton()
-                },
+                title = { Text("AC / Windows", fontFamily = Heading, fontSize = 20.sp) },
+                actions = { SettingsButton() },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
@@ -175,26 +172,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 }
                 // Still loading the first data → skeleton chips, not a spinner or empty message.
                 s == null -> SkeletonForecast()
-                else -> ForecastScreen(s, mode, ui.updatedAtMs, ui.refreshing, vm::refresh)
+                else -> ForecastScreen(s, ui.updatedAtMs, ui.refreshing, vm::refresh)
             }
             PullToRefreshContainer(ptr, Modifier.align(Alignment.TopCenter))
         }
-    }
-}
-
-/** The global Score/Values toggle, sized to sit inside the top app bar. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DetailModeToggle(mode: ChartMode, onChange: (ChartMode) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.padding(end = 4.dp)) {
-        SegmentedButton(
-            selected = mode == ChartMode.SCORE, onClick = { onChange(ChartMode.SCORE) },
-            shape = SegmentedButtonDefaults.itemShape(0, 2), modifier = Modifier.height(34.dp),
-        ) { Text("Score", fontSize = 12.sp) }
-        SegmentedButton(
-            selected = mode == ChartMode.VALUES, onClick = { onChange(ChartMode.VALUES) },
-            shape = SegmentedButtonDefaults.itemShape(1, 2), modifier = Modifier.height(34.dp),
-        ) { Text("Values", fontSize = 12.sp) }
     }
 }
 
@@ -252,7 +233,7 @@ private fun SkeletonForecast() {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         // Sources banner — same surface, padding and single 13sp line as SourceStatusHeader.
-        Surface(Modifier.fillMaxWidth(), color = SurfaceElevated, shape = RoundedCornerShape(10.dp)) {
+        Surface(Modifier.fillMaxWidth(), color = Skin.chrome.card, shape = RoundedCornerShape(10.dp)) {
             Row(
                 Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -267,7 +248,7 @@ private fun SkeletonForecast() {
             val barPad = 8.dp
             ElevatedCard(
                 Modifier.fillMaxWidth(),
-                colors = CardDefaults.elevatedCardColors(containerColor = SurfaceElevated),
+                colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
             ) {
                 Column(Modifier.padding(14.dp)) {
                     // The open-window flag strip. Most days carry a span boundary, so
@@ -344,9 +325,6 @@ private fun SkeletonChip(color: Color, modifier: Modifier) {
 // know about the now-view still compiles unchanged.
 private data class DayForecast(val date: String, val points: List<ForecastPoint>, val stepMinutes: Int = 60)
 
-/** What the expanded detail chart plots: the 0-100 score breakdown, or raw values. */
-private enum class ChartMode { SCORE, VALUES }
-
 // DayViewMode (AppConfig.kt) isn't Parcelable, so rememberSaveable needs an explicit
 // Saver — round-trip it through its enum name, same trick as everywhere else in Android
 // that saves an enum across a config change.
@@ -380,7 +358,6 @@ private fun nowSeriesFor(state: AppState, todayHourly: DayForecast): DayForecast
 @Composable
 private fun ForecastScreen(
     state: AppState,
-    mode: ChartMode,
     updatedAtMs: Long,
     refreshing: Boolean,
     onRefresh: () -> Unit,
@@ -471,11 +448,10 @@ private fun ForecastScreen(
                 day = day,
                 comfort = comfort,
                 threshold = threshold,
-                mode = mode,
+                cfg = cfg,
                 globalSpans = if (isToday && viewMode == DayViewMode.NOW) nowSpans else spans,
                 expanded = expanded == day.date,
                 unit = unit,
-                showHourlyRows = cfg.appShowHourlyRows,
                 isToday = isToday,
                 viewMode = viewMode,
                 onToggleView = onToggleView,
@@ -496,11 +472,10 @@ private fun DayCard(
     day: DayForecast,
     comfort: Comfort,
     threshold: Double,
-    mode: ChartMode,
+    cfg: AppConfig,
     globalSpans: List<Pair<String, String>>,
     expanded: Boolean,
     unit: TempUnit,
-    showHourlyRows: Boolean,
     isToday: Boolean,
     viewMode: DayViewMode,
     onToggleView: () -> Unit,
@@ -509,22 +484,17 @@ private fun DayCard(
     val openRows = day.points.count { it.score >= threshold }
     ElevatedCard(
         Modifier.fillMaxWidth().clickable { onToggle() },
-        colors = CardDefaults.elevatedCardColors(containerColor = SurfaceElevated),
+        colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
     ) {
         Column(Modifier.padding(14.dp)) {
-            // Selected hour, shared between the collapsed sparkline cursor and the
-            // expanded detail charts so a pick in either reads across both. Keyed on the
-            // row count + resolution too, not just the date, so switching today's card
-            // between TODAY and NOW — which swaps in a differently-sized series under the
-            // same date — drops a selection instead of carrying over an index into a
-            // completely different set of rows.
-            var sel by rememberSaveable(day.date, day.points.size, day.stepMinutes) { mutableStateOf<Int?>(null) }
-            // Fixed gutters keep every day's bar graph aligned with the others, with a
-            // balanced buffer on each side of the bars (left to the date, right to the
-            // weather summary).
-            val dateW = 84.dp
-            val summaryW = 96.dp
-            val barPad = 8.dp
+            // §A.3's fixed columns. The label and sparkline widths are FIXED, not
+            // weighted, so a long day name can never shift the bars — every card's bars
+            // start at the same x, which is the whole point of stacking them. The label is
+            // 78dp because "Tomorrow" measures 72 at 15sp and a 71dp box truncates it.
+            val labelW = 78.dp
+            val sparkW = 132.dp
+            val iconsW = 40.dp
+            val colGap = 6.dp
             // Open-window time flags ride ABOVE the bars (so they never compress them),
             // in a strip aligned to the sparkline column. Only shown on days a flag lands on.
             val flagTimes = remember(day) { day.points.map { it.time }.toSet() }
@@ -538,21 +508,47 @@ private fun DayCard(
             val nowIdx = remember(day) { nowIdxOf(day.points) }
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
-                    Spacer(Modifier.width(dateW))
-                    OpenWindowFlags(
-                        day.points, globalSpans, day.stepMinutes,
-                        Modifier.weight(1f).padding(horizontal = barPad).height(26.dp),
-                    )
-                    Spacer(Modifier.width(summaryW))
+                    Spacer(Modifier.width(labelW + colGap))
+                    OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.width(sparkW).height(26.dp))
                 }
             }
             // "Now" only on today's card in NOW mode — every other card (and today's card
             // in TODAY mode) keeps the ordinary date label.
             val label = if (isToday && viewMode == DayViewMode.NOW) "Now" else dayLabel(day.date)
+            val summary = remember(day.points) { summarize(day.points) }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, Modifier.width(dateW), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                DaySparkline(day.points, threshold, sel, nowIdx, Modifier.weight(1f).padding(horizontal = barPad).height(40.dp))
-                DaySummaryView(day.points, unit, Modifier.width(summaryW))
+                Text(
+                    label, Modifier.width(labelW), fontFamily = Ui, fontSize = 15.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, color = Skin.chrome.heading,
+                )
+                Spacer(Modifier.width(colGap))
+                DaySparkline(day.points, threshold, nowIdx, Modifier.width(sparkW).height(34.dp))
+                Spacer(Modifier.width(colGap))
+                Row(
+                    Modifier.width(iconsW), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WeatherGlyph(summary.morningCode, isDay = true, size = 17.dp)
+                    WeatherGlyph(summary.nightCode, isDay = false, size = 17.dp)
+                }
+                Spacer(Modifier.width(colGap))
+                // Weighted, not fixed: the pair has to absorb the row's remaining slack or
+                // it sits inset from the card edge and stops lining up with the spans text
+                // directly beneath it.
+                Row(
+                    Modifier.weight(1f).widthIn(min = 56.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Text(
+                        summary.highF?.let { unit.deg(it.toDouble()) } ?: "—°",
+                        fontFamily = Mono, fontSize = 15.sp, color = Skin.chrome.heading,
+                    )
+                    Text(
+                        " " + (summary.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"),
+                        fontFamily = Mono, fontSize = 13.sp, color = Skin.chrome.faint,
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             // The view-switch hint rides in the SAME row as the open-hours line (weighted
@@ -569,10 +565,9 @@ private fun DayCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     openWindowLabel(openRows, day.stepMinutes),
-                    Modifier.weight(1f),
+                    fontFamily = Ui,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (openRows > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (openRows > 0) Skin.data.score else Skin.chrome.faint,
                 )
                 if (isToday) {
                     Box(
@@ -587,59 +582,52 @@ private fun DayCard(
                     ) {
                         Text(
                             if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
+                            fontFamily = Mono,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Skin.data.score,
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                // The two are mutually exclusive by construction: a day with open hours has
+                // spans to name, and a day with none has a reason instead. One slot, so a
+                // long span list can't push the reason off the row.
+                if (openRows > 0) {
+                    Text(
+                        compactSpans(day.points, globalSpans, day.stepMinutes),
+                        fontFamily = Mono, fontSize = 11.sp, color = Skin.chrome.muted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
+                    )
+                } else {
+                    limitingFactor(comfort, day.points)?.let { lim ->
+                        Text(
+                            "${lim.factor.label()} ${readingOf(lim.factor, lim.point) ?: ""}",
+                            fontFamily = Mono, fontSize = 11.sp,
+                            color = Color(Tokens.factorHue(Skin.data.raw, lim.factor)),
+                            maxLines = 1, softWrap = false,
                         )
                     }
                 }
             }
             if (expanded) {
-                Spacer(Modifier.height(14.dp))
-                when (mode) {
-                    ChartMode.SCORE -> FactorChart(day.points, threshold, sel, nowIdx, unit) { sel = it }
-                    ChartMode.VALUES -> AbsoluteCharts(day.points, comfort, sel, nowIdx, unit, showHourlyRows) { sel = it }
-                }
+                Spacer(Modifier.height(10.dp))
+                HorizontalDivider(color = Skin.chrome.hairline)
+                Spacer(Modifier.height(10.dp))
+                DetailDrawer(
+                    day.points, comfort, unit,
+                    palette = cfg.aqiPalette,
+                    rainScaleInPerHr = cfg.rainScaleInPerHr,
+                    thunderAlertPct = cfg.thunderAlertPct,
+                    isToday = isToday,
+                )
             }
         }
     }
 }
 
-@Composable
-private fun DaySummaryView(points: List<ForecastPoint>, unit: TempUnit, modifier: Modifier = Modifier) {
-    val s = remember(points) { summarize(points) }
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(modifier.width(96.dp), horizontalAlignment = Alignment.End) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            WeatherGlyph(s.morningCode, isDay = true, size = 22.dp)
-            WeatherGlyph(s.nightCode, isDay = false, size = 22.dp)
-        }
-        Spacer(Modifier.height(3.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(s.highF?.let { unit.deg(it.toDouble()) } ?: "—°", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = onSurface)
-            Text(" / " + (s.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"), fontSize = 13.sp, color = onVar)
-        }
-        rainSummary(s)?.let { Text(it, fontSize = 11.sp, color = onVar, maxLines = 1, softWrap = false) }
-    }
-}
 
-/** "30% · 0.05″" when there's meaningful rain, else null (omit the line). */
-private fun rainSummary(s: DaySummary): String? {
-    val prob = s.maxRainProb
-    val wet = s.totalPrecipIn >= 0.01
-    if ((prob ?: 0) < 5 && !wet) return null
-    val parts = mutableListOf<String>()
-    if (prob != null && prob >= 5) parts.add("$prob%")
-    if (wet) parts.add(fmtInches(s.totalPrecipIn))
-    return parts.joinToString(" · ")
-}
 
-/** Inches with sensible precision: 0.2″, 0.05″. */
-private fun fmtInches(inches: Double): String {
-    val s = if (inches >= 0.1) String.format("%.1f", inches) else String.format("%.2f", inches)
-    return "$s″"
-}
 
 /**
  * Prominent header for the current data view: where the forecast is for, how many sources
@@ -671,7 +659,7 @@ private fun SourceStatusHeader(
     val placeLabel = place?.trim()?.takeIf { it.isNotEmpty() }
     Surface(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onClick() },
-        color = SurfaceElevated,
+        color = Skin.chrome.card,
         shape = RoundedCornerShape(10.dp),
     ) {
         Row(
@@ -983,19 +971,18 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
 /**
  * Score bars for one day. Bars use the full canvas height (the open-window flags now
  * live in their own strip ABOVE — see [OpenWindowFlags] — so they no longer steal bar
- * height). A non-null [sel] mirrors the detail chart's selected hour as a cursor.
+ * height).
  */
 @Composable
 private fun DaySparkline(
     points: List<ForecastPoint>,
     threshold: Double,
-    sel: Int?,
     nowIdx: Int,
     modifier: Modifier,
 ) {
-    val open = BarOpen
-    val closed = BarClosed
-    val onSurface = MaterialTheme.colorScheme.onSurface
+    val d = Skin.data
+    val open = d.score
+    val closed = d.blockedBase
     Canvas(modifier) {
         val n = points.size.coerceAtLeast(1)
         val bw = size.width / n
@@ -1007,9 +994,8 @@ private fun DaySparkline(
             // Open hours are vivid green; closed hours are a desaturated grey tinted by their
             // dominant detractor (falling back to a flat grey when the breakdown is unknown).
             val barColor = if (p.score >= threshold) open else {
-                val b = p.breakdown
-                val factor = b?.let { FACTORS.minByOrNull { f -> f.multiplierOf(it) }?.color }
-                if (factor != null) detractorGrey(factor) else closed
+                val factor = p.breakdown?.limiting()
+                if (factor != null) Color(Tokens.blockedBar(d.raw, Tokens.factorHue(d.raw, factor))) else closed
             }
             drawRect(
                 color = barColor,
@@ -1026,20 +1012,12 @@ private fun DaySparkline(
             if (p.score > 0.5) return@forEachIndexed
             val b = p.breakdown ?: return@forEachIndexed
             val color = if ((p.tempF ?: 0.0) >= HOT_F) HotRed
-                else (FACTORS.minByOrNull { it.multiplierOf(b) } ?: return@forEachIndexed).color
+                else Color(Tokens.factorHue(d.raw, b.limiting() ?: return@forEachIndexed))
             drawRect(color, topLeft = Offset(i * bw, plotBot - markH), size = Size(bw * 0.7f, markH))
         }
 
         // Static "now" marker (today only — nowIdx is -1 on other days), centred on the bar.
         if (nowIdx in 0 until n) nowMarker(nowIdx * bw + bw * 0.35f, 0f, plotBot)
-
-        // Selection cursor, mirrored from the expanded detail chart (centred on the bar).
-        sel?.let { s ->
-            if (s in 0 until n) {
-                val cx = s * bw + bw * 0.35f
-                drawLine(onSurface.copy(alpha = 0.55f), Offset(cx, 0f), Offset(cx, plotBot), strokeWidth = 1.dp.toPx())
-            }
-        }
     }
 }
 
@@ -1110,514 +1088,19 @@ private fun OpenWindowFlags(
     }
 }
 
-@Composable
-private fun FactorChart(points: List<ForecastPoint>, threshold: Double, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
-    if (points.isEmpty()) return
-    val n = points.size
-    val tm = rememberTextMeasurer()
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
 
-    Column {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            Canvas(
-                Modifier.fillMaxWidth().height(190.dp)
-                    .pointerInput(n) { detectTapGestures { o -> onSel(idxAt(o.x, size.width, n)) } }
-                    .pointerInput(n) {
-                        detectHorizontalDragGestures { change, _ ->
-                            onSel(idxAt(change.position.x, size.width, n)); change.consume()
-                        }
-                    },
-            ) {
-                val topPad = 8.dp.toPx()
-                val botPad = 16.dp.toPx()
-                val plotBot = size.height - botPad
-                val plotH = plotBot - topPad
-                fun xAt(i: Int) = if (n == 1) size.width / 2 else i.toFloat() / (n - 1) * size.width
-                fun yAt(v: Double) = plotBot - (v / 100.0).toFloat().coerceIn(0f, 1f) * plotH
 
-                // Day/night shading behind everything (sun-up lighter, overnight darker).
-                dayNightBands(points, xAt(0), xAt(n - 1), topPad, plotBot)
 
-                // Faint score area + line (the product the factors explain).
-                val area = Path().apply {
-                    moveTo(xAt(0), plotBot)
-                    points.forEachIndexed { i, p -> lineTo(xAt(i), yAt(p.score)) }
-                    lineTo(xAt(n - 1), plotBot); close()
-                }
-                drawPath(area, ScoreInk.copy(alpha = 0.12f))
 
-                // Open threshold (dashed).
-                val thrY = yAt(threshold)
-                drawLine(
-                    onVar.copy(alpha = 0.5f), Offset(0f, thrY), Offset(size.width, thrY),
-                    strokeWidth = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 9f)),
-                )
 
-                // One coloured line per factor.
-                FACTORS.forEach { f ->
-                    val path = Path()
-                    points.forEachIndexed { i, p ->
-                        val m = p.breakdown?.let(f.multiplierOf) ?: 1.0
-                        val x = xAt(i)
-                        val y = yAt(m * 100)
-                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                    }
-                    drawPath(path, f.color, style = Stroke(width = 2.dp.toPx()))
-                }
-                // Score line on top (thin, neutral).
-                val sPath = Path()
-                points.forEachIndexed { i, p ->
-                    val x = xAt(i); val y = yAt(p.score)
-                    if (i == 0) sPath.moveTo(x, y) else sPath.lineTo(x, y)
-                }
-                drawPath(sPath, ScoreInk.copy(alpha = 0.6f), style = Stroke(width = 1.5f.dp.toPx()))
 
-                // Static "now" marker (today only — nowIdx is -1 on other days).
-                if (nowIdx in 0 until n) nowMarker(xAt(nowIdx), topPad, plotBot, tm)
 
-                // Selection cursor (only when an hour is tapped).
-                sel?.let { s ->
-                    val cx = xAt(s)
-                    drawLine(onSurface.copy(alpha = 0.6f), Offset(cx, topPad), Offset(cx, plotBot), strokeWidth = 1.dp.toPx())
-                }
 
-                // Sparse hour labels.
-                val step = (n / 4).coerceAtLeast(1)
-                var i = 0
-                while (i < n) {
-                    val layout = tm.measure(shortHour(points[i].time), TextStyle(color = onVar, fontSize = 9.sp))
-                    drawText(
-                        layout,
-                        topLeft = Offset(
-                            (xAt(i) - layout.size.width / 2).coerceIn(0f, size.width - layout.size.width),
-                            plotBot + 3.dp.toPx(),
-                        ),
-                    )
-                    i += step
-                }
-            }
 
-            // Tooltip — hidden until you tap a point; offset to whichever side has room
-            // so it never covers the selected hour. Tap it to dismiss.
-            sel?.let { s ->
-                val p = points[s]
-                val frac = if (n == 1) 0.5f else s.toFloat() / (n - 1)
-                val ttW = 188.dp
-                val gap = 8.dp
-                val cursorX = maxWidth * frac
-                val left = when {
-                    maxWidth - cursorX >= ttW + gap -> cursorX + gap
-                    cursorX >= ttW + gap -> cursorX - gap - ttW
-                    else -> (maxWidth - ttW) / 2
-                }.coerceIn(0.dp, (maxWidth - ttW).coerceAtLeast(0.dp))
-                Tooltip(p, unit, Modifier.width(ttW).offset(x = left, y = 6.dp).clickable { onSel(null) })
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        Legend()
-    }
-}
 
-@Composable
-private fun Tooltip(p: ForecastPoint, unit: TempUnit, modifier: Modifier) {
-    Surface(
-        modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(10.dp),
-        shadowElevation = 8.dp,
-    ) {
-        Column(Modifier.padding(10.dp)) {
-            Text("${fmt(p.time)}  ·  score ${p.score.roundToInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Spacer(Modifier.height(5.dp))
-            FACTORS.forEach { f ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(f.color))
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        f.label, fontSize = 11.sp, maxLines = 1, softWrap = false,
-                        modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(f.valueOf(p, unit), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
-                }
-            }
-        }
-    }
-}
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun Legend() {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FACTORS.forEach { f ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(f.color))
-                Spacer(Modifier.width(5.dp))
-                Text(f.label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
 
-/**
- * The "Values" detail view: the raw weather behind the score, as small multiples
- * sharing one hour axis. Both charts use identical left/right gutters so their plot
- * areas line up — the scrub cursor hits the same hour in both. Chart 1: temp + dew on
- * a °F axis (temp turns red ≥90°F). Chart 2: AQI and rain-chance share the 0-100 left
- * axis, precipitation amount rides a right ″ axis as bars. Tapping scrubs both and
- * fills the readout row.
- */
-@Composable
-private fun AbsoluteCharts(
-    points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit,
-    showHourlyRows: Boolean, onSel: (Int?) -> Unit,
-) {
-    if (points.isEmpty()) return
-    Column {
-        AbsReadout(points, sel, nowIdx, unit)
-        Spacer(Modifier.height(10.dp))
-        if (showHourlyRows) {
-            HourlyValueRow(tempHourlyCells(points, nowIdx, unit))
-            Spacer(Modifier.height(6.dp))
-        }
-        TempChart(points, comfort, sel, nowIdx, unit, onSel)
-        Spacer(Modifier.height(12.dp))
-        if (showHourlyRows) {
-            HourlyValueRow(precipHourlyCells(points, nowIdx))
-            Spacer(Modifier.height(6.dp))
-        }
-        CombinedChart(points, sel, nowIdx, onSel)
-    }
-}
 
-// A now-view series can carry up to 96 15-minute rows; a 96-column strip would just
-// scroll forever without adding anything readable, so the row is capped at the first
-// 48 columns (12h at that resolution, or 48h on the ordinary hourly cards).
-private const val HOURLY_ROW_CAP = 48
-
-private fun tempHourlyCells(points: List<ForecastPoint>, nowIdx: Int, unit: TempUnit): List<HourlyCell> =
-    points.take(HOURLY_ROW_CAP).mapIndexed { i, p ->
-        HourlyCell(
-            primary = p.tempF?.let { unit.deg(it) } ?: "—",
-            glyph = wxGlyph(p.weatherCode, p.isDay ?: true),
-            secondary = p.dewPointF?.let { "dew " + unit.deg(it) },
-            time = if (i == nowIdx) "Now" else shortHour(p.time),
-        )
-    }
-
-private fun precipHourlyCells(points: List<ForecastPoint>, nowIdx: Int): List<HourlyCell> =
-    points.take(HOURLY_ROW_CAP).mapIndexed { i, p ->
-        HourlyCell(
-            primary = p.precipProb?.let { "${it.roundToInt()}%" } ?: "—",
-            glyph = precipGlyph(p.weatherCode),
-            secondary = p.precipIn?.takeIf { it > 0 }?.let { fmtInches(it) },
-            time = if (i == nowIdx) "Now" else shortHour(p.time),
-        )
-    }
-
-/** Geometry for one stacked mini-chart's plot area. */
-private class ChartGeom(
-    val plotLeft: Float, val plotTop: Float, val plotRight: Float, val plotBot: Float, val n: Int,
-) {
-    val plotH get() = plotBot - plotTop
-    val plotW get() = plotRight - plotLeft
-    fun xAt(i: Int) = if (n <= 1) (plotLeft + plotRight) / 2 else plotLeft + i.toFloat() / (n - 1) * plotW
-    fun yAt(v: Double, lo: Double, hi: Double): Float {
-        val f = if (hi <= lo) 0.0 else (v - lo) / (hi - lo)
-        return plotBot - f.toFloat().coerceIn(0f, 1f) * plotH
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun AbsReadout(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, unit: TempUnit) {
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    // No hour picked → fall back to the current hour on today's card, so the readout opens
-    // on live "now" numbers instead of a prompt. Other days have no "now" (nowIdx = -1) and
-    // keep the tap hint.
-    val idx = sel ?: nowIdx.takeIf { it in points.indices }
-    if (idx == null) {
-        Text("Tap a chart for the hour-by-hour readings", fontSize = 11.sp, color = onVar)
-        return
-    }
-    val p = points[idx]
-    val label = if (sel == null) "now · ${fmt(p.time)}" else fmt(p.time)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Chip(label, FontWeight.Bold, MaterialTheme.colorScheme.onSurface)
-        Chip("score ${p.score.roundToInt()}", FontWeight.Bold, ScoreInk)
-        p.tempF?.let { Chip(unit.degUnit(it), color = FactorTemp) }
-        p.dewPointF?.let { Chip("dew ${unit.deg(it)}", color = FactorHumid) }
-        p.aqi?.let { Chip("AQI $it", color = FactorAqi) }
-        p.precipProb?.let { Chip("${it.roundToInt()}% rain", color = AcBlue) }
-        p.precipIn?.takeIf { it > 0 }?.let { Chip(fmtInches(it), color = FactorRain) }
-    }
-}
-
-@Composable
-private fun Chip(text: String, weight: FontWeight = FontWeight.Medium, color: Color) {
-    Text(text, fontSize = 11.sp, fontWeight = weight, color = color, maxLines = 1, softWrap = false)
-}
-
-@Composable
-private fun TempChart(points: List<ForecastPoint>, comfort: Comfort, sel: Int?, nowIdx: Int, unit: TempUnit, onSel: (Int?) -> Unit) {
-    val temps = remember(points) { points.mapNotNull { it.tempF } }
-    if (temps.isEmpty()) { NoDataChart("Temp · Dew point (${unit.suffix})", "No temperature data"); return }
-    val dews = points.mapNotNull { it.dewPointF }
-    // Convert every series to DISPLAY units before computing bounds, so a Celsius chart
-    // snaps to round Celsius gridlines instead of round-in-°F ones rendered as e.g. 23.9°C.
-    val dispTemps = temps.map { unit.fromF(it) }
-    val dispDews = dews.map { unit.fromF(it) }
-    val dispMaxTemp = unit.fromF(comfort.maxTempF)
-    val (lo, hi) = niceBounds(
-        minOf(dispTemps.min(), dispDews.minOrNull() ?: dispTemps.min()),
-        maxOf(dispTemps.max(), dispDews.maxOrNull() ?: dispTemps.max(), dispMaxTemp),
-    )
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    ChartFrame("Temp · Dew point (${unit.suffix})", 124.dp, points, sel, showHourAxis = false, onSel = onSel) { g, tm ->
-        axisLabel(tm, "${hi.roundToInt()}°", onVar, 2f.dp.toPx(), g.plotTop)
-        axisLabel(tm, "${lo.roundToInt()}°", onVar, 2f.dp.toPx(), g.plotBot - 10.dp.toPx())
-        dashed(g.plotLeft, g.plotRight, g.yAt(dispMaxTemp, lo, hi), onVar.copy(alpha = 0.4f))
-        polyline(points.mapIndexedNotNull { i, p -> p.dewPointF?.let { g.xAt(i) to g.yAt(unit.fromF(it), lo, hi) } }, FactorHumid, 2.dp.toPx())
-        // Temp drawn segment-by-segment so any stretch touching ≥90°F renders red. The
-        // HOT_F comparison stays in °F (that's what the constant means); only the plotted
-        // y and the label are converted.
-        val w = 2.dp.toPx()
-        for (k in 0 until points.size - 1) {
-            val a = points[k].tempF ?: continue
-            val b = points[k + 1].tempF ?: continue
-            val color = if (a >= HOT_F || b >= HOT_F) HotRed else FactorTemp
-            drawLine(color, Offset(g.xAt(k), g.yAt(unit.fromF(a), lo, hi)), Offset(g.xAt(k + 1), g.yAt(unit.fromF(b), lo, hi)), strokeWidth = w)
-        }
-        // Static "now" marker (today only).
-        if (nowIdx in points.indices) nowMarker(g.xAt(nowIdx), g.plotTop, g.plotBot, tm)
-        // At the selected hour, label each series' value right where the cursor meets its line.
-        sel?.let { s ->
-            points[s].dewPointF?.let { d ->
-                valueAtLine(tm, unit.deg(d), FactorHumid, g.xAt(s), g.yAt(unit.fromF(d), lo, hi), g.plotLeft, g.plotRight)
-            }
-            points[s].tempF?.let { t ->
-                valueAtLine(tm, unit.deg(t), if (t >= HOT_F) HotRed else FactorTemp, g.xAt(s), g.yAt(unit.fromF(t), lo, hi), g.plotLeft, g.plotRight)
-            }
-        }
-    }
-}
-
-/** Height [ChartFrame] reserves below the plot for [CombinedChart]'s precip-type icons —
- *  see [ChartFrame]'s `iconBandDp`. Every other chart passes 0.dp and is unaffected. */
-private val ICON_BAND = 16.dp
-
-@Composable
-private fun CombinedChart(points: List<ForecastPoint>, sel: Int?, nowIdx: Int, onSel: (Int?) -> Unit) {
-    val maxIn = remember(points) { points.mapNotNull { it.precipIn }.maxOrNull() ?: 0.0 }
-    val inHi = niceCeilIn(maxIn)
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    // painterResource is @Composable and can't be called from inside the Canvas draw
-    // lambda below, so every precip glyph this chart might need is resolved up here and
-    // looked up by drawable id when drawing (see precipGlyph's WxGlyph.res).
-    val precipPainters = mapOf(
-        R.drawable.ic_wx_rain to painterResource(R.drawable.ic_wx_rain),
-        R.drawable.ic_wx_sleet to painterResource(R.drawable.ic_wx_sleet),
-        R.drawable.ic_wx_snow to painterResource(R.drawable.ic_wx_snow),
-        R.drawable.ic_wx_thunder to painterResource(R.drawable.ic_wx_thunder),
-        R.drawable.ic_wx_hail to painterResource(R.drawable.ic_wx_hail),
-    )
-    ChartFrame(
-        "US AQI · Rain Chance (%) · Rain amount (in)", 124.dp + ICON_BAND, points, sel,
-        showHourAxis = true, iconBandDp = ICON_BAND, onSel = onSel,
-    ) { g, tm ->
-        // Precip amount as bars on the right (″) scale, behind the lines.
-        val bw = (g.plotW / g.n * 0.55f).coerceAtLeast(1.5f.dp.toPx())
-        points.forEachIndexed { i, p ->
-            val v = p.precipIn ?: 0.0
-            if (v <= 0) return@forEachIndexed
-            val top = g.yAt(v, 0.0, inHi)
-            drawRect(FactorRain.copy(alpha = 0.4f), topLeft = Offset(g.xAt(i) - bw / 2, top), size = Size(bw, g.plotBot - top))
-        }
-        // AQI + rain chance share the 0-100 left axis (AQI clipped at 100; exact value in the readout).
-        polyline(points.mapIndexedNotNull { i, p -> p.aqi?.let { g.xAt(i) to g.yAt(it.toDouble().coerceAtMost(100.0), 0.0, 100.0) } }, FactorAqi, 2.dp.toPx())
-        polyline(points.mapIndexedNotNull { i, p -> p.precipProb?.let { g.xAt(i) to g.yAt(it, 0.0, 100.0) } }, AcBlue, 2.dp.toPx())
-        axisLabel(tm, "100", onVar, 2f.dp.toPx(), g.plotTop)
-        axisLabel(tm, "0", onVar, 2f.dp.toPx(), g.plotBot - 10.dp.toPx())
-        axisLabel(tm, fmtInches(inHi), FactorRain, g.plotRight + 2.dp.toPx(), g.plotTop)
-        axisLabel(tm, "0″", FactorRain, g.plotRight + 2.dp.toPx(), g.plotBot - 10.dp.toPx())
-        // Static "now" marker (today only).
-        if (nowIdx in points.indices) nowMarker(g.xAt(nowIdx), g.plotTop, g.plotBot, tm)
-        // At the selected hour, label each series' value where the cursor meets it: AQI is
-        // unitless, rain chance is %, rain amount uses ″ (inches), each in its line's colour.
-        sel?.let { s ->
-            val p = points[s]
-            p.aqi?.let {
-                valueAtLine(tm, "$it AQI", FactorAqi, g.xAt(s), g.yAt(it.toDouble().coerceAtMost(100.0), 0.0, 100.0), g.plotLeft, g.plotRight)
-            }
-            p.precipProb?.let {
-                valueAtLine(tm, "${it.roundToInt()}%", AcBlue, g.xAt(s), g.yAt(it, 0.0, 100.0), g.plotLeft, g.plotRight)
-            }
-            p.precipIn?.takeIf { it > 0 }?.let { v ->
-                valueAtLine(tm, fmtInches(v), FactorRain, g.xAt(s), g.yAt(v, 0.0, inHi), g.plotLeft, g.plotRight)
-            }
-        }
-        // Precip-type icon under each bar with real precipitation, so a wet stretch
-        // reads as rain vs snow vs thunder at a glance. Only drawn where there's
-        // meaningful precip (matches AbsReadout's rain-chip threshold); icons that would
-        // crowd their neighbour are skipped, same lastRight approach as Graph.kt's
-        // drawRain label loop.
-        val iconPx = 12.dp.toPx()
-        // Icons that merely don't overlap still read as a smear at 12dp, so require real
-        // space between them — on a 96-row now-view series this is what keeps the band
-        // showing a few legible marks rather than a solid strip of glyphs.
-        val iconGap = 3.dp.toPx()
-        var lastRight = Float.NEGATIVE_INFINITY
-        points.forEachIndexed { i, p ->
-            val glyph = precipGlyph(p.weatherCode) ?: return@forEachIndexed
-            val wet = (p.precipIn ?: 0.0) > 0 || (p.precipProb ?: 0.0) >= 20
-            if (!wet) return@forEachIndexed
-            val left = g.xAt(i) - iconPx / 2
-            if (left < lastRight + iconGap) return@forEachIndexed
-            val painter = precipPainters[glyph.res] ?: return@forEachIndexed
-            translate(left = left, top = g.plotBot + 2.dp.toPx()) {
-                with(painter) { draw(Size(iconPx, iconPx), colorFilter = ColorFilter.tint(glyph.tint)) }
-            }
-            lastRight = left + iconPx
-        }
-    }
-}
-
-/** Shared mini-chart scaffold: panel background, 1/3-2/3 gridlines, title, scrub
- *  gesture, selection cursor, optional hour axis. All charts use the same gutters so
- *  their plot areas — and therefore the scrub cursor — line up. */
-@Composable
-private fun ChartFrame(
-    title: String,
-    height: Dp,
-    points: List<ForecastPoint>,
-    sel: Int?,
-    showHourAxis: Boolean,
-    leftGutter: Dp = 30.dp,
-    rightGutter: Dp = 36.dp,
-    iconBandDp: Dp = 0.dp,
-    onSel: (Int?) -> Unit,
-    draw: DrawScope.(ChartGeom, TextMeasurer) -> Unit,
-) {
-    val n = points.size
-    val tm = rememberTextMeasurer()
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    Canvas(Modifier.fillMaxWidth().height(height).scrub(n, onSel)) {
-        val titleLayout = tm.measure(title, TextStyle(color = onVar, fontSize = 10.sp, fontWeight = FontWeight.Medium))
-        drawText(titleLayout, topLeft = Offset(leftGutter.toPx(), 0f))
-        val topPad = titleLayout.size.height + 6.dp.toPx()
-        // iconBandDp reserves a strip between the plot and the hour labels (only
-        // CombinedChart passes non-zero here) — every other caller sees no change.
-        val botPad = (if (showHourAxis) 16.dp.toPx() else 4.dp.toPx()) + iconBandDp.toPx()
-        val geom = ChartGeom(leftGutter.toPx(), topPad, size.width - rightGutter.toPx(), size.height - botPad, n)
-        // Panel background + reference gridlines at 1/3 and 2/3 height (glance aid).
-        drawRoundRect(
-            ChartPanel, topLeft = Offset(0f, geom.plotTop),
-            size = Size(size.width, geom.plotH), cornerRadius = CornerRadius(6.dp.toPx()),
-        )
-        // Day/night shading behind the gridlines + data (sun-up lighter, overnight darker).
-        dayNightBands(points, geom.plotLeft, geom.plotRight, geom.plotTop, geom.plotBot)
-        for (frac in listOf(1f / 3f, 2f / 3f)) {
-            val gy = geom.plotTop + geom.plotH * frac
-            drawLine(onVar.copy(alpha = 0.16f), Offset(geom.plotLeft, gy), Offset(geom.plotRight, gy), strokeWidth = 1f)
-        }
-        draw(geom, tm)
-        sel?.let { s ->
-            val cx = geom.xAt(s)
-            drawLine(onSurface.copy(alpha = 0.55f), Offset(cx, geom.plotTop), Offset(cx, geom.plotBot), strokeWidth = 1.dp.toPx())
-        }
-        if (showHourAxis) {
-            val step = (n / 4).coerceAtLeast(1)
-            var i = 0
-            while (i < n) {
-                val l = tm.measure(shortHour(points[i].time), TextStyle(color = onVar, fontSize = 9.sp))
-                drawText(l, topLeft = Offset(
-                    (geom.xAt(i) - l.size.width / 2).coerceIn(0f, size.width - l.size.width),
-                    geom.plotBot + iconBandDp.toPx() + 3.dp.toPx(),
-                ))
-                i += step
-            }
-        }
-    }
-}
-
-@Composable
-private fun NoDataChart(title: String, msg: String) {
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    Column {
-        Text(title, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = onVar)
-        Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
-            Text(msg, fontSize = 11.sp, color = onVar)
-        }
-    }
-}
-
-private fun Modifier.scrub(n: Int, onSel: (Int?) -> Unit): Modifier =
-    this.pointerInput(n) { detectTapGestures { o -> onSel(idxAt(o.x, size.width, n)) } }
-        .pointerInput(n) {
-            detectHorizontalDragGestures { change, _ -> onSel(idxAt(change.position.x, size.width, n)); change.consume() }
-        }
-
-/**
- * Shades the plot background by time of day: a light wash for sun-up hours
- * (sunrise→sunset), a darker one overnight — mirroring the widget's graph so the
- * time-of-day behind each point reads at a glance. Each hour owns a cell whose
- * boundaries sit halfway to its neighbours; runs of the same state merge into one
- * rect so there are no hairline seams. [left]/[right] are the x of the first/last
- * point (point i sits at left + (right-left)·i/(n-1)).
- */
-private fun DrawScope.dayNightBands(
-    points: List<ForecastPoint>, left: Float, right: Float, top: Float, bottom: Float,
-) {
-    val n = points.size
-    if (n == 0 || right <= left || bottom <= top) return
-    val span = (n - 1).coerceAtLeast(1)
-    fun edge(i: Int) = (left + (right - left) * ((i - 0.5f) / span)).coerceIn(left, right)
-    val dayColor = Color.White.copy(alpha = 0.05f)
-    val nightColor = Color.Black.copy(alpha = 0.16f)
-    var i = 0
-    while (i < n) {
-        val up = points[i].isDay ?: true
-        var j = i + 1
-        while (j < n && (points[j].isDay ?: true) == up) j++
-        val x0 = edge(i)
-        val x1 = edge(j)
-        drawRect(if (up) dayColor else nightColor, topLeft = Offset(x0, top), size = Size(x1 - x0, bottom - top))
-        i = j
-    }
-}
-
-private fun DrawScope.polyline(pts: List<Pair<Float, Float>>, color: Color, width: Float) {
-    if (pts.isEmpty()) return
-    val path = Path()
-    pts.forEachIndexed { i, (x, y) -> if (i == 0) path.moveTo(x, y) else path.lineTo(x, y) }
-    drawPath(path, color, style = Stroke(width = width))
-}
-
-private fun DrawScope.dashed(x0: Float, x1: Float, y: Float, color: Color) =
-    drawLine(color, Offset(x0, y), Offset(x1, y), strokeWidth = 1.dp.toPx(),
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
-
-private fun DrawScope.axisLabel(tm: TextMeasurer, text: String, color: Color, x: Float, y: Float) =
-    drawText(tm.measure(text, TextStyle(color = color, fontSize = 9.sp)), topLeft = Offset(x, y))
-
-/** Draws a bold value label at the height [y] where the scrub cursor (at [cx]) meets a
- *  line, offset to the side so it clears the cursor and stays within the plot. */
-private fun DrawScope.valueAtLine(
-    tm: TextMeasurer, text: String, color: Color, cx: Float, y: Float, plotLeft: Float, plotRight: Float,
-) {
-    val layout = tm.measure(text, TextStyle(color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold))
-    val gap = 4.dp.toPx()
-    val w = layout.size.width.toFloat()
-    val h = layout.size.height.toFloat()
-    // Prefer the right of the cursor; flip left when it would overflow the plot.
-    var x = cx + gap
-    if (x + w > plotRight) x = cx - gap - w
-    x = x.coerceIn(plotLeft, (plotRight - w).coerceAtLeast(plotLeft))
-    val top = (y - h / 2f).coerceIn(0f, (size.height - h).coerceAtLeast(0f))
-    drawText(layout, topLeft = Offset(x, top))
-}
 
 /** Static dashed amber "now" marker at the current hour (today's graphs only). When [tm]
  *  is given, also draws a small "now" label clamped on-screen. */
@@ -1633,23 +1116,7 @@ private fun DrawScope.nowMarker(cx: Float, top: Float, bottom: Float, tm: TextMe
     }
 }
 
-/** Pad a value range out to tidy 5° gridlines for the temp axis. */
-private fun niceBounds(lo: Double, hi: Double): Pair<Double, Double> {
-    if (hi <= lo) return lo - 2 to hi + 2
-    val pad = (hi - lo) * 0.12
-    return floor((lo - pad) / 5) * 5 to ceil((hi + pad) / 5) * 5
-}
 
-private fun niceCeilIn(v: Double): Double = when {
-    v <= 0.1 -> 0.1
-    v <= 0.25 -> 0.25
-    v <= 0.5 -> 0.5
-    v <= 1.0 -> 1.0
-    else -> ceil(v * 2) / 2
-}
-
-private fun idxAt(x: Float, w: Int, n: Int): Int =
-    ((x / w.coerceAtLeast(1).toFloat()) * n).toInt().coerceIn(0, n - 1)
 
 /**
  * Index of the LAST row whose start is <= now, resolution-aware: compares the full
@@ -1707,6 +1174,34 @@ private fun openSpansTimes(points: List<ForecastPoint>, thr: Double): List<Pair<
         }
     }
     return spans
+}
+
+/**
+ * The day's open windows in the row's compact form — `12a–12p, 3p–11p`. The full
+ * "12 AM – 12 PM" form overruns the row as soon as a day has two runs, and two runs is
+ * ordinary rather than exceptional.
+ */
+private fun compactSpans(
+    points: List<ForecastPoint>, globalSpans: List<Pair<String, String>>, stepMinutes: Int,
+): String {
+    val own = points.map { it.time }.toSet()
+    return globalSpans
+        .filter { (start, end) -> start in own || end in own }
+        .joinToString(", ") { (start, end) ->
+            "${shortHour(start)}–${shortHourOf(endHourOf(end, stepMinutes))}"
+        }
+}
+
+/** A row's closing hour: the row covers the whole span it names, so it ends at start + step. */
+private fun endHourOf(iso: String, stepMinutes: Int): Int {
+    val h = ForecastBuilder.hour(iso)
+    return if (h < 0) 0 else ((h * 60 + stepMinutes) / 60) % 24
+}
+
+private fun shortHourOf(hour: Int): String {
+    val h = ((hour % 24) + 24) % 24
+    val h12 = (h % 12).let { if (it == 0) 12 else it }
+    return "$h12${if (h < 12) "a" else "p"}"
 }
 
 /** Hour-of-day (wraps; e.g. 24 → 0) to a label like "4 AM" / "12 PM". */

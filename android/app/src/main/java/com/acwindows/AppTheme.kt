@@ -31,7 +31,7 @@ class DataColors(t: Tokens.Data) {
     val raw = t
 }
 
-class ChromeColors(t: Tokens.Chrome) {
+class ChromeColors(t: Tokens.Chrome, val dark: Boolean) {
     val card = Color(t.card)
     val ground = Color(t.ground)
     val sunken = Color(t.sunken)
@@ -47,7 +47,7 @@ class ChromeColors(t: Tokens.Chrome) {
 }
 
 private val LocalData = staticCompositionLocalOf { DataColors(Tokens.data(dark = true)) }
-private val LocalChrome = staticCompositionLocalOf { ChromeColors(Tokens.chrome(dark = true)) }
+private val LocalChrome = staticCompositionLocalOf { ChromeColors(Tokens.chrome(dark = true), dark = true) }
 
 /** `Skin.data.dew`, `Skin.chrome.card` — the two token sets, resolved for the active theme. */
 object Skin {
@@ -87,7 +87,7 @@ fun AcWindowsTheme(
 ) {
     val d = LocalDensity.current
     val data = DataColors(Tokens.data(dark))
-    val chrome = ChromeColors(Tokens.chrome(dark))
+    val chrome = ChromeColors(Tokens.chrome(dark), dark)
     CompositionLocalProvider(
         LocalDensity provides Density(density = d.density, fontScale = d.fontScale * textScale),
         LocalData provides data,

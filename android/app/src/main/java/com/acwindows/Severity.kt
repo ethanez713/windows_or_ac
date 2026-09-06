@@ -95,3 +95,14 @@ fun dayNightRanks(
     }
     return day to night
 }
+
+/**
+ * The factor holding an hour's score down: the smallest of the four multipliers. This is
+ * the *within-hour* question, and it is well-posed even where [limitingFactor]'s
+ * across-hours one is not — a single hour's multipliers only tie when the readings
+ * genuinely do.
+ */
+fun ScoreBreakdown.limiting(): Factor? {
+    val m = listOf(Factor.TEMP to fTemp, Factor.DEW to fHumid, Factor.AQI to fAqi, Factor.RAIN to fRain)
+    return m.minByOrNull { it.second }?.first
+}
