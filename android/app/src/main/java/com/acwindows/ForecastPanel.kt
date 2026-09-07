@@ -35,6 +35,13 @@ object ForecastPanel {
     private const val AQI_Y = 104f
     private const val AQI_H = 4f
 
+    /**
+     * Band reserved BELOW the plot for the hour labels. The time axis is a layer of the
+     * chart, not something under it, so the plot has to stop short of the panel's own
+     * bottom edge — drawing the axis past it just clips the labels away.
+     */
+    private const val AXIS_H = 14f
+
     /** A thunder chance worth outlining a column for, short of the user's alert threshold. */
     private const val MARGINAL_THUNDER = 15.0
 
@@ -69,7 +76,7 @@ object ForecastPanel {
         drawHeader(context, c, head, d, chrome, dp, w)
 
         val plotTop = (HEADER_H + HEADER_GAP) * dp
-        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h.toFloat(), n)
+        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - AXIS_H * dp, n)
         drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark)
         drawRefresh(context, c, chrome, dp, w, h)
         return bmp

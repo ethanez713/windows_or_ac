@@ -281,7 +281,10 @@ private fun ForecastChartCard(points: List<ForecastPoint>, cfg: AppConfig, unit:
             val x1 = size.width
             val plotW = x1 - x0
             val n = points.size
-            val bottom = size.height - 16.dp.toPx()
+            // Reserved below the plot for the AQI strip AND the baseline that names it —
+            // the label sits under the strip here rather than in the gutter, so it needs
+            // room of its own or it runs off the canvas.
+            val bottom = size.height - 34.dp.toPx()
             val rainH = 44.dp.toPx()
             fun xAt(i: Int) = if (n <= 1) (x0 + x1) / 2 else x0 + i.toFloat() / (n - 1) * plotW
 
