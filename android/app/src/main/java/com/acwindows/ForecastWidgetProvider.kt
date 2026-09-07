@@ -156,8 +156,9 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             return bmp
         }
 
+        /** This widget opens the FORECAST screen, not the windows one — same question. */
         private fun appIntent(context: Context): PendingIntent {
-            val intent = Intent(context, MainActivity::class.java)
+            val intent = Intent(context, ForecastActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             return PendingIntent.getActivity(
                 context, 5, intent,
