@@ -426,8 +426,8 @@ private fun ForecastScreen(
     }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         item {
             // Re-read per fetch rather than once: the permission or the system location
@@ -486,6 +486,11 @@ private fun DayCard(
         Modifier.fillMaxWidth().clickable { onToggle() },
         colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
     ) {
+        // 14dp, not the design's stated 12: that 12 is paired with a 1dp border on both the
+        // frame and the card, and these cards are borderless. Both arrangements leave the
+        // same 333dp content box (393 - 2x16 - 2x14), which is the number §A.3's fixed
+        // columns are required to sum to — so changing this to 12 breaks the alignment it
+        // looks like it would fix.
         Column(Modifier.padding(14.dp)) {
             // §A.3's fixed columns. The label and sparkline widths are FIXED, not
             // weighted, so a long day name can never shift the bars — every card's bars
