@@ -9,7 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
@@ -97,41 +96,13 @@ fun AcWindowsTheme(
     }
 }
 
-// Recommendation/brand colours — these name an ACTION, not a data series, so they are
-// chrome and follow the theme's accent rather than §0.1.
+// Source-confidence colours. These name a STATUS, not a data series, so §0.1 doesn't
+// govern them — see confidenceColor in MainActivity.
 val OpenGreen = Color(0xFF34D399)
 val AcBlue = Color(0xFF60A5FA)
 val ClosedSlate = Color(0xFF64748B)
-val ComfortTeal = Color(0xFF2DD4BF)
 val UnknownRed = Color(0xFFF87171)
-
-/** The brand colour for a recommendation (shared with the widget palette). */
-fun actionColor(action: Action): Color = when (action) {
-    Action.OPEN_WINDOWS -> OpenGreen
-    Action.RUN_AC -> AcBlue
-    Action.KEEP_CLOSED -> ClosedSlate
-    Action.COMFORTABLE -> ComfortTeal
-    Action.UNKNOWN -> UnknownRed
-}
 
 /** Extreme-heat flag: any hour at/above this °F is drawn red (sparkline bar + temp line). */
 const val HOT_F = 90.0
 val HotRed = Color(0xFFEF4444)
-
-// Pre-token colour names, still used by MainActivity, Breakdown and the widget providers.
-// Each is the dark-theme step of its §0.1 token; call sites move to `Skin.data` / `Tokens`
-// as they are redesigned, and these go with the last of them.
-private val darkData = Tokens.data(dark = true)
-val FactorTemp = Color(darkData.temp)
-val FactorHumid = Color(darkData.dew)
-val FactorAqi = Color(darkData.aqi)
-val FactorRain = Color(darkData.rain)
-val ScoreInk = Color(0xFFCBD5E1)
-val NowInk = Color(darkData.now)
-val ChartPanel = Color(0xFF11161D)
-val BarOpen = Color(darkData.score)
-val BarClosed = Color(darkData.blockedBase)
-val SurfaceElevated = Color(0xFF1E242D)
-
-fun detractorGrey(factor: Color): Color =
-    Color(Tokens.blockedBar(darkData, factor.toArgb()))

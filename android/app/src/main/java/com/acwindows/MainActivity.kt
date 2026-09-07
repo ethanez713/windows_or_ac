@@ -1017,7 +1017,7 @@ private fun DaySparkline(
         }
 
         // Static "now" marker (today only — nowIdx is -1 on other days), centred on the bar.
-        if (nowIdx in 0 until n) nowMarker(nowIdx * bw + bw * 0.35f, 0f, plotBot)
+        if (nowIdx in 0 until n) nowMarker(nowIdx * bw + bw * 0.35f, 0f, plotBot, d.now)
     }
 }
 
@@ -1102,15 +1102,17 @@ private fun OpenWindowFlags(
 
 
 
-/** Static dashed amber "now" marker at the current hour (today's graphs only). When [tm]
- *  is given, also draws a small "now" label clamped on-screen. */
-private fun DrawScope.nowMarker(cx: Float, top: Float, bottom: Float, tm: TextMeasurer? = null) {
+/** Static dashed "now" marker at the current hour (today's graphs only). When [tm] is
+ *  given, also draws a small "now" label clamped on-screen. */
+private fun DrawScope.nowMarker(
+    cx: Float, top: Float, bottom: Float, ink: Color, tm: TextMeasurer? = null,
+) {
     drawLine(
-        NowInk.copy(alpha = 0.85f), Offset(cx, top), Offset(cx, bottom),
+        ink.copy(alpha = 0.85f), Offset(cx, top), Offset(cx, bottom),
         strokeWidth = 1.5f.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)),
     )
     tm?.let {
-        val l = it.measure("now", TextStyle(color = NowInk, fontSize = 9.sp, fontWeight = FontWeight.Bold))
+        val l = it.measure("now", TextStyle(color = ink, fontSize = 9.sp, fontWeight = FontWeight.Bold))
         val x = (cx + 2.dp.toPx()).coerceAtMost(size.width - l.size.width)
         drawText(l, topLeft = Offset(x.coerceAtLeast(0f), top))
     }

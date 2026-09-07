@@ -49,27 +49,11 @@ fun wxGlyph(code: Int?, isDay: Boolean): WxGlyph = when (code) {
     else -> WxGlyph(R.drawable.ic_wx_rain, RainCyan)
 }
 
-/**
- * The precipitation TYPE for a WMO code — what's actually falling, as opposed to
- * [wxGlyph]'s overall sky condition — or null when that code brings none. Used to badge
- * the precipitation bars in [CombinedChart] so a wet stretch reads as rain vs snow vs
- * thunder at a glance instead of just "some amount of something."
- */
-fun precipGlyph(code: Int?): WxGlyph? = when (code) {
-    51, 53, 55, 61, 63, 65, 80, 81, 82 -> WxGlyph(R.drawable.ic_wx_rain, RainCyan)
-    56, 57, 66, 67 -> WxGlyph(R.drawable.ic_wx_sleet, SleetPeriwinkle)
-    in 71..77, 85, 86 -> WxGlyph(R.drawable.ic_wx_snow, SnowBlue)
-    95 -> WxGlyph(R.drawable.ic_wx_thunder, StormViolet)
-    96, 99 -> WxGlyph(R.drawable.ic_wx_hail, HailRose)
-    else -> null
-}
-
 @Composable
 fun WeatherGlyph(code: Int?, isDay: Boolean, size: Dp = 22.dp, modifier: Modifier = Modifier) =
     WeatherGlyph(wxGlyph(code, isDay), size, modifier)
 
-/** Overload for callers that already resolved a [WxGlyph] (e.g. [HourlyValueRow]'s cells,
- *  which carry the glyph precomputed so a null one can reserve a blank slot). */
+/** Overload for callers that already resolved a [WxGlyph]. */
 @Composable
 fun WeatherGlyph(glyph: WxGlyph, size: Dp = 22.dp, modifier: Modifier = Modifier) {
     Image(
