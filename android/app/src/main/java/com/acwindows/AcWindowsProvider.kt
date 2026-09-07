@@ -76,7 +76,9 @@ class AcWindowsProvider : AppWidgetProvider() {
      * otherwise just let [scheduleTick] re-evaluate (it applies the same both-types guard).
      */
     override fun onDisabled(context: Context) {
-        if (GraphsWidgetProvider.widgetIds(context).isNotEmpty()) {
+        if (GraphsWidgetProvider.widgetIds(context).isNotEmpty() ||
+            ForecastWidgetProvider.widgetIds(context).isNotEmpty()
+        ) {
             scheduleTick(context)
             return
         }
@@ -186,7 +188,9 @@ class AcWindowsProvider : AppWidgetProvider() {
             // don't leave a self-perpetuating alarm running (settings screens refresh via
             // the same worker). The graphs widget has no tick of its own; it rides this
             // same alarm, so its presence alone has to be enough to keep it armed.
-            if (widgetIds(context).isEmpty() && GraphsWidgetProvider.widgetIds(context).isEmpty()) {
+            if (widgetIds(context).isEmpty() && GraphsWidgetProvider.widgetIds(context).isEmpty() &&
+                ForecastWidgetProvider.widgetIds(context).isEmpty()
+            ) {
                 am.cancel(pi)
                 return
             }

@@ -43,6 +43,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         Log.w(TAG, "refresh failed; next tick will retry", e)
         AcWindowsProvider.refreshDone(applicationContext)
         GraphsWidgetProvider.refreshDone(applicationContext)
+        ForecastWidgetProvider.refreshDone(applicationContext)
         Result.success()
     }
 
@@ -65,6 +66,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${con.sourcesFailed}")
             AcWindowsProvider.refreshDone(applicationContext)
             GraphsWidgetProvider.refreshDone(applicationContext)
+            ForecastWidgetProvider.refreshDone(applicationContext)
         }
         return Result.success()   // see [doWork] — never retry(), the tick drives retries
     }
@@ -143,6 +145,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             )
             AcWindowsProvider.renderAll(context, refreshing = !final)
             GraphsWidgetProvider.renderAll(context, refreshing = !final)
+            ForecastWidgetProvider.renderAll(context, refreshing = !final)
             return true
         }
 

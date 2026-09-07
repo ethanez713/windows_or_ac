@@ -94,6 +94,36 @@
                 android:resource="@xml/graphs_widget_info" />
         </receiver>
 
+        <!-- The forecast widget: what the weather will do in the next N hours, as one
+             layered panel. Shares AcWindowsProvider's 10-minute alarm tick and the same
+             cached snapshot rather than owning either. -->
+        <receiver
+            android:name=".ForecastWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.acwindows.ACTION_FORECAST_REFRESH" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/forecast_widget_info" />
+        </receiver>
+
+        <!-- Forecast widget's per-instance settings (horizon, detail, theme). Keyed by
+             widget id — see ForecastWidgetConfig. -->
+        <activity
+            android:name=".ForecastWidgetSettingsActivity"
+            android:exported="true"
+            android:label="Forecast widget settings"
+            android:theme="@android:style/Theme.Material">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- Graphs widget's per-instance settings (panels shown, timeseries/hourly per
              panel, look-ahead hours). Keyed by widget id — see GraphsWidgetConfig. -->
         <activity

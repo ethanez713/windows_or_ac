@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The forecast widget. Both the card ground and the panel are ImageView bitmaps:
+     RemoteViews can't draw vectors, and it can't tint a rounded shape drawable below
+     API 31 — see ForecastWidgetProvider.cardBitmap and ForecastPanel. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/forecast_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/forecast_card"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <ImageView
+        android:id="@+id/forecast_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_margin="10dp"
+        android:scaleType="fitCenter"
+        android:contentDescription="Weather for the next 24 hours" />
+
+    <TextView
+        android:id="@+id/forecast_empty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:fontFamily="@font/instrument_sans_regular"
+        android:textSize="13sp"
+        android:visibility="gone"
+        android:text="Loading…" />
+
+    <!-- 13dp glyph in a 28dp target, inset into the card padding (§C.4). The icon itself
+         is drawn into the panel bitmap; this is only the tap area. -->
+    <View
+        android:id="@+id/forecast_refresh"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="3dp"
+        android:layout_marginBottom="3dp" />
+</FrameLayout>
