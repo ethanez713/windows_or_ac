@@ -8,6 +8,14 @@
   phone to capture screens, unless I explicitly ask in that message.** Screenshot +
   visual-iteration loops burn a lot of tokens. Default to building (`./gradlew
   assembleDebug`) and reasoning about correctness; let me do the visual check.
+- **Building is not evidence about the widgets.** They are inflated and dispatched in the
+  launcher's process by reflection, so an invalid layout class or a non-remotable setter
+  compiles, links, launches and crash-scans clean, then fails the whole widget on the home
+  screen. Any change under `res/layout/widget_*.xml`, `res/xml/*_widget_info.xml` or a
+  `*Provider.kt` must pass
+  `~/.claude/skills/android-smoketest/scripts/check_remoteviews.py android/app`
+  before it is called done — and on-device, the widget's log lives in the launcher, not in
+  `logcat -b crash`. See the **android-smoketest** skill, steps 1 and 5.
 - When I do ask for a screenshot, the phone connects over wifi adb at an IP:port I
   supply each session (it changes) — see the **Machine environment** section of the
   global `~/.claude/CLAUDE.md` and [[android-local-toolchain]] for the build/install/
