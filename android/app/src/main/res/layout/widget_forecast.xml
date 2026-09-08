@@ -33,12 +33,15 @@
         android:text="Loading…" />
 
     <!-- 13dp glyph in a 28dp target, inset into the card padding (§C.4). The icon itself
-         is drawn into the panel bitmap; this is only the tap area. -->
-    <View
+         is drawn into the panel bitmap; this is only the tap area. An ImageView with no
+         source rather than a bare View: RemoteViews refuses to inflate android.view.View
+         ("Class not allowed to be inflated"), which fails the whole widget. -->
+    <ImageView
         android:id="@+id/forecast_refresh"
         android:layout_width="28dp"
         android:layout_height="28dp"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="3dp"
-        android:layout_marginBottom="3dp" />
+        android:layout_marginBottom="3dp"
+        android:contentDescription="Refresh now" />
 </FrameLayout>
