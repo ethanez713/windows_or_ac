@@ -76,24 +76,6 @@
             </intent-filter>
         </activity>
 
-        <!-- The graphs widget: the app's charts, per-panel switchable between a
-             timeseries chart and an hourly list. Shares AcWindowsProvider's 10-minute
-             alarm tick rather than owning one of its own. -->
-        <receiver
-            android:name=".GraphsWidgetProvider"
-            android:exported="true"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.acwindows.ACTION_GRAPHS_REFRESH" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/graphs_widget_info" />
-        </receiver>
-
         <!-- The forecast screen: the forecast widget's companion. A separate screen from
              MainActivity on purpose — that one answers "when do I open the windows", this
              one answers "what will conditions be". -->
@@ -126,18 +108,6 @@
             android:name=".ForecastWidgetSettingsActivity"
             android:exported="true"
             android:label="Forecast widget settings"
-            android:theme="@android:style/Theme.Material">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-            </intent-filter>
-        </activity>
-
-        <!-- Graphs widget's per-instance settings (panels shown, timeseries/hourly per
-             panel, look-ahead hours). Keyed by widget id — see GraphsWidgetConfig. -->
-        <activity
-            android:name=".GraphsWidgetSettingsActivity"
-            android:exported="true"
-            android:label="Graphs widget settings"
             android:theme="@android:style/Theme.Material">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />

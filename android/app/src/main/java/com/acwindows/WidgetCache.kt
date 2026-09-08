@@ -34,12 +34,11 @@ data class Snapshot(
     val tempSeries: List<Double?> = emptyList(),
     val dewSeries: List<Double?> = emptyList(),
     /**
-     * Per-hour AQI and WMO weather code for the graphs widget's hourly-row panels.
-     * Optional, same reasoning as [tempSeries]/[dewSeries] — empty for a snapshot cached
-     * before these existed, and the panels that need them degrade rather than crash.
+     * Per-hour AQI for the forecast panel's air-quality strip. Optional, same reasoning as
+     * [tempSeries]/[dewSeries] — empty for a snapshot cached before it existed, and the
+     * layers that need it degrade rather than crash.
      */
     val aqiSeries: List<Int?> = emptyList(),
-    val codeSeries: List<Int?> = emptyList(),
     /** Per-hour thunderstorm chance, %, for the forecast widget's storm treatment. */
     val thunderSeries: List<Double?> = emptyList(),
     val bestStart: String?,
@@ -122,7 +121,6 @@ object WidgetCache {
             .put("tempSeries", nullableArray(s.tempSeries))
             .put("dewSeries", nullableArray(s.dewSeries))
             .put("aqiSeries", nullableIntArray(s.aqiSeries))
-            .put("codeSeries", nullableIntArray(s.codeSeries))
             .put("thunderSeries", nullableArray(s.thunderSeries))
             .put("bestStart", s.bestStart ?: JSONObject.NULL)
             .put("bestEnd", s.bestEnd ?: JSONObject.NULL)
@@ -173,7 +171,6 @@ object WidgetCache {
                 tempSeries = optNullableDblList("tempSeries"),
                 dewSeries = optNullableDblList("dewSeries"),
                 aqiSeries = optNullableIntList("aqiSeries"),
-                codeSeries = optNullableIntList("codeSeries"),
                 thunderSeries = optNullableDblList("thunderSeries"),
                 bestStart = if (o.isNull("bestStart")) null else o.getString("bestStart"),
                 bestEnd = if (o.isNull("bestEnd")) null else o.getString("bestEnd"),

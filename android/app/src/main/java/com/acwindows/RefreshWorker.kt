@@ -42,7 +42,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
     } catch (e: Exception) {
         Log.w(TAG, "refresh failed; next tick will retry", e)
         AcWindowsProvider.refreshDone(applicationContext)
-        GraphsWidgetProvider.refreshDone(applicationContext)
         ForecastWidgetProvider.refreshDone(applicationContext)
         Result.success()
     }
@@ -65,7 +64,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         if (!publish(applicationContext, cfg, result, final = true)) {
             Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${con.sourcesFailed}")
             AcWindowsProvider.refreshDone(applicationContext)
-            GraphsWidgetProvider.refreshDone(applicationContext)
             ForecastWidgetProvider.refreshDone(applicationContext)
         }
         return Result.success()   // see [doWork] — never retry(), the tick drives retries
@@ -128,7 +126,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                 tempSeries = series.tempF,
                 dewSeries = series.dewPointF,
                 aqiSeries = series.aqi,
-                codeSeries = series.code,
                 thunderSeries = series.thunder,
                 bestStart = series.bestStart,
                 bestEnd = series.bestEnd,
@@ -144,7 +141,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                     "best=${series.bestStart}..${series.bestEnd} hours=${series.scores.size}",
             )
             AcWindowsProvider.renderAll(context, refreshing = !final)
-            GraphsWidgetProvider.renderAll(context, refreshing = !final)
             ForecastWidgetProvider.renderAll(context, refreshing = !final)
             return true
         }
@@ -165,7 +161,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             val tempF: List<Double?> = emptyList(),
             val dewPointF: List<Double?> = emptyList(),
             val aqi: List<Int?> = emptyList(),
-            val code: List<Int?> = emptyList(),
             val thunder: List<Double?> = emptyList(),
             val bestStart: String? = null,
             val bestEnd: String? = null,
@@ -192,7 +187,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                 tempF = fc.points.map { it.tempF },
                 dewPointF = fc.points.map { it.dewPointF },
                 aqi = fc.points.map { it.aqi },
-                code = fc.points.map { it.weatherCode },
                 thunder = fc.points.map { it.thunderProb },
                 bestStart = fc.bestStart,
                 bestEnd = fc.bestEnd,
@@ -208,7 +202,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                 scores = prev.scores, times = prev.times, worst = prev.worst, isDay = prev.isDay,
                 precipProb = prev.precipProb, precipIn = prev.precipIn,
                 tempF = prev.tempSeries, dewPointF = prev.dewSeries,
-                aqi = prev.aqiSeries, code = prev.codeSeries, thunder = prev.thunderSeries,
+                aqi = prev.aqiSeries, thunder = prev.thunderSeries,
                 bestStart = prev.bestStart, bestEnd = prev.bestEnd, note = prev.note,
                 firstHourMs = prev.firstHourMs,
             )

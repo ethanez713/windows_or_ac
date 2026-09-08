@@ -70,15 +70,13 @@ class AcWindowsProvider : AppWidgetProvider() {
     }
 
     /**
-     * The last widget OF THIS TYPE is gone — but the graphs widget rides the same alarm and
-     * the same periodic backstop, so tearing them down here unconditionally would silently
-     * stop it refreshing. Only dismantle the shared machinery once neither type is left;
-     * otherwise just let [scheduleTick] re-evaluate (it applies the same both-types guard).
+     * The last widget OF THIS TYPE is gone — but the forecast widget rides the same alarm
+     * and the same periodic backstop, so tearing them down here unconditionally would
+     * silently stop it refreshing. Only dismantle the shared machinery once neither type is
+     * left; otherwise just let [scheduleTick] re-evaluate (it applies the same guard).
      */
     override fun onDisabled(context: Context) {
-        if (GraphsWidgetProvider.widgetIds(context).isNotEmpty() ||
-            ForecastWidgetProvider.widgetIds(context).isNotEmpty()
-        ) {
+        if (ForecastWidgetProvider.widgetIds(context).isNotEmpty()) {
             scheduleTick(context)
             return
         }
@@ -111,7 +109,7 @@ class AcWindowsProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "com.acwindows.ACTION_REFRESH"
         private const val ACTION_TICK = "com.acwindows.ACTION_TICK"
-        /** Shared with [GraphsWidgetProvider] — one backstop serves both widgets. */
+        /** Shared with [ForecastWidgetProvider] — one backstop serves both widgets. */
         const val PERIODIC_WORK = "ac_windows_periodic"
         private const val REFRESH_WORK = "ac_windows_refresh"
 
@@ -186,11 +184,9 @@ class AcWindowsProvider : AppWidgetProvider() {
             val pi = tickIntent(context)
             // With no widget of EITHER type on a home screen there's nothing to refresh —
             // don't leave a self-perpetuating alarm running (settings screens refresh via
-            // the same worker). The graphs widget has no tick of its own; it rides this
+            // the same worker). The forecast widget has no tick of its own; it rides this
             // same alarm, so its presence alone has to be enough to keep it armed.
-            if (widgetIds(context).isEmpty() && GraphsWidgetProvider.widgetIds(context).isEmpty() &&
-                ForecastWidgetProvider.widgetIds(context).isEmpty()
-            ) {
+            if (widgetIds(context).isEmpty() && ForecastWidgetProvider.widgetIds(context).isEmpty()) {
                 am.cancel(pi)
                 return
             }
@@ -199,7 +195,7 @@ class AcWindowsProvider : AppWidgetProvider() {
             }
         }
 
-        /** Shared with [GraphsWidgetProvider], which has no backstop of its own. */
+        /** Shared with [ForecastWidgetProvider], which has no backstop of its own. */
         fun schedulePeriodic(context: Context) {
             // Backstop only — the 10-min alarm tick is the primary driver. 15 min is
             // WorkManager's floor. UPDATE (not KEEP) so a reinstall/version bump re-applies
@@ -216,7 +212,7 @@ class AcWindowsProvider : AppWidgetProvider() {
             enqueueRefresh(context)
         }
 
-        /** Every [AcWindowsProvider] instance placed; also read by [GraphsWidgetProvider]
+        /** Every [AcWindowsProvider] instance placed; also read by [ForecastWidgetProvider]
          *  so neither widget tears down machinery the other is still using. */
         fun widgetIds(context: Context): IntArray =
             AppWidgetManager.getInstance(context)

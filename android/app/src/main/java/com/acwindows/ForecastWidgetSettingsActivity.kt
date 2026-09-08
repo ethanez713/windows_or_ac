@@ -14,7 +14,7 @@ import android.widget.RadioGroup
 
 /**
  * Per-widget-instance settings for the forecast widget (docs/ux-redesign.md §C.5): three
- * questions and a live preview, in place of the graphs widget's panel-slot × mode × series
+ * questions and a live preview: horizon, detail and theme.
  * matrix. The preview renders through [ForecastPanel] at the real 4x2 size, so it is the
  * widget rather than a picture of one — which is what makes "Compact" a decision you can
  * make by looking instead of by reading.

@@ -11,7 +11,7 @@ enum class ForecastTheme { AUTO, LIGHT, DARK }
 /**
  * Per-widget-instance settings for the forecast widget (docs/ux-redesign.md §C.5). Several
  * can be placed at once showing different horizons, so every key carries the widget id it
- * belongs to. The key namespace is deliberately its own — the graphs widget keeps its
+ * belongs to. The key namespace is deliberately its own — the windows widget keeps its
  * settings, and the two must not read each other's.
  */
 data class ForecastWidgetConfig(

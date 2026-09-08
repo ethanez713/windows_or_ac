@@ -21,9 +21,9 @@ import androidx.work.WorkManager
  * mode of that one.
  *
  * Configuration is PER WIDGET INSTANCE ([ForecastWidgetConfig]) — several can sit on one
- * home screen at different horizons. Like [GraphsWidgetProvider] it shares
- * [AcWindowsProvider]'s alarm tick, the cached [Snapshot] and the [RefreshWorker] fetch:
- * this file only READS the cache and asks for a refresh, never fetches.
+ * home screen at different horizons. It shares [AcWindowsProvider]'s alarm tick, the cached
+ * [Snapshot] and the [RefreshWorker] fetch: this file only READS the cache and asks for a
+ * refresh, never fetches.
  */
 class ForecastWidgetProvider : AppWidgetProvider() {
 
@@ -53,9 +53,7 @@ class ForecastWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         AcWindowsProvider.scheduleTick(context)
-        if (AcWindowsProvider.widgetIds(context).isEmpty() &&
-            GraphsWidgetProvider.widgetIds(context).isEmpty()
-        ) {
+        if (AcWindowsProvider.widgetIds(context).isEmpty()) {
             WorkManager.getInstance(context).cancelUniqueWork(AcWindowsProvider.PERIODIC_WORK)
         }
     }
