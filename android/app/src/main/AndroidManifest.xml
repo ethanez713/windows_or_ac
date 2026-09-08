@@ -90,7 +90,7 @@
         <receiver
             android:name=".ForecastWidgetProvider"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/forecast_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.acwindows.ACTION_FORECAST_REFRESH" />

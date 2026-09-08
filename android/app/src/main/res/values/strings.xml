@@ -2,5 +2,6 @@
 <resources>
     <string name="app_name">AC / Windows</string>
     <string name="widget_description">Open the windows or run the AC, with a 48-hour score graph.</string>
-    <string name="forecast_widget_description">The next 24 hours at a glance: temperature, dew point, air quality and rain in one panel.</string>
+    <string name="forecast_widget_label">Weather forecast</string>
+    <string name="forecast_widget_description">The hours ahead at a glance: temperature, dew point, air quality and rain in one panel.</string>
 </resources>
