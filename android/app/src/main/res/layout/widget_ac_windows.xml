@@ -56,9 +56,13 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
+            <!-- Tinted here, not from the provider: ProgressBar.setIndeterminateTint is not
+                 a remotable method, and a RemoteViews that calls it fails as a whole. A
+                 fixed mid-grey rather than the chrome colour, so it reads on either theme. -->
             <ProgressBar
                 android:id="@+id/refresh_spinner"
                 style="?android:attr/progressBarStyleSmall"
+                android:indeterminateTint="#8A8A8A"
                 android:layout_width="14dp"
                 android:layout_height="14dp"
                 android:layout_marginEnd="6dp"

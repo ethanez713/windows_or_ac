@@ -307,7 +307,6 @@ class AcWindowsProvider : AppWidgetProvider() {
                 setTextViewText(R.id.updated, if (refreshing) "" else "tap ⟳ to retry")
                 setTextColor(R.id.updated, if (refreshing) chrome.faint else chrome.heading)
                 setTextColor(R.id.sources, chrome.muted)
-                setInt(R.id.refresh_spinner, "setIndeterminateTint", chrome.muted)
                 setInt(R.id.refresh_button, "setColorFilter", chrome.muted)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 setViewVisibility(R.id.refresh_button, if (refreshing) View.GONE else View.VISIBLE)
@@ -383,7 +382,6 @@ class AcWindowsProvider : AppWidgetProvider() {
                     R.id.updated,
                     if (s.ageMs(nowMs) > WidgetCache.STALE_MS) Tokens.data(dark).now else chrome.faint,
                 )
-                setInt(R.id.refresh_spinner, "setIndeterminateTint", chrome.muted)
                 setInt(R.id.refresh_button, "setColorFilter", chrome.muted)
                 setViewVisibility(R.id.refresh_spinner, if (refreshing) View.VISIBLE else View.GONE)
                 // Hide the manual refresh icon while a refresh is in flight (spinner shows instead).
