@@ -54,6 +54,19 @@
         <item name="android:visibility">gone</item>
     </style>
 
+    <!-- The commit action, pinned below the scrolling body so it is reachable without
+         scrolling to the end of a long settings screen. -->
+    <style name="CfgSave">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">20dp</item>
+        <item name="android:layout_marginEnd">20dp</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:layout_marginBottom">16dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <!-- A settings toggle in a stacked list of them. -->
     <style name="CfgCheck">
         <item name="android:layout_width">match_parent</item>

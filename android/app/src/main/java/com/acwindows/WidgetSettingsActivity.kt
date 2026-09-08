@@ -19,8 +19,8 @@ import android.widget.TextView
  * (shown when a widget is added / reconfigured), and the app's gear icon opens it on
  * long-press. Writes the same SharedPreferences [AppConfig.load] reads.
  *
- * Like [ConfigActivity] there is no Save button: edits commit when you leave the screen,
- * and the header's "Discard changes" button backs them out.
+ * Save commits and closes; leaving by Back commits too, so no route out of the widget's
+ * add flow loses the widget. The header's "Discard changes" button backs edits out.
  */
 class WidgetSettingsActivity : Activity() {
 
@@ -84,6 +84,19 @@ class WidgetSettingsActivity : Activity() {
             discard.visibility = if (dirty) View.VISIBLE else View.GONE
         }
         discard.setOnClickListener { staged.discard() }
+
+        findViewById<Button>(R.id.save).apply {
+            // The add flow allocates the id but has not placed the widget yet, so the
+            // provider doesn't list it — which is what tells the two entry points apart.
+            // No id at all means this was opened from the app, not from a widget.
+            val placing = widgetId != AppWidgetManager.INVALID_APPWIDGET_ID &&
+                widgetId !in AcWindowsProvider.widgetIds(this@WidgetSettingsActivity).toList()
+            text = if (placing) "Add widget" else "Save"
+            setOnClickListener {
+                saveIfDirty()
+                finish()
+            }
+        }
 
         // Goes through the fields (not straight to prefs) so StagedEdits — and the
         // Discard button — see this as just another staged edit.

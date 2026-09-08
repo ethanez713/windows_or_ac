@@ -32,7 +32,7 @@
             android:paddingEnd="20dp"
             android:paddingBottom="20dp">
 
-            <TextView style="@style/CfgHint" android:text="Changes save on their own when you leave this screen. These settings apply to THIS widget only — place another one for a different horizon." />
+            <TextView style="@style/CfgHint" android:text="These settings apply to THIS widget only — place another one for a different horizon." />
 
             <!-- The preview is the actual widget renderer at the real 4x2 size, not a
                  mock-up, so what it shows is what the home screen will show. -->
@@ -41,21 +41,36 @@
                 android:layout_width="match_parent"
                 android:layout_height="186dp"
                 android:layout_marginTop="8dp"
-                android:layout_marginBottom="4dp"
                 android:scaleType="fitCenter"
                 android:contentDescription="Preview of the forecast widget" />
+            <TextView
+                android:id="@+id/preview_empty"
+                style="@style/CfgHint"
+                android:layout_marginBottom="4dp"
+                android:gravity="center"
+                android:visibility="gone" />
 
             <TextView style="@style/CfgLabel" android:text="How far ahead" />
-            <RadioGroup
-                android:id="@+id/hours_group"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
-                <RadioButton android:id="@+id/hours_12" style="@style/CfgCheck" android:text="12 h" />
-                <RadioButton android:id="@+id/hours_24" style="@style/CfgCheck" android:text="24 h" />
-                <RadioButton android:id="@+id/hours_36" style="@style/CfgCheck" android:text="36 h" />
-            </RadioGroup>
-            <TextView style="@style/CfgHint" android:text="Always starts at the current hour." />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <EditText
+                    android:id="@+id/hours"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:inputType="number"
+                    android:maxLength="2"
+                    android:textSize="16sp"
+                    android:hint="24" />
+                <TextView
+                    style="@style/CfgSub"
+                    android:layout_marginStart="8dp"
+                    android:text="hours" />
+            </LinearLayout>
+            <TextView android:id="@+id/hours_hint" style="@style/CfgHint" />
 
             <TextView style="@style/CfgLabel" android:text="Detail" />
             <RadioGroup
@@ -73,8 +88,8 @@
                 android:id="@+id/theme_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
-                <RadioButton android:id="@+id/theme_auto" style="@style/CfgCheck" android:text="Auto" />
+                android:orientation="vertical">
+                <RadioButton android:id="@+id/theme_auto" style="@style/CfgCheck" android:text="Auto — follow the phone" />
                 <RadioButton android:id="@+id/theme_light" style="@style/CfgCheck" android:text="Light" />
                 <RadioButton android:id="@+id/theme_dark" style="@style/CfgCheck" android:text="Dark" />
             </RadioGroup>
@@ -90,4 +105,9 @@
                 android:text="Tap opens the app (off = refresh in place)" />
         </LinearLayout>
     </ScrollView>
+
+    <Button
+        android:id="@+id/save"
+        style="@style/CfgSave"
+        android:text="Save" />
 </LinearLayout>

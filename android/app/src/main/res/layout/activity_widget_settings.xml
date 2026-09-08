@@ -32,7 +32,7 @@
         android:paddingEnd="20dp"
         android:paddingBottom="20dp">
 
-        <TextView style="@style/CfgHint" android:text="Changes save on their own when you leave this screen." />
+        <TextView style="@style/CfgHint" android:text="Save applies these to every AC / Windows widget. Leaving this screen saves them too." />
 
         <TextView style="@style/CfgLabel" android:text="Forecast length (hours)" />
         <EditText
@@ -313,4 +313,9 @@
 
     </LinearLayout>
 </ScrollView>
+
+    <Button
+        android:id="@+id/save"
+        style="@style/CfgSave"
+        android:text="Save" />
 </LinearLayout>

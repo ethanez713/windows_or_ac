@@ -16,7 +16,7 @@ enum class ForecastTheme { AUTO, LIGHT, DARK }
  */
 data class ForecastWidgetConfig(
     /** Look-ahead, always starting at the current hour. */
-    val hours: Int = 24,
+    val hours: Int = DEFAULT_HOURS,
     val detail: ForecastDetail = ForecastDetail.STANDARD,
     val theme: ForecastTheme = ForecastTheme.AUTO,
     /** Drop rain columns below the comfort threshold rather than drawing near-zero stubs. */
@@ -39,7 +39,13 @@ data class ForecastWidgetConfig(
 
     companion object {
         private const val PREFS = "ac_windows"
-        val HOUR_CHOICES = listOf(12, 24, 36)
+
+        /** Below 3 the chart has nothing to shape; above 96 no source forecasts hourly. */
+        const val MIN_HOURS = 3
+        const val MAX_HOURS = 96
+        const val DEFAULT_HOURS = 24
+
+        fun clampHours(h: Int) = h.coerceIn(MIN_HOURS, MAX_HOURS)
 
         fun load(context: Context, id: Int): ForecastWidgetConfig {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -48,7 +54,7 @@ data class ForecastWidgetConfig(
                     ?.let { raw -> values.firstOrNull { it.name == raw } } ?: fallback
             return ForecastWidgetConfig(
                 hours = p.getString("forecastHours_$id", null)?.toIntOrNull()
-                    ?.takeIf { it in HOUR_CHOICES } ?: 24,
+                    ?.let(::clampHours) ?: DEFAULT_HOURS,
                 detail = enum("forecastDetail", ForecastDetail.entries.toTypedArray(), ForecastDetail.STANDARD),
                 theme = enum("forecastTheme", ForecastTheme.entries.toTypedArray(), ForecastTheme.AUTO),
                 hideUnlikelyRain = p.getBoolean("forecastHideRain_$id", true),
