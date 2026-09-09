@@ -120,6 +120,11 @@ object Graph {
         val rainColor = theme.rain
         val inkColor = theme.text
         val headingInk = chrome.heading
+        // A contrasting outline drawn under the rain line and the noon divider so they read
+        // over the vivid open bars (a thin blue line and a grey line both vanish into the
+        // green). Matched to the bars' own luminance — dark in dark theme, light in light —
+        // so the casing separates the mark from the bar in either theme.
+        val casing = if (dark) 0x99000000.toInt() else 0x99FFFFFF.toInt()
 
         val w = widthPx.coerceAtLeast(80)
         val h = heightPx.coerceAtLeast(60)
@@ -270,7 +275,7 @@ object Graph {
         if (showRain) {
             drawRain(
                 c, precipProb, precipIn, n, { i -> barLeft(i) },
-                barW, base, plotTop, plotH, axisW, w, sp, tsp, rainColor, chrome.card, mono,
+                barW, base, plotTop, plotH, axisW, w, sp, tsp, rainColor, casing, chrome.card, mono,
             )
         }
 
@@ -282,12 +287,17 @@ object Graph {
         // Noon markers: a solid grey divider through the bars + a "noon" flag in
         // the top band, mirroring the date flags so midday is easy to spot. The divider
         // and pill background are structural, not themed.
+        val noonCasing = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = casing; strokeWidth = 3.4f * sp }
         val noonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = chrome.muted; strokeWidth = 1.7f * sp }
+        // The pill takes the dark heading fill the date pills use, so "noon" reads on a
+        // bright bar; the label tells it apart from a date flag.
+        val noonPill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = headingInk }
         for (i in 0 until n) {
             if (ForecastBuilder.hour(times.getOrElse(i) { "" }) != 12) continue
             val nx = barLeft(i) - gap / 2
+            c.drawLine(nx, plotTop, nx, base, noonCasing)
             c.drawLine(nx, plotTop, nx, base, noonPaint)
-            flag(c, "noon", nx, noonPaint, pillText, topPad, axisW, w, tsp)
+            flag(c, "noon", nx, noonPill, pillText, topPad, axisW, w, tsp)
         }
 
         // Day changes: a dark divider through the bars (a light line vanishes
@@ -418,7 +428,7 @@ object Graph {
     private fun drawRain(
         c: Canvas, prob: List<Double>, inches: List<Double>, n: Int,
         barLeft: (Int) -> Float, barW: Float, base: Float, plotTop: Float, plotH: Float,
-        axisW: Float, w: Int, sp: Float, tsp: Float, rainColor: Int, pillInk: Int, mono: Typeface?,
+        axisW: Float, w: Int, sp: Float, tsp: Float, rainColor: Int, casing: Int, pillInk: Int, mono: Typeface?,
     ) {
         fun p(i: Int) = prob.getOrElse(i) { 0.0 }
         fun rate(i: Int) = inches.getOrElse(i) { 0.0 }
@@ -433,18 +443,27 @@ object Graph {
         val rain = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = rainColor; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
         }
+        // Outline drawn under the line at the same points but wider, so the blue reads over
+        // the open bars instead of blending into the green.
+        val rainCasing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = casing; style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
+        }
+        fun stroke(x0: Float, y0: Float, x1: Float, y1: Float, width: Float) {
+            rainCasing.strokeWidth = width + 1.6f * sp
+            c.drawLine(x0, y0, x1, y1, rainCasing)
+            rain.strokeWidth = width
+            c.drawLine(x0, y0, x1, y1, rain)
+        }
         for (i in 0 until n) {
             if (!wet[i]) continue
             if (i + 1 < n && wet[i + 1]) {
                 // A segment spans two hours: take the wetter one, so a downpour never
                 // hides behind the drizzle beside it.
-                rain.strokeWidth = rainStrokeDp(maxOf(rate(i), rate(i + 1))) * sp
-                c.drawLine(x(i), y(i), x(i + 1), y(i + 1), rain)
+                stroke(x(i), y(i), x(i + 1), y(i + 1), rainStrokeDp(maxOf(rate(i), rate(i + 1))) * sp)
             } else if (i == 0 || !wet[i - 1]) {
                 // A lone wet hour has no segment to sit on — give it a flat tick. (The
                 // last hour of a longer run is already covered by the segment into it.)
-                rain.strokeWidth = rainStrokeDp(rate(i)) * sp
-                c.drawLine(x(i) - barW / 3, y(i), x(i) + barW / 3, y(i), rain)
+                stroke(x(i) - barW / 3, y(i), x(i) + barW / 3, y(i), rainStrokeDp(rate(i)) * sp)
             }
         }
 
