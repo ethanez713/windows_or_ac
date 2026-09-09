@@ -799,15 +799,20 @@ private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () ->
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Location") },
+        containerColor = Skin.chrome.card,
+        shape = RoundedCornerShape(16.dp),
+        title = { Text("Location", fontFamily = Heading, fontSize = 20.sp, color = Skin.chrome.heading) },
         text = {
             Column {
+                Text("Currently", fontSize = 11.sp, color = onVar)
+                Spacer(Modifier.height(2.dp))
                 Text(
                     picked?.label ?: cfg.placeName ?: coordLabel(cfg.lat, cfg.lon),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
+                    color = Skin.chrome.heading,
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(
                         checked = follow,
@@ -822,12 +827,16 @@ private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () ->
                     Spacer(Modifier.width(10.dp))
                     Text("Use my phone's location", fontSize = 14.sp, modifier = Modifier.weight(1f))
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
+                // Short label so it never wraps; the longer example is the placeholder, which
+                // a single-line field keeps on one line instead of stacking it two-high.
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("City, address, ZIP, or lat, lon") },
+                    label = { Text("Search a place") },
+                    placeholder = { Text("City, ZIP, or lat, lon") },
                     singleLine = true,
+                    shape = RoundedCornerShape(10.dp),
                     trailingIcon = {
                         TextButton(onClick = { lookUp() }, enabled = !busy && query.isNotBlank()) {
                             Text("Find")
