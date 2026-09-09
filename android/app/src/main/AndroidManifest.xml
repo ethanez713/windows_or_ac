@@ -76,14 +76,6 @@
             </intent-filter>
         </activity>
 
-        <!-- The forecast screen: the forecast widget's companion. A separate screen from
-             MainActivity on purpose — that one answers "when do I open the windows", this
-             one answers "what will conditions be". -->
-        <activity
-            android:name=".ForecastActivity"
-            android:exported="false"
-            android:label="Forecast" />
-
         <!-- The forecast widget: what the weather will do in the next N hours, as one
              layered panel. Shares AcWindowsProvider's 10-minute alarm tick and the same
              cached snapshot rather than owning either. -->
