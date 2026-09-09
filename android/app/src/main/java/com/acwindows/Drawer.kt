@@ -1,15 +1,23 @@
 package com.acwindows
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -67,17 +75,33 @@ fun DetailDrawer(
 ) {
     if (points.isEmpty()) return
     val tm = rememberTextMeasurer()
+    val n = points.size
     val nowFrac = remember(points, isToday) { if (isToday) nowFractionOf(points) else null }
+    val nowIdx = remember(points, isToday) { if (isToday) nowIndexOf(points) else -1 }
+
+    // Drag or tap across the chart to read a specific hour; null follows the present, so an
+    // untouched today card still opens on "now". Reset whenever the day's rows change.
+    var sel by remember(points) { mutableStateOf<Int?>(null) }
+    val activeIdx = sel ?: nowIdx
+    val markerFrac = sel?.let { if (n <= 1) 0.5f else it.toFloat() / (n - 1) } ?: nowFrac
 
     Column(Modifier.fillMaxWidth()) {
-        ReadingsLine(points, unit, isToday)
+        ReadingsLine(points, unit, activeIdx)
         Spacer(Modifier.height(8.dp))
-        TempDewBlock(points, comfort, unit, tm, nowFrac)
-        Spacer(Modifier.height(10.dp))
-        AqiBlock(points, palette, tm)
-        Spacer(Modifier.height(10.dp))
-        RainBlock(points, comfort, rainScaleInPerHr, thunderAlertPct, tm, nowFrac)
-        TimeAxis(points, tm, nowFrac)
+        Box {
+            Column {
+                TempDewBlock(points, comfort, unit, tm, markerFrac)
+                Spacer(Modifier.height(4.dp))
+                AqiBlock(points, palette, tm)
+                Spacer(Modifier.height(14.dp))
+                RainBlock(points, comfort, rainScaleInPerHr, thunderAlertPct, tm, markerFrac)
+                TimeAxis(points, tm, nowFrac)
+            }
+            // One overlay across the whole chart stack drives the selection; a horizontal
+            // drag is consumed here so it scrubs instead of collapsing the card or scrolling
+            // the list (a vertical drag falls through to the list).
+            Spacer(Modifier.matchParentSize().scrub(n) { sel = it })
+        }
     }
 }
 
@@ -92,10 +116,9 @@ fun DetailDrawer(
  * always shows.
  */
 @Composable
-private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, isToday: Boolean) {
+private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) {
     val d = Skin.data
     val chrome = Skin.chrome
-    val idx = if (isToday) nowIndexOf(points) else -1
     val parts = mutableListOf<Pair<String, Color>>()
 
     if (idx in points.indices) {
@@ -141,7 +164,7 @@ private fun MonoText(text: String, color: Color) = androidx.compose.material3.Te
  */
 @Composable
 private fun TempDewBlock(
-    points: List<ForecastPoint>, comfort: Comfort, unit: TempUnit, tm: TextMeasurer, nowFrac: Float?,
+    points: List<ForecastPoint>, comfort: Comfort, unit: TempUnit, tm: TextMeasurer, markerFrac: Float?,
 ) {
     val d = Skin.data
     val chrome = Skin.chrome
@@ -181,53 +204,74 @@ private fun TempDewBlock(
         series(points, g, { it.dewPointF?.let(unit::fromF) }, ::y, d.dew, 2.dp.toPx(), dashed = true)
         series(points, g, { it.tempF?.let(unit::fromF) }, ::y, d.temp, 2.4.dp.toPx(), dashed = false)
 
-        nowFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), g.top), Offset(g.xAtFrac(it), g.bottom), strokeWidth = 1.2.dp.toPx()) }
+        markerFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), g.top), Offset(g.xAtFrac(it), g.bottom), strokeWidth = 1.2.dp.toPx()) }
     }
 }
 
 // ---------------------------------------------------------------- 3. air quality
 
 /**
- * Air quality as ONE gradient bar rather than 24 columns. A running AQI has no per-hour
- * shape worth reading — what matters is the level and where it drifts — and the same
- * treatment on the forecast widget makes the two surfaces read alike.
+ * Air quality as ONE thin gradient bar rather than 24 columns. A running AQI has no per-hour
+ * shape worth reading — what matters is the level and where it drifts — so the day's highest
+ * and lowest readings are printed over the very hours they fall on, just above the strip,
+ * and the label/value row the block used to carry is gone.
  */
 @Composable
 private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextMeasurer) {
     val chrome = Skin.chrome
-    val d = Skin.data
     val dark = chrome.dark
     val series = points.map { it.aqi }
-    val peak = series.filterNotNull().maxOrNull() ?: return
+    val vals = series.filterNotNull()
+    if (vals.isEmpty()) return
+    val maxV = vals.max()
+    val minV = vals.min()
+    val maxIdx = series.indexOfFirst { it == maxV }
+    val minIdx = series.indexOfLast { it == minV }
 
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        MonoText("US AQI", chrome.faint)
-        Spacer(Modifier.weight(1f))
-        MonoText("peak $peak ${AqiRamp.category(peak.toDouble())}", Color(AqiRamp.colorAt(peak.toDouble(), palette, dark)))
-    }
-    Spacer(Modifier.height(4.dp))
-    Canvas(Modifier.fillMaxWidth().height(10.dp)) {
+    Canvas(Modifier.fillMaxWidth().height(20.dp)) {
         val g = plot(points.size)
+        val barH = 4.dp.toPx()
+        val barTop = size.height - barH
+        val r = CornerRadius(barH / 2)
         val (colors, stops) = AqiRamp.sweep(series, palette, dark)
-        val r = CornerRadius(4.dp.toPx())
         drawRoundRect(
             brush = Brush.horizontalGradient(
                 colorStops = Array(colors.size) { stops[it] to Color(colors[it]) },
                 startX = g.left, endX = g.right,
             ),
-            topLeft = Offset(g.left, 1.dp.toPx()),
-            size = Size(g.right - g.left, 8.dp.toPx()),
+            topLeft = Offset(g.left, barTop),
+            size = Size(g.right - g.left, barH),
             cornerRadius = r,
         )
-        // The outline is what gives the strip an edge under any palette — the Ink ramp's
-        // clean end sits close to the card on purpose.
+        // The outline is what gives the strip an edge under any palette.
         drawRoundRect(
             color = chrome.hairline,
-            topLeft = Offset(g.left, 1.dp.toPx()),
-            size = Size(g.right - g.left, 8.dp.toPx()),
+            topLeft = Offset(g.left, barTop),
+            size = Size(g.right - g.left, barH),
             cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
         )
+        // Peak wins any collision: draw it first, and drop the trough only if the two labels
+        // would touch (a flat day with one AQI draws a single number).
+        fun labelFor(v: Int) = tm.measure(
+            "$v",
+            TextStyle(
+                color = Color(AqiRamp.colorAt(v.toDouble(), palette, dark)),
+                fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
+            ),
+        )
+        val maxL = labelFor(maxV)
+        val labelY = barTop - maxL.size.height - 1.dp.toPx()
+        val maxX = (g.xAt(maxIdx) - maxL.size.width / 2f).coerceIn(g.left, g.right - maxL.size.width)
+        drawText(maxL, topLeft = Offset(maxX, labelY))
+        if (minV != maxV) {
+            val minL = labelFor(minV)
+            val minX = (g.xAt(minIdx) - minL.size.width / 2f).coerceIn(g.left, g.right - minL.size.width)
+            val gap = 3.dp.toPx()
+            if (minX + minL.size.width < maxX - gap || minX > maxX + maxL.size.width + gap) {
+                drawText(minL, topLeft = Offset(minX, labelY))
+            }
+        }
     }
 }
 
@@ -245,7 +289,7 @@ private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextM
 @Composable
 private fun RainBlock(
     points: List<ForecastPoint>, comfort: Comfort, rainScaleInPerHr: Double, thunderAlertPct: Double,
-    tm: TextMeasurer, nowFrac: Float?,
+    tm: TextMeasurer, markerFrac: Float?,
 ) {
     val d = Skin.data
     val chrome = Skin.chrome
@@ -253,19 +297,24 @@ private fun RainBlock(
 
     Canvas(Modifier.fillMaxWidth().height(64.dp)) {
         val g = plot(points.size)
-        val colH = 48.dp.toPx()
-        val base = g.top + colH
+        // Columns sit on the canvas floor and rise into a reserved top band, so the peak
+        // annotation always has room above the tallest column instead of spilling up into
+        // the AQI strip above the block.
+        val topBand = 15.dp.toPx()
+        val base = g.bottom
+        val colTop = topBand
+        val colH = base - colTop
 
         if (!anyRain) {
             val l = tm.measure(
                 "no rain in 24 h",
                 TextStyle(color = chrome.faint, fontSize = AXIS_TEXT, fontFamily = Mono),
             )
-            drawText(l, topLeft = Offset((size.width - l.size.width) / 2, g.top + colH / 2 - l.size.height / 2))
+            drawText(l, topLeft = Offset((size.width - l.size.width) / 2, colTop + colH / 2 - l.size.height / 2))
             return@Canvas
         }
 
-        label(tm, "100%", chrome.faint, AXIS_TEXT, 0f, g.top - 2.dp.toPx())
+        label(tm, "100%", chrome.faint, AXIS_TEXT, 0f, 1.dp.toPx())
         label(tm, "0", chrome.faint, AXIS_TEXT, 0f, base - 12.dp.toPx())
 
         val cutoffY = base - (comfort.rainProbIdeal / 100.0).toFloat() * colH
@@ -305,7 +354,7 @@ private fun RainBlock(
             drawText(l, topLeft = Offset(x, base - h - l.size.height - 2.dp.toPx()))
         }
 
-        nowFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), g.top), Offset(g.xAtFrac(it), base), strokeWidth = 1.2.dp.toPx()) }
+        markerFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), colTop), Offset(g.xAtFrac(it), base), strokeWidth = 1.2.dp.toPx()) }
     }
 }
 
@@ -364,6 +413,28 @@ private class Plot(val left: Float, val top: Float, val right: Float, val bottom
 
 private fun DrawScope.plot(n: Int) =
     Plot(PLOT_LEFT.toPx(), 0f, size.width - PLOT_RIGHT_INSET.toPx(), size.height, n)
+
+/**
+ * Tap or horizontal-drag anywhere over the chart stack to pick the hour under the finger.
+ * The horizontal drag is consumed so it scrubs rather than scrolls; a vertical drag isn't
+ * touched, so the day list still scrolls through the overlay.
+ */
+private fun Modifier.scrub(n: Int, onSel: (Int?) -> Unit): Modifier = this
+    .pointerInput(n) { detectTapGestures { o -> onSel(idxAt(o.x, size.width.toFloat(), n)) } }
+    .pointerInput(n) {
+        detectHorizontalDragGestures { change, _ ->
+            onSel(idxAt(change.position.x, size.width.toFloat(), n)); change.consume()
+        }
+    }
+
+/** Which point index an x maps to, measured within the same [PLOT_LEFT]/inset gutters the charts use. */
+private fun Density.idxAt(x: Float, width: Float, n: Int): Int {
+    if (n <= 1) return 0
+    val left = PLOT_LEFT.toPx()
+    val right = width - PLOT_RIGHT_INSET.toPx()
+    val frac = ((x - left) / (right - left)).coerceIn(0f, 1f)
+    return (frac * (n - 1)).roundToInt().coerceIn(0, n - 1)
+}
 
 private fun DrawScope.label(
     tm: TextMeasurer, text: String, color: Color, size: androidx.compose.ui.unit.TextUnit, x: Float, y: Float,
