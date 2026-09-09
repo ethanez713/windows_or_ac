@@ -72,16 +72,12 @@
             </LinearLayout>
             <TextView android:id="@+id/hours_hint" style="@style/CfgHint" />
 
-            <TextView style="@style/CfgLabel" android:text="Detail" />
-            <RadioGroup
-                android:id="@+id/detail_group"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <RadioButton android:id="@+id/detail_compact" style="@style/CfgCheck" android:text="Compact — temperature and rain only" />
-                <RadioButton android:id="@+id/detail_standard" style="@style/CfgCheck" android:text="Standard — adds dew point and air quality" />
-                <RadioButton android:id="@+id/detail_everything" style="@style/CfgCheck" android:text="Everything — adds day markers" />
-            </RadioGroup>
+            <TextView style="@style/CfgLabel" android:text="Series" />
+            <CheckBox android:id="@+id/show_temp" style="@style/CfgCheck" android:text="Temperature" />
+            <CheckBox android:id="@+id/show_dew" style="@style/CfgCheck" android:text="Dew point" />
+            <CheckBox android:id="@+id/show_rain" style="@style/CfgCheck" android:text="Rain" />
+            <CheckBox android:id="@+id/show_aqi" style="@style/CfgCheck" android:text="Air quality (drawn along the bottom)" />
+            <CheckBox android:id="@+id/show_dates" style="@style/CfgCheck" android:text="Day markers" />
 
             <TextView style="@style/CfgLabel" android:text="Theme" />
             <RadioGroup
@@ -103,6 +99,30 @@
                 android:id="@+id/tap_opens"
                 style="@style/CfgCheck"
                 android:text="Tap opens the app (off = refresh in place)" />
+
+            <TextView style="@style/CfgLabel" android:text="Text size" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <SeekBar
+                    android:id="@+id/text_scale"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:min="80"
+                    android:max="200" />
+                <TextView
+                    android:id="@+id/text_scale_value"
+                    android:layout_width="56dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="end"
+                    android:textSize="14sp"
+                    android:text="130%" />
+            </LinearLayout>
+            <TextView style="@style/CfgHint" android:text="Scales every label the panel draws (80–200%)." />
         </LinearLayout>
     </ScrollView>
 

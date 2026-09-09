@@ -2,9 +2,6 @@ package com.acwindows
 
 import android.content.Context
 
-/** How much of the forecast panel is drawn. See [ForecastPanel]. */
-enum class ForecastDetail { COMPACT, STANDARD, EVERYTHING }
-
 /** Which palette step the panel draws, independent of the phone's own setting. */
 enum class ForecastTheme { AUTO, LIGHT, DARK }
 
@@ -13,24 +10,27 @@ enum class ForecastTheme { AUTO, LIGHT, DARK }
  * can be placed at once showing different horizons, so every key carries the widget id it
  * belongs to. The key namespace is deliberately its own — the windows widget keeps its
  * settings, and the two must not read each other's.
+ *
+ * Each of the four series is toggled on its own rather than picked from a preset ladder, so
+ * the panel can be a thermometer, an air-quality strip, a rain chart, or any mix.
  */
 data class ForecastWidgetConfig(
     /** Look-ahead, always starting at the current hour. */
     val hours: Int = DEFAULT_HOURS,
-    val detail: ForecastDetail = ForecastDetail.STANDARD,
+    val showTemp: Boolean = true,
+    val showDew: Boolean = true,
+    val showAqi: Boolean = true,
+    val showRain: Boolean = true,
+    /** The date tick over each midnight — informative but not load-bearing, so off by default. */
+    val showDateFlags: Boolean = false,
     val theme: ForecastTheme = ForecastTheme.AUTO,
     /** Drop rain columns below the comfort threshold rather than drawing near-zero stubs. */
     val hideUnlikelyRain: Boolean = true,
     /** Off means the widget refreshes where it stands instead of opening the app. */
     val tapOpensApp: Boolean = false,
+    /** Scales every label the panel draws (see [ForecastPanel]); the chart itself is unchanged. */
+    val textScalePct: Int = DEFAULT_TEXT_SCALE,
 ) {
-    /** Compact drops the dew line and the AQI strip — the two layers a small panel can lose. */
-    val showDew: Boolean get() = detail != ForecastDetail.COMPACT
-    val showAqi: Boolean get() = detail != ForecastDetail.COMPACT
-
-    /** Everything adds the marks that are informative but not load-bearing. */
-    val showDateFlags: Boolean get() = detail == ForecastDetail.EVERYTHING
-
     fun isDark(context: Context): Boolean = when (theme) {
         ForecastTheme.AUTO -> Tokens.isDarkTheme(context)
         ForecastTheme.LIGHT -> false
@@ -45,30 +45,45 @@ data class ForecastWidgetConfig(
         const val MAX_HOURS = 96
         const val DEFAULT_HOURS = 24
 
+        const val MIN_TEXT_SCALE = 80
+        const val MAX_TEXT_SCALE = 200
+        const val DEFAULT_TEXT_SCALE = 130
+
         fun clampHours(h: Int) = h.coerceIn(MIN_HOURS, MAX_HOURS)
+        fun clampTextScale(p: Int) = p.coerceIn(MIN_TEXT_SCALE, MAX_TEXT_SCALE)
 
         fun load(context: Context, id: Int): ForecastWidgetConfig {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            fun <T : Enum<T>> enum(key: String, values: Array<T>, fallback: T): T =
-                p.getString("${key}_$id", null)
-                    ?.let { raw -> values.firstOrNull { it.name == raw } } ?: fallback
+            fun bool(key: String, fallback: Boolean) = p.getBoolean("${key}_$id", fallback)
             return ForecastWidgetConfig(
                 hours = p.getString("forecastHours_$id", null)?.toIntOrNull()
                     ?.let(::clampHours) ?: DEFAULT_HOURS,
-                detail = enum("forecastDetail", ForecastDetail.entries.toTypedArray(), ForecastDetail.STANDARD),
-                theme = enum("forecastTheme", ForecastTheme.entries.toTypedArray(), ForecastTheme.AUTO),
-                hideUnlikelyRain = p.getBoolean("forecastHideRain_$id", true),
-                tapOpensApp = p.getBoolean("forecastTapOpens_$id", false),
+                showTemp = bool("forecastShowTemp", true),
+                showDew = bool("forecastShowDew", true),
+                showAqi = bool("forecastShowAqi", true),
+                showRain = bool("forecastShowRain", true),
+                showDateFlags = bool("forecastShowDates", false),
+                theme = p.getString("forecastTheme_$id", null)
+                    ?.let { raw -> ForecastTheme.entries.firstOrNull { it.name == raw } } ?: ForecastTheme.AUTO,
+                hideUnlikelyRain = bool("forecastHideRain", true),
+                tapOpensApp = bool("forecastTapOpens", false),
+                textScalePct = p.getString("forecastTextScale_$id", null)?.toIntOrNull()
+                    ?.let(::clampTextScale) ?: DEFAULT_TEXT_SCALE,
             )
         }
 
         fun save(context: Context, id: Int, cfg: ForecastWidgetConfig) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("forecastHours_$id", cfg.hours.toString())
-                .putString("forecastDetail_$id", cfg.detail.name)
+                .putBoolean("forecastShowTemp_$id", cfg.showTemp)
+                .putBoolean("forecastShowDew_$id", cfg.showDew)
+                .putBoolean("forecastShowAqi_$id", cfg.showAqi)
+                .putBoolean("forecastShowRain_$id", cfg.showRain)
+                .putBoolean("forecastShowDates_$id", cfg.showDateFlags)
                 .putString("forecastTheme_$id", cfg.theme.name)
                 .putBoolean("forecastHideRain_$id", cfg.hideUnlikelyRain)
                 .putBoolean("forecastTapOpens_$id", cfg.tapOpensApp)
+                .putString("forecastTextScale_$id", cfg.textScalePct.toString())
                 .apply()
         }
 
@@ -76,10 +91,15 @@ data class ForecastWidgetConfig(
         fun delete(context: Context, id: Int) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .remove("forecastHours_$id")
-                .remove("forecastDetail_$id")
+                .remove("forecastShowTemp_$id")
+                .remove("forecastShowDew_$id")
+                .remove("forecastShowAqi_$id")
+                .remove("forecastShowRain_$id")
+                .remove("forecastShowDates_$id")
                 .remove("forecastTheme_$id")
                 .remove("forecastHideRain_$id")
                 .remove("forecastTapOpens_$id")
+                .remove("forecastTextScale_$id")
                 .apply()
         }
     }

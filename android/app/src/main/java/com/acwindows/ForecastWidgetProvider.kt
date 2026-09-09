@@ -118,6 +118,7 @@ class ForecastWidgetProvider : AppWidgetProvider() {
                         widthPx = ((wDp - 20) * density).toInt().coerceIn(160, 1400),
                         heightPx = ((hDp - 20) * density).toInt().coerceIn(90, 900),
                         density = density, dark = dark,
+                        textScale = widget.textScalePct / 100f,
                     )
                 }
                 setImageViewBitmap(R.id.forecast_panel, panel)

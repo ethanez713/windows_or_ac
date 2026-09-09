@@ -31,8 +31,6 @@ object ForecastPanel {
     private const val HEADER_H = 40f
     private const val HEADER_GAP = 3f
     private const val PLOT_LEFT = 30f
-    private const val RAIN_H = 28f
-    private const val AQI_Y = 104f
     private const val AQI_H = 4f
 
     /**
@@ -55,6 +53,7 @@ object ForecastPanel {
         heightPx: Int,
         density: Float,
         dark: Boolean,
+        textScale: Float = 1f,
         nowMs: Long = System.currentTimeMillis(),
     ): Bitmap {
         val w = widthPx.coerceAtLeast(160)
@@ -75,9 +74,15 @@ object ForecastPanel {
         val head = Head(s, cfg, unit, slice, widget)
         drawHeader(context, c, head, d, chrome, dp, w)
 
+        val ts = textScale
         val plotTop = (HEADER_H + HEADER_GAP) * dp
-        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - AXIS_H * dp, n)
-        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark)
+        val axisH = AXIS_H * dp * ts
+        // Air quality moves to a thin band at the very BOTTOM of the panel (its own reserved
+        // strip below the plot, above the time axis), so it's out of the way of the
+        // full-height rain columns and reads as the floor of the chart.
+        val aqiBand = if (widget.showAqi) (AQI_H + 5f) * dp else 0f
+        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - axisH - aqiBand, n)
+        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark, ts, aqiBand)
         drawRefresh(context, c, chrome, dp, w, h)
         return bmp
     }
@@ -273,7 +278,7 @@ object ForecastPanel {
     private fun drawChart(
         context: Context, c: Canvas, s: Snapshot, slice: IntRange, widget: ForecastWidgetConfig,
         unit: TempUnit, g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
-        nowMs: Long, dark: Boolean,
+        nowMs: Long, dark: Boolean, ts: Float, aqiBand: Float,
     ) {
         val idx = slice.toList()
         val n = idx.size
@@ -287,60 +292,67 @@ object ForecastPanel {
         }
         val dividerPaint = Paint().apply { color = chrome.hairline; strokeWidth = 1f * dp }
         val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.faint; textSize = 9f * dp; typeface = WidgetType.mono(context)
+            color = chrome.faint; textSize = 9f * dp * ts; typeface = WidgetType.mono(context)
         }
         for (k in 1 until n) {
             if (s.times.getOrNull(idx[k])?.take(10) == s.times.getOrNull(idx[k - 1])?.take(10)) continue
             val x = g.xAt(k)
             c.drawLine(x, g.top, x, g.bottom, dividerPaint)
-            if (widget.showDateFlags) c.drawText(dateLabel(s.times[idx[k]]), x + 4f * dp, g.top + 9f * dp, datePaint)
+            if (widget.showDateFlags) c.drawText(dateLabel(s.times[idx[k]]), x + 4f * dp, g.top + 9f * dp * ts, datePaint)
         }
 
-        // 2. gridlines on the temperature axis — exactly three
-        val temps = idx.mapNotNull { s.tempSeries.getOrNull(it) }.map(unit::fromF)
+        val nowX = g.xAtFrac(nowFraction(s, slice, nowMs))
+
+        // 2. rain columns FIRST, behind the temperature line — height is chance (up to the
+        // whole plot), WIDTH is intensity.
+        if (widget.showRain) drawRain(context, c, s, idx, widget, g, d, chrome, dp, cfg, ts)
+
+        // 3. temperature/dew axis + gridlines + lines, only when a temperature or dew line is
+        // actually shown and has data (so a rain- or AQI-only widget still draws).
+        val temps = if (widget.showTemp) idx.mapNotNull { s.tempSeries.getOrNull(it) }.map(unit::fromF) else emptyList()
         val dews = if (widget.showDew) idx.mapNotNull { s.dewSeries.getOrNull(it) }.map(unit::fromF) else emptyList()
         val all = temps + dews
-        if (all.isEmpty()) return
-        val lo = all.min() - 3
-        val hi = all.max() + 3
-        val gridPaint = Paint().apply { color = chrome.hairline; strokeWidth = 1f }
-        val gridText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.faint; textSize = 9f * dp; typeface = WidgetType.mono(context)
+        if (all.isNotEmpty()) {
+            val lo = all.min() - 3
+            val hi = all.max() + 3
+            val gridPaint = Paint().apply { color = chrome.hairline; strokeWidth = 1f }
+            val gridText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = chrome.faint; textSize = 9f * dp * ts; typeface = WidgetType.mono(context)
+            }
+            for (v in gridValues(lo, hi)) {
+                val y = g.yAt(v, lo, hi)
+                c.drawLine(g.x0, y, g.x1, y, gridPaint)
+                c.drawText("${v.roundToInt()}°", 0f, y - 2f * dp, gridText)
+            }
+            if (widget.showTemp) {
+                drawSeries(c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp, 2.4f * dp, dp, filled = true)
+            }
+            if (widget.showDew) {
+                drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, filled = false)
+            }
+            drawTags(context, c, idx, s, unit, g, lo, hi, d, dp, nowX, ts, widget.showTemp, widget.showDew)
         }
-        for (v in gridValues(lo, hi)) {
-            val y = g.yAt(v, lo, hi)
-            c.drawLine(g.x0, y, g.x1, y, gridPaint)
-            c.drawText("${v.roundToInt()}°", 0f, y - 2f * dp, gridText)
-        }
 
-        // 3. rain columns — height is chance, WIDTH is intensity
-        drawRain(context, c, s, idx, widget, g, d, chrome, dp, cfg)
+        // 4. air quality strip, in its reserved band at the foot of the panel
+        if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts)
 
-        // 4. temperature area + line, dew point dashed, both tagged at their left end
-        val nowX = g.xAtFrac(nowFraction(s, slice, nowMs))
-        drawSeries(c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp, 2.4f * dp, dp, filled = true)
-        if (widget.showDew) {
-            drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, filled = false)
-        }
-        drawTags(context, c, idx, s, unit, g, lo, hi, d, dp, nowX, widget.showDew)
-
-        // 5. air quality strip
-        if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark)
-
-        // 6. the present, at the REAL clock time — the gap to the plot edge is staleness
+        // 5. the present, at the REAL clock time — the gap to the plot edge is staleness
         c.drawLine(nowX, g.top, nowX, g.bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = d.now; strokeWidth = 1.5f * dp
         })
 
-        // 7. time axis
-        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs)
+        // 6. time axis, below the AQI band
+        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs, ts, g.bottom + aqiBand)
     }
 
     private fun drawRain(
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>, widget: ForecastWidgetConfig,
-        g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
+        g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, ts: Float,
     ) {
-        val colH = RAIN_H * dp
+        // A 100%-chance column now fills the WHOLE plot height, so a wet spell is unmissable.
+        // The fill is translucent so the temperature line (drawn on top) still reads through
+        // a tall column.
+        val colH = g.plotH
         val base = g.bottom
         val slot = g.plotW / idx.size
         var peak = -1
@@ -352,7 +364,9 @@ object ForecastPanel {
             if (peak < 0 || chance > (s.precipProb.getOrNull(idx[peak]) ?: 0.0)) peak = k
 
             val intensity = min(1.0, amount / cfg.rainScaleInPerHr.coerceAtLeast(0.01))
-            val cw = slot * (0.26 + 0.7 * intensity).toFloat()
+            // Widen the intensity range so a drizzle column is a sliver and a downpour nearly
+            // fills its slot — the width difference is the whole point of the encoding.
+            val cw = slot * (0.12 + 0.85 * intensity).toFloat()
             val ch = max((chance / 100.0).toFloat() * colH, 2f * dp)
             // Width carries the intensity, so a column at the plot edge clamps its CENTRE
             // and keeps its width — narrowing it would say "drizzle" about a downpour.
@@ -360,6 +374,7 @@ object ForecastPanel {
             val th = s.thunderSeries.getOrNull(i) ?: 0.0
             c.drawRect(cx - cw / 2, base - ch, cx + cw / 2, base, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = if (th >= cfg.thunderAlertPct) d.storm else d.rain
+                alpha = 165
             })
             if (th >= MARGINAL_THUNDER && th < cfg.thunderAlertPct) {
                 c.drawRect(cx - cw / 2, base - ch, cx + cw / 2, base, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -379,13 +394,15 @@ object ForecastPanel {
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = if (storm) d.storm else chrome.body
-            textSize = 11f * dp; typeface = WidgetType.mono(context)
+            textSize = 11f * dp * ts; typeface = WidgetType.mono(context)
         }
-        val glyph = 11f * dp
+        val glyph = 11f * dp * ts
         val glyphW = if (storm) glyph + 3f * dp else 0f
         val textW = paint.measureText(text)
         val ch = max((chance / 100.0).toFloat() * colH, 2f * dp)
-        val y = g.bottom - ch - 3f * dp
+        // Kept inside the plot: a full-height column would otherwise push the label up into
+        // the header.
+        val y = (g.bottom - ch - 3f * dp).coerceAtLeast(g.top + 10f * dp * ts)
         val x = (g.xAt(peak) - (textW + glyphW) / 2)
             .coerceIn(g.x0, (g.x1 - textW - glyphW).coerceAtLeast(g.x0))
         if (storm) {
@@ -405,12 +422,12 @@ object ForecastPanel {
 
     private fun drawAqi(
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, d: Tokens.Data,
-        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean,
+        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean, ts: Float,
     ) {
         val series = idx.map { s.aqiSeries.getOrNull(it) }
         if (series.all { it == null }) return
         val (colors, stops) = AqiRamp.sweep(series, cfg.aqiPalette, dark)
-        val y = g.top + AQI_Y * dp
+        val y = g.bottom + 3f * dp
         val bar = RectF(g.x0, y, g.x1, y + AQI_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(g.x0, 0f, g.x1, 0f, colors, stops, Shader.TileMode.CLAMP)
@@ -421,7 +438,7 @@ object ForecastPanel {
         // Named in the AQI text colour rather than left to the ramp: under the EPA palette
         // the ramp's own hue collides with the temperature line.
         val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = d.aqi; textSize = 9f * dp; textAlign = Paint.Align.RIGHT
+            color = d.aqi; textSize = 9f * dp * ts; textAlign = Paint.Align.RIGHT
             typeface = WidgetType.monoBold(context)
         }
         c.drawText("AIR", g.x0 - 3f * dp, y + AQI_H * dp / 2 + 3f * dp, label)
@@ -467,37 +484,44 @@ object ForecastPanel {
      */
     private fun drawTags(
         context: Context, c: Canvas, idx: List<Int>, s: Snapshot, unit: TempUnit, g: Geom,
-        lo: Double, hi: Double, d: Tokens.Data, dp: Float, nowX: Float, showDew: Boolean,
+        lo: Double, hi: Double, d: Tokens.Data, dp: Float, nowX: Float, ts: Float,
+        showTemp: Boolean, showDew: Boolean,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 9f * dp; letterSpacing = 0.1f; typeface = WidgetType.monoBold(context)
+            textSize = 9f * dp * ts; letterSpacing = 0.1f; typeface = WidgetType.monoBold(context)
         }
         val x = max(g.x0 + 2f * dp, nowX + 5f * dp)
-        val firstTemp = idx.firstNotNullOfOrNull { s.tempSeries.getOrNull(it) }?.let(unit::fromF)
-        if (firstTemp != null) {
-            paint.color = d.temp
-            c.drawText("TEMP", x, g.yAt(firstTemp, lo, hi) - 3f * dp, paint)
-            if (showDew) {
+        // Each tag sits at its own line's left end, so DEW lands correctly whether or not the
+        // temperature line is drawn above it.
+        if (showTemp) {
+            idx.firstNotNullOfOrNull { s.tempSeries.getOrNull(it) }?.let(unit::fromF)?.let {
+                paint.color = d.temp
+                c.drawText("TEMP", x, g.yAt(it, lo, hi) - 3f * dp, paint)
+            }
+        }
+        if (showDew) {
+            idx.firstNotNullOfOrNull { s.dewSeries.getOrNull(it) }?.let(unit::fromF)?.let {
                 paint.color = d.dew
-                c.drawText("DEW", x, g.yAt(firstTemp, lo, hi) + 13f * dp, paint)
+                c.drawText("DEW", x, g.yAt(it, lo, hi) + 11f * dp * ts, paint)
             }
         }
     }
 
     private fun drawTimeAxis(
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, chrome: Tokens.Chrome,
-        dp: Float, nowX: Float, nowMs: Long,
+        dp: Float, nowX: Float, nowMs: Long, ts: Float, axisTop: Float,
     ) {
+        val baseline = axisTop + 11f * dp * ts
         val clockPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.heading; textSize = 11f * dp; typeface = WidgetType.monoBold(context)
+            color = chrome.heading; textSize = 11f * dp * ts; typeface = WidgetType.monoBold(context)
         }
         val clock = clockLabel(nowMs)
         val clockX = min(nowX + 3f * dp, g.x1 - clockPaint.measureText(clock))
         val clockBox = clockX - 4f * dp to clockX + clockPaint.measureText(clock) + 4f * dp
-        c.drawText(clock, clockX, g.bottom + 11f * dp, clockPaint)
+        c.drawText(clock, clockX, baseline, clockPaint)
 
         val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.faint; textSize = 11f * dp; typeface = WidgetType.mono(context)
+            color = chrome.faint; textSize = 11f * dp * ts; typeface = WidgetType.mono(context)
         }
         idx.forEachIndexed { k, i ->
             val time = s.times.getOrNull(i) ?: return@forEachIndexed
@@ -507,7 +531,7 @@ object ForecastPanel {
             val x = (g.xAt(k) - tw / 2).coerceIn(0f, g.x1 - tw)
             // Measured, not assumed: whether the clock leaves room depends on the time of day.
             if (x <= clockBox.second && clockBox.first <= x + tw) return@forEachIndexed
-            c.drawText(label, x, g.bottom + 11f * dp, tick)
+            c.drawText(label, x, baseline, tick)
         }
     }
 
@@ -532,12 +556,12 @@ object ForecastPanel {
         fun xAtFrac(f: Float) = x0 + f.coerceIn(0f, 1f) * plotW
         fun yAt(v: Double, lo: Double, hi: Double): Float {
             val f = if (hi <= lo) 0.0 else (v - lo) / (hi - lo)
-            return bottom - RAIN_HEADROOM * f.toFloat().coerceIn(0f, 1f) * plotH
+            return bottom - TOP_HEADROOM * f.toFloat().coerceIn(0f, 1f) * plotH
         }
     }
 
-    /** The temperature axis stops short of the floor so the rain columns have their own band. */
-    private const val RAIN_HEADROOM = 0.78f
+    /** The temperature line stops just short of the top so a peak doesn't touch the header. */
+    private const val TOP_HEADROOM = 0.9f
 
     private fun gridValues(lo: Double, hi: Double): List<Double> {
         val span = hi - lo
