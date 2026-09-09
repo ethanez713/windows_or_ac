@@ -47,7 +47,6 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
@@ -487,19 +486,15 @@ private fun DayCard(
         colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
     ) {
         // 14dp, not the design's stated 12: that 12 is paired with a 1dp border on both the
-        // frame and the card, and these cards are borderless. Both arrangements leave the
-        // same 333dp content box (393 - 2x16 - 2x14), which is the number §A.3's fixed
-        // columns are required to sum to — so changing this to 12 breaks the alignment it
-        // looks like it would fix.
+        // frame and the card, and these cards are borderless, so 14 keeps the same content box.
         Column(Modifier.padding(14.dp)) {
-            // §A.3's fixed columns. The label and sparkline widths are FIXED, not
-            // weighted, so a long day name can never shift the bars — every card's bars
-            // start at the same x, which is the whole point of stacking them. The label is
-            // 78dp because "Tomorrow" measures 72 at 15sp and a 71dp box truncates it.
-            val labelW = 78.dp
-            val sparkW = 132.dp
-            val iconsW = 40.dp
+            // The label and the trailing glyphs+hi/lo group are FIXED width; the sparkline
+            // takes the slack between them with weight(1f). That keeps its width identical on
+            // every card — so the bars start and end at the same x down the list — while
+            // giving the score bars the most horizontal room the row can spare.
+            val labelW = 64.dp
             val colGap = 6.dp
+            val trailingW = 104.dp
             // Open-window time flags ride ABOVE the bars (so they never compress them),
             // in a strip aligned to the sparkline column. Only shown on days a flag lands on.
             val flagTimes = remember(day) { day.points.map { it.time }.toSet() }
@@ -514,7 +509,8 @@ private fun DayCard(
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.width(labelW + colGap))
-                    OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.width(sparkW).height(26.dp))
+                    OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.weight(1f).height(26.dp))
+                    Spacer(Modifier.width(colGap + trailingW))
                 }
             }
             // "Now" only on today's card in NOW mode — every other card (and today's card
@@ -527,32 +523,28 @@ private fun DayCard(
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = Skin.chrome.heading,
                 )
                 Spacer(Modifier.width(colGap))
-                DaySparkline(day.points, threshold, nowIdx, Modifier.width(sparkW).height(34.dp))
+                DaySparkline(day.points, threshold, nowIdx, Modifier.weight(1f).height(34.dp))
                 Spacer(Modifier.width(colGap))
+                // Weather glyphs and the hi/lo pair, grouped tight and pinned to the right
+                // edge in a fixed-width column (see the column comment above).
                 Row(
-                    Modifier.width(iconsW), horizontalArrangement = Arrangement.Center,
+                    Modifier.width(trailingW),
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     WeatherGlyph(summary.morningCode, isDay = true, size = 17.dp)
                     WeatherGlyph(summary.nightCode, isDay = false, size = 17.dp)
-                }
-                Spacer(Modifier.width(colGap))
-                // Weighted, not fixed: the pair has to absorb the row's remaining slack or
-                // it sits inset from the card edge and stops lining up with the spans text
-                // directly beneath it.
-                Row(
-                    Modifier.weight(1f).widthIn(min = 56.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    Text(
-                        summary.highF?.let { unit.deg(it.toDouble()) } ?: "—°",
-                        fontFamily = Mono, fontSize = 15.sp, color = Skin.chrome.heading,
-                    )
-                    Text(
-                        " " + (summary.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"),
-                        fontFamily = Mono, fontSize = 13.sp, color = Skin.chrome.faint,
-                    )
+                    Spacer(Modifier.width(5.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            summary.highF?.let { unit.deg(it.toDouble()) } ?: "—°",
+                            fontFamily = Mono, fontSize = 15.sp, color = Skin.chrome.heading,
+                        )
+                        Text(
+                            " " + (summary.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"),
+                            fontFamily = Mono, fontSize = 13.sp, color = Skin.chrome.faint,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -595,16 +587,9 @@ private fun DayCard(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                // The two are mutually exclusive by construction: a day with open hours has
-                // spans to name, and a day with none has a reason instead. One slot, so a
-                // long span list can't push the reason off the row.
-                if (openRows > 0) {
-                    Text(
-                        compactSpans(day.points, globalSpans, day.stepMinutes),
-                        fontFamily = Mono, fontSize = 11.sp, color = Skin.chrome.muted,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
-                    )
-                } else {
+                // A day with open hours already shows their timing in the flag strip above
+                // the bars, so this slot only carries the closed-day reason.
+                if (openRows == 0) {
                     limitingFactor(comfort, day.points)?.let { lim ->
                         Text(
                             "${lim.factor.label()} ${readingOf(lim.factor, lim.point) ?: ""}",
@@ -1183,34 +1168,6 @@ private fun openSpansTimes(points: List<ForecastPoint>, thr: Double): List<Pair<
     return spans
 }
 
-/**
- * The day's open windows in the row's compact form — `12a–12p, 3p–11p`. The full
- * "12 AM – 12 PM" form overruns the row as soon as a day has two runs, and two runs is
- * ordinary rather than exceptional.
- */
-private fun compactSpans(
-    points: List<ForecastPoint>, globalSpans: List<Pair<String, String>>, stepMinutes: Int,
-): String {
-    val own = points.map { it.time }.toSet()
-    return globalSpans
-        .filter { (start, end) -> start in own || end in own }
-        .joinToString(", ") { (start, end) ->
-            "${shortHour(start)}–${shortHourOf(endHourOf(end, stepMinutes))}"
-        }
-}
-
-/** A row's closing hour: the row covers the whole span it names, so it ends at start + step. */
-private fun endHourOf(iso: String, stepMinutes: Int): Int {
-    val h = ForecastBuilder.hour(iso)
-    return if (h < 0) 0 else ((h * 60 + stepMinutes) / 60) % 24
-}
-
-private fun shortHourOf(hour: Int): String {
-    val h = ((hour % 24) + 24) % 24
-    val h12 = (h % 12).let { if (it == 0) 12 else it }
-    return "$h12${if (h < 12) "a" else "p"}"
-}
-
 /** Hour-of-day (wraps; e.g. 24 → 0) to a label like "4 AM" / "12 PM". */
 private fun hourLabelOf(hour: Int): String {
     val h = ((hour % 24) + 24) % 24
@@ -1222,22 +1179,11 @@ private fun hourLabelOf(hour: Int): String {
 /** "2026-06-16T21:00" -> "9 PM". */
 private fun fmt(iso: String): String = ForecastBuilder.fmtHour(iso)
 
-/** Compact axis hour: "12a", "6a", "12p", "6p". */
-private fun shortHour(iso: String): String {
-    val h = ForecastBuilder.hour(iso)
-    if (h < 0) return ""
-    val h12 = (h % 12).let { if (it == 0) 12 else it }
-    return "$h12${if (h < 12) "a" else "p"}"
-}
-
+// Every day but today is a weekday + date ("Wed 9/10"), a fixed-width label — "Tomorrow"
+// was the one variable-width name and it overran the day column.
 private fun dayLabel(date: String): String = try {
     val d = LocalDate.parse(date)
-    val today = LocalDate.now()
-    when (d) {
-        today -> "Today"
-        today.plusDays(1) -> "Tomorrow"
-        else -> d.format(DateTimeFormatter.ofPattern("EEE M/d"))
-    }
+    if (d == LocalDate.now()) "Today" else d.format(DateTimeFormatter.ofPattern("EEE M/d"))
 } catch (e: Exception) {
     date
 }
