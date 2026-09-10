@@ -58,14 +58,15 @@ object Graph {
     private const val PAST_ALPHA = 90
 
     /**
-     * Line thickness in dp for an hour's rain rate (inches in that hour): a hairline
-     * for a trace, up to 4dp for an inch-plus downpour.
+     * Line thickness in dp for an hour's rain rate (inches in that hour): a thin line
+     * for a trace, up to 8dp for an inch-plus downpour — the weight IS the intensity,
+     * so the steps are spread wide enough to read a downpour apart from a drizzle.
      */
     private fun rainStrokeDp(inchesPerHour: Double): Float = when {
-        inchesPerHour >= 1.0 -> 4f
-        inchesPerHour >= 0.33 -> 3f
-        inchesPerHour >= 0.05 -> 2f
-        else -> 1f
+        inchesPerHour >= 1.0 -> 8f
+        inchesPerHour >= 0.33 -> 6f
+        inchesPerHour >= 0.05 -> 4f
+        else -> 2f
     }
 
     /** Inches with the app's precision: 0.2″, 0.05″. */
@@ -260,7 +261,9 @@ object Graph {
             // Dew first: it sits under the temp line as often as not, and temp is the
             // headline series.
             if (showDew) drawDegLine(c, dewDisp, dewColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
-            if (showTemp) drawDegLine(c, tempDisp, tempColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos)
+            // The temperature line is coloured by the reading: red where it runs hot, blue
+            // where it freezes — so `tempF` (raw °F) rides along for the per-segment test.
+            if (showTemp) drawDegLine(c, tempDisp, tempColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos, tempF)
             // Range labels on the right edge, tinted to whichever line owns the axis, so
             // the numbers can't be read as belonging to the bars' scale.
             val degLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -284,31 +287,35 @@ object Graph {
             color = chrome.card; textSize = 8.5f * tsp; typeface = mono; textAlign = Paint.Align.CENTER
         }
 
-        // Noon markers: a solid grey divider through the bars + a "noon" flag in
-        // the top band, mirroring the date flags so midday is easy to spot. The divider
-        // and pill background are structural, not themed.
-        val noonCasing = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = casing; strokeWidth = 3.4f * sp }
-        val noonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = chrome.muted; strokeWidth = 1.7f * sp }
-        // The pill takes the dark heading fill the date pills use, so "noon" reads on a
-        // bright bar; the label tells it apart from a date flag.
+        // Day/noon dividers, both grey over a contrasting casing so they read over the vivid
+        // open bars: SOLID at midnight, DOTTED at noon. A casing under each is what lets a
+        // grey line survive a 100-score bar without going dark-on-theme.
+        val dotEffect = android.graphics.DashPathEffect(floatArrayOf(2.6f * sp, 2.6f * sp), 0f)
+        val dividerCasing = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = casing; strokeWidth = 3.4f * sp }
+        val dividerLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = chrome.muted; strokeWidth = 1.7f * sp }
+
+        // Noon: a dotted grey divider + a "noon" flag in the top band. The pill takes the
+        // dark heading fill the date pills use, so "noon" reads on a bright bar.
         val noonPill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = headingInk }
         for (i in 0 until n) {
             if (ForecastBuilder.hour(times.getOrElse(i) { "" }) != 12) continue
             val nx = barLeft(i) - gap / 2
-            c.drawLine(nx, plotTop, nx, base, noonCasing)
-            c.drawLine(nx, plotTop, nx, base, noonPaint)
+            dividerCasing.pathEffect = dotEffect
+            dividerLine.pathEffect = dotEffect
+            c.drawLine(nx, plotTop, nx, base, dividerCasing)
+            c.drawLine(nx, plotTop, nx, base, dividerLine)
             flag(c, "noon", nx, noonPill, pillText, topPad, axisW, w, tsp)
         }
 
-        // Day changes: a dark divider through the bars (a light line vanishes
-        // behind a 100-score bar), with the date tag in the reserved band ABOVE.
-        val divider = Paint().apply { color = headingInk; strokeWidth = 1.6f * sp }
+        // Day changes: a solid grey divider through the bars, with the date tag ABOVE.
         val datePill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = headingInk }
+        dividerCasing.pathEffect = null
+        dividerLine.pathEffect = null
         for (i in 1 until n) {
             if (day(times, i) == day(times, i - 1)) continue
             val dx = barLeft(i) - gap / 2
-            var yy = plotTop
-            while (yy < base) { c.drawLine(dx, yy, dx, (yy + 4f * sp).coerceAtMost(base), divider); yy += 7f * sp }
+            c.drawLine(dx, plotTop, dx, base, dividerCasing)
+            c.drawLine(dx, plotTop, dx, base, dividerLine)
             flag(c, dayLabel(times[i]), dx, datePill, pillText, topPad, axisW, w, tsp)
         }
 
@@ -359,6 +366,8 @@ object Graph {
     private fun drawDegLine(
         c: Canvas, values: List<Double?>, color: Int, n: Int,
         x: (Int) -> Float, y: (Double) -> Float, barW: Float, sp: Float, nowPos: Double?,
+        /** Raw °F per hour: when given, each segment is tinted hot/cold (see [segColor]). */
+        degF: List<Double?>? = null,
     ) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; style = Paint.Style.STROKE
@@ -369,13 +378,31 @@ object Graph {
         for (i in 0 until n) {
             val a = v(i) ?: continue
             val b = if (i + 1 < n) v(i + 1) else null
-            p.color = color                     // setting alpha alone survives; colour resets it
+            // setting alpha alone survives; colour resets it, so re-set both each segment
+            p.color = segColor(color, degF, i, b != null)
             p.alpha = pastAlpha(i, nowPos)
             if (b != null) {
                 c.drawLine(x(i), y(a), x(i + 1), y(b), p)
             } else if (v(i - 1) == null) {
                 c.drawLine(x(i) - barW / 3, y(a), x(i) + barW / 3, y(a), p)
             }
+        }
+    }
+
+    /**
+     * A temperature segment's hue: [HotRedArgb] at/above [HOT_F], [ColdBlueArgb] at/below
+     * [COLD_F], else the series [base]. Tested on raw °F at the segment midpoint (or the lone
+     * hour's own reading), so it holds in any display unit. Null [degF] leaves [base] — that's
+     * the dew line, which is never hot/cold-tinted.
+     */
+    private fun segColor(base: Int, degF: List<Double?>?, i: Int, hasNext: Boolean): Int {
+        if (degF == null) return base
+        val a = degF.getOrNull(i) ?: return base
+        val f = if (hasNext) ((a + (degF.getOrNull(i + 1) ?: a)) / 2) else a
+        return when {
+            f >= HOT_F -> HotRedArgb
+            f <= COLD_F -> ColdBlueArgb
+            else -> base
         }
     }
 
