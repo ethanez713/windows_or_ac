@@ -10,10 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -72,6 +69,10 @@ fun DetailDrawer(
     rainScaleInPerHr: Double,
     thunderAlertPct: Double,
     isToday: Boolean,
+    // Selected hour is hoisted to the card, so the score bars above can mark it too; null
+    // follows the present, so an untouched today card still opens on "now".
+    sel: Int?,
+    onSel: (Int?) -> Unit,
 ) {
     if (points.isEmpty()) return
     val tm = rememberTextMeasurer()
@@ -79,9 +80,6 @@ fun DetailDrawer(
     val nowFrac = remember(points, isToday) { if (isToday) nowFractionOf(points) else null }
     val nowIdx = remember(points, isToday) { if (isToday) nowIndexOf(points) else -1 }
 
-    // Drag or tap across the chart to read a specific hour; null follows the present, so an
-    // untouched today card still opens on "now". Reset whenever the day's rows change.
-    var sel by remember(points) { mutableStateOf<Int?>(null) }
     val activeIdx = sel ?: nowIdx
     val markerFrac = sel?.let { if (n <= 1) 0.5f else it.toFloat() / (n - 1) } ?: nowFrac
 
@@ -100,7 +98,7 @@ fun DetailDrawer(
             // One overlay across the whole chart stack drives the selection; a horizontal
             // drag is consumed here so it scrubs instead of collapsing the card or scrolling
             // the list (a vertical drag falls through to the list).
-            Spacer(Modifier.matchParentSize().scrub(n) { sel = it })
+            Spacer(Modifier.matchParentSize().scrub(n) { onSel(it) })
         }
     }
 }

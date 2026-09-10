@@ -506,6 +506,9 @@ private fun DayCard(
             // graphs only (and, in NOW mode, on the right 15-minute row rather than the
             // hour-prefix match four rows could tie on).
             val nowIdx = remember(day) { nowIdxOf(day.points) }
+            // Hour picked by scrubbing the expanded charts; it also drives the marker on the
+            // score bars above. Cleared when the card collapses or the day's rows change.
+            var sel by remember(day.points, expanded) { mutableStateOf<Int?>(null) }
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.width(labelW + colGap))
@@ -523,7 +526,7 @@ private fun DayCard(
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = Skin.chrome.heading,
                 )
                 Spacer(Modifier.width(colGap))
-                DaySparkline(day.points, threshold, nowIdx, Modifier.weight(1f).height(34.dp))
+                DaySparkline(day.points, threshold, nowIdx, sel, Modifier.weight(1f).height(34.dp))
                 Spacer(Modifier.width(colGap))
                 // Weather glyphs and the hi/lo pair, grouped tight and pinned to the right
                 // edge in a fixed-width column (see the column comment above).
@@ -610,6 +613,8 @@ private fun DayCard(
                     rainScaleInPerHr = cfg.rainScaleInPerHr,
                     thunderAlertPct = cfg.thunderAlertPct,
                     isToday = isToday,
+                    sel = sel,
+                    onSel = { sel = it },
                 )
             }
         }
@@ -977,11 +982,13 @@ private fun DaySparkline(
     points: List<ForecastPoint>,
     threshold: Double,
     nowIdx: Int,
+    selectedIdx: Int?,
     modifier: Modifier,
 ) {
     val d = Skin.data
     val open = d.score
     val closed = d.blockedBase
+    val selColor = Skin.chrome.heading
     Canvas(modifier) {
         val n = points.size.coerceAtLeast(1)
         val bw = size.width / n
@@ -1017,6 +1024,13 @@ private fun DaySparkline(
 
         // Static "now" marker (today only — nowIdx is -1 on other days), centred on the bar.
         if (nowIdx in 0 until n) nowMarker(nowIdx * bw + bw * 0.35f, 0f, plotBot, d.now)
+
+        // The hour picked in the expanded charts below, as a solid line through its bar, so
+        // the selected score is easy to read off these bars.
+        if (selectedIdx in 0 until n) {
+            val x = selectedIdx!! * bw + bw * 0.35f
+            drawLine(selColor, Offset(x, 0f), Offset(x, plotBot), strokeWidth = 1.5f.dp.toPx())
+        }
     }
 }
 
