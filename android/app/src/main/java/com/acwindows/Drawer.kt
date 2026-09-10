@@ -142,15 +142,17 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         parts.forEachIndexed { i, (text, color) ->
-            if (i > 0) MonoText(" · ", chrome.faint)
-            MonoText(text, color)
+            if (i > 0) ReadoutText(" · ", chrome.faint)
+            ReadoutText(text, color)
         }
     }
 }
 
+// The default (proportional) app font, not Mono: this is one running line, not a column of
+// figures to align, and mono's fixed-width digits and padded separators ran it off-screen.
 @Composable
-private fun MonoText(text: String, color: Color) = androidx.compose.material3.Text(
-    text, color = color, fontSize = AXIS_TEXT, fontFamily = Mono, maxLines = 1, softWrap = false,
+private fun ReadoutText(text: String, color: Color) = androidx.compose.material3.Text(
+    text, color = color, fontSize = AXIS_TEXT, fontFamily = Ui, maxLines = 1, softWrap = false,
 )
 
 // ---------------------------------------------------------------- 2. temp + dew
