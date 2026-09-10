@@ -81,24 +81,28 @@ fun DetailDrawer(
     val nowIdx = remember(points, isToday) { if (isToday) nowIndexOf(points) else -1 }
 
     val activeIdx = sel ?: nowIdx
-    val markerFrac = sel?.let { if (n <= 1) 0.5f else it.toFloat() / (n - 1) } ?: nowFrac
+    // The present is drawn on every today chart as a persistent grey reference; the picked
+    // hour, when the finger has chosen one, rides above it as the darker marker.
+    val selFrac = sel?.let { if (n <= 1) 0.5f else it.toFloat() / (n - 1) }
 
     Column(Modifier.fillMaxWidth()) {
         ReadingsLine(points, unit, activeIdx)
         Spacer(Modifier.height(8.dp))
-        Box {
+        // The scrub gesture lives on the Box itself rather than a matchParentSize() overlay:
+        // the overlay's pointer node wasn't laid out on the first frame a card opened, so a
+        // hold-and-drag on the default-expanded today card did nothing until a re-layout (a
+        // day toggle) woke it. The Canvas children draw only — none consume pointer events —
+        // so a gesture on the Box reaches the whole stack. A horizontal drag is consumed to
+        // scrub; a vertical one falls through to scroll the list.
+        Box(Modifier.scrub(n) { onSel(it) }) {
             Column {
-                TempDewBlock(points, comfort, unit, tm, markerFrac)
+                TempDewBlock(points, unit, tm, nowFrac, selFrac)
                 Spacer(Modifier.height(4.dp))
                 AqiBlock(points, palette, tm)
                 Spacer(Modifier.height(14.dp))
-                RainBlock(points, comfort, rainScaleInPerHr, thunderAlertPct, tm, markerFrac)
+                RainBlock(points, comfort, rainScaleInPerHr, thunderAlertPct, tm, nowFrac, selFrac)
                 TimeAxis(points, tm, nowFrac)
             }
-            // One overlay across the whole chart stack drives the selection; a horizontal
-            // drag is consumed here so it scrubs instead of collapsing the card or scrolling
-            // the list (a vertical drag falls through to the list).
-            Spacer(Modifier.matchParentSize().scrub(n) { onSel(it) })
         }
     }
 }
@@ -164,15 +168,14 @@ private fun ReadoutText(text: String, color: Color) = androidx.compose.material3
  */
 @Composable
 private fun TempDewBlock(
-    points: List<ForecastPoint>, comfort: Comfort, unit: TempUnit, tm: TextMeasurer, markerFrac: Float?,
+    points: List<ForecastPoint>, unit: TempUnit, tm: TextMeasurer, nowFrac: Float?, selFrac: Float?,
 ) {
     val d = Skin.data
     val chrome = Skin.chrome
-    val cutoff = unit.fromF(comfort.maxTempF)
     val temps = points.mapNotNull { it.tempF?.let(unit::fromF) }
     val dews = points.mapNotNull { it.dewPointF?.let(unit::fromF) }
     if (temps.isEmpty() && dews.isEmpty()) return
-    val all = temps + dews + listOf(cutoff)
+    val all = temps + dews
     val lo = all.min() - 3
     val hi = all.max() + 3
 
@@ -180,6 +183,7 @@ private fun TempDewBlock(
         val g = plot(points.size)
         fun y(v: Double) = g.yAt(v, lo, hi)
 
+        fieldBg(g, chrome)
         bands(points, g, chrome)
 
         for (v in gridValues(lo, hi, 3)) {
@@ -188,23 +192,20 @@ private fun TempDewBlock(
             label(tm, "${v.roundToInt()}°", chrome.faint, AXIS_TEXT, 0f, gy - 6.dp.toPx())
         }
 
-        // The comfort cutoff, named at the right edge — the line the temperature curve is
-        // read against, and the reason a warm-looking day can still be an open-window one.
-        val cy = y(cutoff)
-        drawLine(
-            d.cutoffRule, Offset(g.left, cy), Offset(g.right, cy), strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
-        )
-        val cutoffLabel = tm.measure(
-            "cutoff ${cutoff.roundToInt()}°",
-            TextStyle(color = chrome.faint, fontSize = ANNOTATION_TEXT, fontFamily = Mono),
-        )
-        drawText(cutoffLabel, topLeft = Offset(g.right - cutoffLabel.size.width, cy - cutoffLabel.size.height - 1.dp.toPx()))
-
         series(points, g, { it.dewPointF?.let(unit::fromF) }, ::y, d.dew, 2.dp.toPx(), dashed = true)
-        series(points, g, { it.tempF?.let(unit::fromF) }, ::y, d.temp, 2.4.dp.toPx(), dashed = false)
+        tempSeries(points, g, unit, ::y, d.temp, 2.4.dp.toPx())
 
-        markerFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), g.top), Offset(g.xAtFrac(it), g.bottom), strokeWidth = 1.2.dp.toPx()) }
+        // Each series' own high and low over the day, printed on the hour they land on.
+        extremes(points) { it.tempF }?.let { (hiIdx, loIdx) ->
+            pointValue(tm, unit.deg(points[hiIdx].tempF!!), d.temp, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].tempF!!)), above = true)
+            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].tempF!!), d.temp, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].tempF!!)), above = false)
+        }
+        extremes(points) { it.dewPointF }?.let { (hiIdx, loIdx) ->
+            pointValue(tm, unit.deg(points[hiIdx].dewPointF!!), d.dew, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].dewPointF!!)), above = true)
+            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].dewPointF!!), d.dew, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].dewPointF!!)), above = false)
+        }
+
+        markers(g, nowFrac, selFrac, chrome, g.top, g.bottom)
     }
 }
 
@@ -289,7 +290,7 @@ private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextM
 @Composable
 private fun RainBlock(
     points: List<ForecastPoint>, comfort: Comfort, rainScaleInPerHr: Double, thunderAlertPct: Double,
-    tm: TextMeasurer, markerFrac: Float?,
+    tm: TextMeasurer, nowFrac: Float?, selFrac: Float?,
 ) {
     val d = Skin.data
     val chrome = Skin.chrome
@@ -305,6 +306,8 @@ private fun RainBlock(
         val colTop = topBand
         val colH = base - colTop
 
+        fieldBg(Plot(g.left, colTop, g.right, base, points.size), chrome)
+
         if (!anyRain) {
             val l = tm.measure(
                 "no rain in 24 h",
@@ -316,6 +319,12 @@ private fun RainBlock(
 
         label(tm, "100%", chrome.faint, AXIS_TEXT, 0f, 1.dp.toPx())
         label(tm, "0", chrome.faint, AXIS_TEXT, 0f, base - 12.dp.toPx())
+
+        // Quarter gridlines across the 0–100% chance axis, so a column's height is a value.
+        for (pct in intArrayOf(25, 50, 75)) {
+            val gy = base - (pct / 100f) * colH
+            drawLine(chrome.hairline, Offset(g.left, gy), Offset(g.right, gy), strokeWidth = 1f)
+        }
 
         val cutoffY = base - (comfort.rainProbIdeal / 100.0).toFloat() * colH
         drawLine(
@@ -354,7 +363,7 @@ private fun RainBlock(
             drawText(l, topLeft = Offset(x, base - h - l.size.height - 2.dp.toPx()))
         }
 
-        markerFrac?.let { drawLine(chrome.heading, Offset(g.xAtFrac(it), colTop), Offset(g.xAtFrac(it), base), strokeWidth = 1.2.dp.toPx()) }
+        markers(g, nowFrac, selFrac, chrome, colTop, base)
     }
 }
 
@@ -422,7 +431,9 @@ private fun DrawScope.plot(n: Int) =
 private fun Modifier.scrub(n: Int, onSel: (Int?) -> Unit): Modifier = this
     .pointerInput(n) { detectTapGestures { o -> onSel(idxAt(o.x, size.width.toFloat(), n)) } }
     .pointerInput(n) {
-        detectHorizontalDragGestures { change, _ ->
+        detectHorizontalDragGestures(
+            onDragStart = { o -> onSel(idxAt(o.x, size.width.toFloat(), n)) },
+        ) { change, _ ->
             onSel(idxAt(change.position.x, size.width.toFloat(), n)); change.consume()
         }
     }
@@ -453,6 +464,33 @@ private fun gridValues(lo: Double, hi: Double, count: Int): List<Double> {
 }
 
 /**
+ * A slightly sunken fill over the plotting rectangle, so the chart field reads as its own
+ * surface and the y-axis top and bottom are visible edges rather than blending into the card.
+ * Drawn first, under the day/night bands and gridlines.
+ */
+private fun DrawScope.fieldBg(g: Plot, chrome: ChromeColors) {
+    drawRect(chrome.sunken, topLeft = Offset(g.left, g.top), size = Size(g.right - g.left, g.bottom - g.top))
+}
+
+/**
+ * One series' extreme reading printed over the hour it falls on, in the series' own colour and
+ * no label — the same treatment the AQI strip gives its peak/trough. Above the point for a
+ * high, below it for a low, clamped inside the canvas.
+ */
+private fun DrawScope.pointValue(
+    tm: TextMeasurer, text: String, color: Color, g: Plot, atX: Float, atY: Float, above: Boolean,
+) {
+    val l = tm.measure(
+        text,
+        TextStyle(color = color, fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold),
+    )
+    val x = (atX - l.size.width / 2f).coerceIn(g.left, g.right - l.size.width)
+    val y = (if (above) atY - l.size.height - 2.dp.toPx() else atY + 2.dp.toPx())
+        .coerceIn(0f, size.height - l.size.height)
+    drawText(l, topLeft = Offset(x, y))
+}
+
+/**
  * The 6% day/night tint. Which half wears it flips with the theme — the same tint darkens
  * paper and lightens dark ground, so a fixed half would read brighter at night in one of them.
  */
@@ -463,6 +501,51 @@ private fun DrawScope.bands(points: List<ForecastPoint>, g: Plot, chrome: Chrome
     points.forEachIndexed { i, p ->
         if ((p.isDay ?: true) == chrome.bandOnNight) return@forEachIndexed
         drawRect(chrome.bandTint, topLeft = Offset(g.left + i * slot, g.top), size = Size(slot, g.bottom - g.top))
+    }
+}
+
+/**
+ * The temperature line, coloured by the reading itself: red where a segment runs hot
+ * ([HOT_F]+) and blue where it runs freezing ([COLD_F]-), otherwise the temperature hue. The
+ * test is on raw °F so it holds whatever unit the axis is drawn in; the segment takes its two
+ * endpoints' midpoint.
+ */
+private fun DrawScope.tempSeries(
+    points: List<ForecastPoint>, g: Plot, unit: TempUnit, y: (Double) -> Float, base: Color, width: Float,
+) {
+    for (i in 0 until points.size - 1) {
+        val af = points[i].tempF ?: continue
+        val bf = points[i + 1].tempF ?: continue
+        val midF = (af + bf) / 2
+        val color = when {
+            midF >= HOT_F -> HotRed
+            midF <= COLD_F -> ColdBlue
+            else -> base
+        }
+        drawLine(color, Offset(g.xAt(i), y(unit.fromF(af))), Offset(g.xAt(i + 1), y(unit.fromF(bf))), strokeWidth = width)
+    }
+}
+
+/** The (highest, lowest) point indices of a series, or null when it has no readings. */
+private fun extremes(points: List<ForecastPoint>, sel: (ForecastPoint) -> Double?): Pair<Int, Int>? {
+    val idx = points.indices.filter { sel(points[it]) != null }
+    if (idx.isEmpty()) return null
+    return idx.maxByOrNull { sel(points[it])!! }!! to idx.minByOrNull { sel(points[it])!! }!!
+}
+
+/**
+ * Two vertical reference lines over a chart: a persistent light-grey "now" (today only, so a
+ * scrubbed hour can be read against the present) and, above it, the darker selection marker
+ * for whichever hour the finger has picked.
+ */
+private fun DrawScope.markers(
+    g: Plot, nowFrac: Float?, selFrac: Float?, chrome: ChromeColors, top: Float, bottom: Float,
+) {
+    nowFrac?.let {
+        drawLine(chrome.faint.copy(alpha = 0.6f), Offset(g.xAtFrac(it), top), Offset(g.xAtFrac(it), bottom), strokeWidth = 1.2.dp.toPx())
+    }
+    selFrac?.let {
+        drawLine(chrome.heading, Offset(g.xAtFrac(it), top), Offset(g.xAtFrac(it), bottom), strokeWidth = 1.2.dp.toPx())
     }
 }
 
