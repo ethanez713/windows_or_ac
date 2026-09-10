@@ -103,6 +103,16 @@ val AcBlue = Color(0xFF60A5FA)
 val ClosedSlate = Color(0xFF64748B)
 val UnknownRed = Color(0xFFF87171)
 
-/** Extreme-heat flag: any hour at/above this °F is drawn red (sparkline bar + temp line). */
+/**
+ * Extreme-temperature flags for the temperature line and sparkline: an hour at/above [HOT_F]
+ * is drawn red, at/below [COLD_F] blue. Both hues clear the §0.1 3:1 mark-contrast floor on
+ * the light paper and the dark card; the cold hue is a cyan kept clear of the rain blue.
+ */
 const val HOT_F = 90.0
+const val COLD_F = 32.0
 val HotRed = Color(0xFFEF4444)
+val ColdBlue = Color(0xFF0891B2)
+
+// The same two, as plain ARGB ints for the widget canvases (android.graphics, no Compose).
+val HotRedArgb = 0xFFEF4444.toInt()
+val ColdBlueArgb = 0xFF0891B2.toInt()

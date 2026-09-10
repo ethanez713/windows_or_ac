@@ -164,6 +164,24 @@ object Tokens {
         )
     }
 
+    /**
+     * A [weights]-proportioned blend of several opaque colours, mixed in linear sRGB so the
+     * result doesn't muddy — the forecast score strip mixes each bad factor's hue by how much
+     * it's holding the hour back. A zero weight-sum returns the first colour unchanged.
+     */
+    fun mixLinear(colors: IntArray, weights: DoubleArray): Int {
+        val total = weights.sum()
+        if (total <= 0.0 || colors.isEmpty()) return colors.firstOrNull() ?: 0
+        var r = 0.0; var g = 0.0; var b = 0.0
+        for (i in colors.indices) {
+            val w = weights[i] / total
+            r += toLinear(red(colors[i])) * w
+            g += toLinear(green(colors[i])) * w
+            b += toLinear(blue(colors[i])) * w
+        }
+        return argb(255, fromLinear(r), fromLinear(g), fromLinear(b))
+    }
+
     /** Plain per-channel sRGB mix — what the AQI ramp interpolates in (§0.2). */
     fun lerpSrgb(a: Int, b: Int, t: Float): Int = argb(
         Math.round(alpha(a) + (alpha(b) - alpha(a)) * t),
