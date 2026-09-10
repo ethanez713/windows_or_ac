@@ -150,6 +150,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         checkBox(R.id.show_dew).isChecked = cfg.showDew
         checkBox(R.id.show_aqi).isChecked = cfg.showAqi
         checkBox(R.id.show_rain).isChecked = cfg.showRain
+        checkBox(R.id.show_score).isChecked = cfg.showScore
         checkBox(R.id.show_daynight).isChecked = cfg.showDayNight
         check(
             when (cfg.theme) {
@@ -180,6 +181,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         showDew = checkBox(R.id.show_dew).isChecked,
         showAqi = checkBox(R.id.show_aqi).isChecked,
         showRain = checkBox(R.id.show_rain).isChecked,
+        showScore = checkBox(R.id.show_score).isChecked,
         showDayNight = checkBox(R.id.show_daynight).isChecked,
         theme = when (findViewById<RadioGroup>(R.id.theme_group).checkedRadioButtonId) {
             R.id.theme_light -> ForecastTheme.LIGHT
@@ -227,6 +229,6 @@ class ForecastWidgetSettingsActivity : Activity() {
     private companion object {
         const val PREVIEW_POLL_MS = 1500L
         const val PREVIEW_POLLS = 20
-        val SERIES_IDS = listOf(R.id.show_temp, R.id.show_dew, R.id.show_aqi, R.id.show_rain)
+        val SERIES_IDS = listOf(R.id.show_temp, R.id.show_dew, R.id.show_aqi, R.id.show_rain, R.id.show_score)
     }
 }

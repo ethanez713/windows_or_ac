@@ -31,6 +31,7 @@ object ForecastPanel {
     private const val HEADER_GAP = 3f
     private const val PLOT_LEFT = 30f
     private const val AQI_H = 4f
+    private const val SCORE_H = 5f
 
     /**
      * Band reserved BELOW the plot for the hour labels. The time axis is a layer of the
@@ -80,8 +81,10 @@ object ForecastPanel {
         // strip below the plot, above the time axis), so it's out of the way of the
         // full-height rain columns and reads as the floor of the chart.
         val aqiBand = if (widget.showAqi) (AQI_H + 5f) * dp else 0f
-        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - axisH - aqiBand, n)
-        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark, ts, aqiBand)
+        // The score strip sits in its own reserved band between the plot and the AQI strip.
+        val scoreBand = if (widget.showScore) (SCORE_H + 5f) * dp else 0f
+        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - axisH - aqiBand - scoreBand, n)
+        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark, ts, aqiBand, scoreBand)
         drawRefresh(context, c, chrome, dp, w, h)
         return bmp
     }
@@ -277,7 +280,7 @@ object ForecastPanel {
     private fun drawChart(
         context: Context, c: Canvas, s: Snapshot, slice: IntRange, widget: ForecastWidgetConfig,
         unit: TempUnit, g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
-        nowMs: Long, dark: Boolean, ts: Float, aqiBand: Float,
+        nowMs: Long, dark: Boolean, ts: Float, aqiBand: Float, scoreBand: Float,
     ) {
         val idx = slice.toList()
         val n = idx.size
@@ -346,16 +349,18 @@ object ForecastPanel {
             drawExtremes(context, c, idx, s, unit, g, lo, hi, d, dp, ts, widget.showTemp, widget.showDew)
         }
 
-        // 4. air quality strip, in its reserved band at the foot of the panel
-        if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts)
+        // 4. score strip (just below the plot) then the air-quality strip (below that), each
+        // in its own reserved band at the foot of the panel.
+        if (widget.showScore) drawScoreStrip(context, c, s, idx, widget, g, d, chrome, dp, cfg)
+        if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, g.bottom + scoreBand + 3f * dp)
 
         // 5. the present, at the REAL clock time — the gap to the plot edge is staleness
         c.drawLine(nowX, g.top, nowX, g.bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = d.now; strokeWidth = 1.5f * dp
         })
 
-        // 6. time axis, below the AQI band
-        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs, ts, g.bottom + aqiBand)
+        // 6. time axis, below the score and AQI bands
+        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs, ts, g.bottom + scoreBand + aqiBand)
     }
 
     private fun drawRain(
@@ -435,12 +440,11 @@ object ForecastPanel {
 
     private fun drawAqi(
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, d: Tokens.Data,
-        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean, ts: Float,
+        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean, ts: Float, y: Float,
     ) {
         val series = idx.map { s.aqiSeries.getOrNull(it) }
         if (series.all { it == null }) return
         val (colors, stops) = AqiRamp.sweep(series, cfg.aqiPalette, dark)
-        val y = g.bottom + 3f * dp
         val bar = RectF(g.x0, y, g.x1, y + AQI_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(g.x0, 0f, g.x1, 0f, colors, stops, Shader.TileMode.CLAMP)
@@ -455,6 +459,60 @@ object ForecastPanel {
             typeface = WidgetType.monoBold(context)
         }
         c.drawText("AIR", g.x0 - 3f * dp, y + AQI_H * dp / 2 + 3f * dp, label)
+    }
+
+    /**
+     * The Open-Window Score as a smooth horizontal colour strip, on the same footing as the
+     * AQI strip: green where the hour clears the open threshold, and below it a MUTED blend of
+     * the bad factors' own hues, weighted by how much each is holding the hour back — the exact
+     * semantics of the score bars, so a glance says both "not open" and "why". The per-hour
+     * colours are laid out as a gradient so the strip reads as a drift, never a set of blocks.
+     */
+    private fun drawScoreStrip(
+        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, widget: ForecastWidgetConfig,
+        g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
+    ) {
+        if (s.scores.isEmpty()) return
+        val threshold = cfg.comfort.openScoreMin
+        val colors = IntArray(idx.size.coerceAtLeast(2)) { d.score }
+        idx.forEachIndexed { k, i -> colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d) }
+        if (idx.size == 1) colors[1] = colors[0]
+
+        val y = g.bottom + 3f * dp
+        val bar = RectF(g.x0, y, g.x1, y + SCORE_H * dp)
+        val stops = FloatArray(colors.size) { it / (colors.size - 1).toFloat() }
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(g.x0, 0f, g.x1, 0f, colors, stops, Shader.TileMode.CLAMP)
+        })
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
+        })
+        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = d.score; textSize = 9f * dp; textAlign = Paint.Align.RIGHT
+            typeface = WidgetType.monoBold(context)
+        }
+        c.drawText("WIN", g.x0 - 3f * dp, y + SCORE_H * dp / 2 + 3f * dp, label)
+    }
+
+    /**
+     * One hour's score-strip colour (see [drawScoreStrip]): vivid green when open, else the
+     * bad factors' hues mixed by severity and muted through [Tokens.blockedBar]. Falls back to
+     * the cached dominant factor, then a flat grey, when the per-factor series aren't cached.
+     */
+    private fun scoreColor(score: Double, threshold: Double, comfort: Comfort, s: Snapshot, i: Int, d: Tokens.Data): Int {
+        if (score >= threshold) return d.score
+        val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
+        val weights = doubleArrayOf(
+            severity(s.tempSeries.getOrNull(i), comfort.tempIdealF, comfort.maxTempF),
+            severity(s.dewSeries.getOrNull(i), comfort.dewPointIdealF, comfort.dewPointMaxF),
+            severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
+            severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
+        )
+        if (weights.sum() <= 0.0) {
+            val wf = s.worst.getOrNull(i) ?: -1
+            return if (wf in hues.indices) Tokens.blockedBar(d, hues[wf]) else d.blockedBase
+        }
+        return Tokens.blockedBar(d, Tokens.mixLinear(hues, weights))
     }
 
     private fun drawSeries(

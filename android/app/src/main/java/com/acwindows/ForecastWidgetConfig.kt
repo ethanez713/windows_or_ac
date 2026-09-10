@@ -21,6 +21,8 @@ data class ForecastWidgetConfig(
     val showDew: Boolean = true,
     val showAqi: Boolean = true,
     val showRain: Boolean = true,
+    /** The Open-Window Score as a colour strip along the bottom; opt-in, so off by default. */
+    val showScore: Boolean = false,
     /**
      * Day/night shading from local sunrise/sunset, plus a solid grey line at each midnight
      * and a dotted grey one at each noon (unlabelled). This is what differentiates the days,
@@ -66,6 +68,7 @@ data class ForecastWidgetConfig(
                 showDew = bool("forecastShowDew", true),
                 showAqi = bool("forecastShowAqi", true),
                 showRain = bool("forecastShowRain", true),
+                showScore = bool("forecastShowScore", false),
                 showDayNight = bool("forecastDayNight", true),
                 theme = p.getString("forecastTheme_$id", null)
                     ?.let { raw -> ForecastTheme.entries.firstOrNull { it.name == raw } } ?: ForecastTheme.AUTO,
@@ -83,6 +86,7 @@ data class ForecastWidgetConfig(
                 .putBoolean("forecastShowDew_$id", cfg.showDew)
                 .putBoolean("forecastShowAqi_$id", cfg.showAqi)
                 .putBoolean("forecastShowRain_$id", cfg.showRain)
+                .putBoolean("forecastShowScore_$id", cfg.showScore)
                 .putBoolean("forecastDayNight_$id", cfg.showDayNight)
                 .putString("forecastTheme_$id", cfg.theme.name)
                 .putBoolean("forecastHideRain_$id", cfg.hideUnlikelyRain)
@@ -99,6 +103,7 @@ data class ForecastWidgetConfig(
                 .remove("forecastShowDew_$id")
                 .remove("forecastShowAqi_$id")
                 .remove("forecastShowRain_$id")
+                .remove("forecastShowScore_$id")
                 .remove("forecastDayNight_$id")
                 .remove("forecastTheme_$id")
                 .remove("forecastHideRain_$id")
