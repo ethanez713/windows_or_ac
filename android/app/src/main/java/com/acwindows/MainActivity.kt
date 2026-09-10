@@ -528,25 +528,28 @@ private fun DayCard(
                 Spacer(Modifier.width(colGap))
                 DaySparkline(day.points, threshold, nowIdx, sel, Modifier.weight(1f).height(34.dp))
                 Spacer(Modifier.width(colGap))
-                // Weather glyphs and the hi/lo pair, grouped tight and pinned to the right
-                // edge in a fixed-width column (see the column comment above).
-                Row(
+                // A 2x2 block pinned to the right edge: hi/lo temperature on top, the two
+                // day/night glyphs below. Both a step larger than the row text, since this
+                // fixed column has the room and the info earns it.
+                Column(
                     Modifier.width(trailingW),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalAlignment = Alignment.End,
                 ) {
-                    WeatherGlyph(summary.morningCode, isDay = true, size = 17.dp)
-                    WeatherGlyph(summary.nightCode, isDay = false, size = 17.dp)
-                    Spacer(Modifier.width(5.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
                             summary.highF?.let { unit.deg(it.toDouble()) } ?: "—°",
-                            fontFamily = Mono, fontSize = 15.sp, color = Skin.chrome.heading,
+                            fontFamily = Mono, fontSize = 18.sp, color = Skin.chrome.heading,
                         )
                         Text(
                             " " + (summary.lowF?.let { unit.deg(it.toDouble()) } ?: "—°"),
-                            fontFamily = Mono, fontSize = 13.sp, color = Skin.chrome.faint,
+                            fontFamily = Mono, fontSize = 15.sp, color = Skin.chrome.faint,
                         )
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        WeatherGlyph(summary.morningCode, isDay = true, size = 20.dp)
+                        Spacer(Modifier.width(4.dp))
+                        WeatherGlyph(summary.nightCode, isDay = false, size = 20.dp)
                     }
                 }
             }
