@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import androidx.core.content.ContextCompat
@@ -19,7 +18,7 @@ import kotlin.math.roundToInt
  * weather do in the next N hours — answered by four readings layered into one chart.
  *
  * The layering is the whole design. At 186dp there is no room to stack four panels, so each
- * reading takes a different visual register instead: temperature is a filled area, dew point
+ * reading takes a different visual register instead: temperature is a solid line, dew point
  * a dashed line, rain columns, air quality a gradient strip. Nothing competes for the same
  * shape, so nothing has to be identified by a legend.
  *
@@ -325,10 +324,10 @@ object ForecastPanel {
                 c.drawText("${v.roundToInt()}°", 0f, y - 2f * dp, gridText)
             }
             if (widget.showTemp) {
-                drawSeries(c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp, 2.4f * dp, dp, filled = true)
+                drawSeries(c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp, 2.4f * dp, dp, dashed = false)
             }
             if (widget.showDew) {
-                drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, filled = false)
+                drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, dashed = true)
             }
             drawTags(context, c, idx, s, unit, g, lo, hi, d, dp, nowX, ts, widget.showTemp, widget.showDew)
         }
@@ -446,30 +445,12 @@ object ForecastPanel {
 
     private fun drawSeries(
         c: Canvas, values: List<Double?>, g: Geom, lo: Double, hi: Double,
-        color: Int, width: Float, dp: Float, filled: Boolean,
+        color: Int, width: Float, dp: Float, dashed: Boolean,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; style = Paint.Style.STROKE; strokeWidth = width
             strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
-            if (!filled) pathEffect = DashPathEffect(floatArrayOf(1f * dp, 3.4f * dp), 0f)
-        }
-        if (filled) {
-            val area = Path()
-            var open = false
-            values.forEachIndexed { k, v ->
-                if (v == null) return@forEachIndexed
-                val x = g.xAt(k)
-                val y = g.yAt(v, lo, hi)
-                if (!open) { area.moveTo(x, g.bottom); area.lineTo(x, y); open = true } else area.lineTo(x, y)
-            }
-            if (open) {
-                val lastX = g.xAt(values.indexOfLast { it != null })
-                area.lineTo(lastX, g.bottom)
-                area.close()
-                c.drawPath(area, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    this.color = color; alpha = 36
-                })
-            }
+            if (dashed) pathEffect = DashPathEffect(floatArrayOf(1f * dp, 3.4f * dp), 0f)
         }
         for (k in 0 until values.size - 1) {
             val a = values[k] ?: continue
@@ -479,8 +460,9 @@ object ForecastPanel {
     }
 
     /**
-     * `TEMP` and `DEW` at each line's left end. The start is pushed clear of the now-rule
-     * rather than pinned to the gutter, so the rule cannot strike through the word.
+     * `TEMP`/`DEW` plus each series' high/low at that line's left end. The start is pushed
+     * clear of the now-rule rather than pinned to the gutter, so the rule cannot strike
+     * through the label.
      */
     private fun drawTags(
         context: Context, c: Canvas, idx: List<Int>, s: Snapshot, unit: TempUnit, g: Geom,
@@ -491,18 +473,23 @@ object ForecastPanel {
             textSize = 9f * dp * ts; letterSpacing = 0.1f; typeface = WidgetType.monoBold(context)
         }
         val x = max(g.x0 + 2f * dp, nowX + 5f * dp)
-        // Each tag sits at its own line's left end, so DEW lands correctly whether or not the
-        // temperature line is drawn above it.
+        // Each tag carries the series' own high/low over the shown window and sits at that
+        // line's left end, so both the reading and the hour it starts at are at a glance —
+        // and DEW lands correctly whether or not the temperature line is drawn above it.
         if (showTemp) {
-            idx.firstNotNullOfOrNull { s.tempSeries.getOrNull(it) }?.let(unit::fromF)?.let {
+            val vals = idx.mapNotNull { s.tempSeries.getOrNull(it) }.map(unit::fromF)
+            val first = idx.firstNotNullOfOrNull { s.tempSeries.getOrNull(it) }?.let(unit::fromF)
+            if (first != null && vals.isNotEmpty()) {
                 paint.color = d.temp
-                c.drawText("TEMP", x, g.yAt(it, lo, hi) - 3f * dp, paint)
+                c.drawText("TEMP ${vals.max().roundToInt()}°/${vals.min().roundToInt()}°", x, g.yAt(first, lo, hi) - 3f * dp, paint)
             }
         }
         if (showDew) {
-            idx.firstNotNullOfOrNull { s.dewSeries.getOrNull(it) }?.let(unit::fromF)?.let {
+            val vals = idx.mapNotNull { s.dewSeries.getOrNull(it) }.map(unit::fromF)
+            val first = idx.firstNotNullOfOrNull { s.dewSeries.getOrNull(it) }?.let(unit::fromF)
+            if (first != null && vals.isNotEmpty()) {
                 paint.color = d.dew
-                c.drawText("DEW", x, g.yAt(it, lo, hi) + 11f * dp * ts, paint)
+                c.drawText("DEW ${vals.max().roundToInt()}°/${vals.min().roundToInt()}°", x, g.yAt(first, lo, hi) + 11f * dp * ts, paint)
             }
         }
     }
