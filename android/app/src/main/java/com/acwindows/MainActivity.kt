@@ -812,30 +812,35 @@ private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () ->
         title = { Text("Location", fontFamily = Heading, fontSize = 20.sp, color = Skin.chrome.heading) },
         text = {
             Column {
-                Text("Currently", fontSize = 11.sp, color = onVar)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    picked?.label ?: cfg.placeName ?: coordLabel(cfg.lat, cfg.lon),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    color = Skin.chrome.heading,
-                )
-                Spacer(Modifier.height(16.dp))
+                // Current place on the left, the follow-my-phone toggle in line with it on
+                // the right, so the two decisions sit on one row instead of stacking with a
+                // gap between them.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = follow,
-                        onCheckedChange = { on ->
-                            follow = on
-                            if (on) {
-                                if (LocationProvider.hasPermission(context)) readDeviceFix()
-                                else askPermission.launch(LocationProvider.permissions)
-                            }
-                        },
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text("Use my phone's location", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text("Currently", fontSize = 11.sp, color = onVar)
+                        Text(
+                            picked?.label ?: cfg.placeName ?: coordLabel(cfg.lat, cfg.lon),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            color = Skin.chrome.heading,
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("My location", fontSize = 11.sp, color = onVar)
+                        Switch(
+                            checked = follow,
+                            onCheckedChange = { on ->
+                                follow = on
+                                if (on) {
+                                    if (LocationProvider.hasPermission(context)) readDeviceFix()
+                                    else askPermission.launch(LocationProvider.permissions)
+                                }
+                            },
+                        )
+                    }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 // Short label so it never wraps; the longer example is the placeholder, which
                 // a single-line field keeps on one line instead of stacking it two-high.
                 OutlinedTextField(
@@ -853,7 +858,7 @@ private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () ->
                     modifier = Modifier.fillMaxWidth(),
                 )
                 status?.let {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     Text(it, fontSize = 12.sp, color = onVar)
                 }
             }
