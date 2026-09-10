@@ -139,7 +139,7 @@ class ForecastWidgetSettingsActivity : Activity() {
     ).map { findViewById<RadioButton>(it) } +
         SERIES_IDS.map { findViewById<CheckBox>(it) } +
         listOf(
-            findViewById<CheckBox>(R.id.show_dates),
+            findViewById<CheckBox>(R.id.show_daynight),
             findViewById<CheckBox>(R.id.hide_rain),
             findViewById<CheckBox>(R.id.tap_opens),
         )
@@ -150,7 +150,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         checkBox(R.id.show_dew).isChecked = cfg.showDew
         checkBox(R.id.show_aqi).isChecked = cfg.showAqi
         checkBox(R.id.show_rain).isChecked = cfg.showRain
-        checkBox(R.id.show_dates).isChecked = cfg.showDateFlags
+        checkBox(R.id.show_daynight).isChecked = cfg.showDayNight
         check(
             when (cfg.theme) {
                 ForecastTheme.LIGHT -> R.id.theme_light
@@ -180,7 +180,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         showDew = checkBox(R.id.show_dew).isChecked,
         showAqi = checkBox(R.id.show_aqi).isChecked,
         showRain = checkBox(R.id.show_rain).isChecked,
-        showDateFlags = checkBox(R.id.show_dates).isChecked,
+        showDayNight = checkBox(R.id.show_daynight).isChecked,
         theme = when (findViewById<RadioGroup>(R.id.theme_group).checkedRadioButtonId) {
             R.id.theme_light -> ForecastTheme.LIGHT
             R.id.theme_dark -> ForecastTheme.DARK

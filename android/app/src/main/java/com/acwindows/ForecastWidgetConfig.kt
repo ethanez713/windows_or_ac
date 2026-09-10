@@ -21,8 +21,12 @@ data class ForecastWidgetConfig(
     val showDew: Boolean = true,
     val showAqi: Boolean = true,
     val showRain: Boolean = true,
-    /** The date tick over each midnight — informative but not load-bearing, so off by default. */
-    val showDateFlags: Boolean = false,
+    /**
+     * Day/night shading from local sunrise/sunset, plus a solid grey line at each midnight
+     * and a dotted grey one at each noon (unlabelled). This is what differentiates the days,
+     * in place of date ticks, so it's on by default.
+     */
+    val showDayNight: Boolean = true,
     val theme: ForecastTheme = ForecastTheme.AUTO,
     /** Drop rain columns below the comfort threshold rather than drawing near-zero stubs. */
     val hideUnlikelyRain: Boolean = true,
@@ -62,7 +66,7 @@ data class ForecastWidgetConfig(
                 showDew = bool("forecastShowDew", true),
                 showAqi = bool("forecastShowAqi", true),
                 showRain = bool("forecastShowRain", true),
-                showDateFlags = bool("forecastShowDates", false),
+                showDayNight = bool("forecastDayNight", true),
                 theme = p.getString("forecastTheme_$id", null)
                     ?.let { raw -> ForecastTheme.entries.firstOrNull { it.name == raw } } ?: ForecastTheme.AUTO,
                 hideUnlikelyRain = bool("forecastHideRain", true),
@@ -79,7 +83,7 @@ data class ForecastWidgetConfig(
                 .putBoolean("forecastShowDew_$id", cfg.showDew)
                 .putBoolean("forecastShowAqi_$id", cfg.showAqi)
                 .putBoolean("forecastShowRain_$id", cfg.showRain)
-                .putBoolean("forecastShowDates_$id", cfg.showDateFlags)
+                .putBoolean("forecastDayNight_$id", cfg.showDayNight)
                 .putString("forecastTheme_$id", cfg.theme.name)
                 .putBoolean("forecastHideRain_$id", cfg.hideUnlikelyRain)
                 .putBoolean("forecastTapOpens_$id", cfg.tapOpensApp)
@@ -95,7 +99,7 @@ data class ForecastWidgetConfig(
                 .remove("forecastShowDew_$id")
                 .remove("forecastShowAqi_$id")
                 .remove("forecastShowRain_$id")
-                .remove("forecastShowDates_$id")
+                .remove("forecastDayNight_$id")
                 .remove("forecastTheme_$id")
                 .remove("forecastHideRain_$id")
                 .remove("forecastTapOpens_$id")

@@ -282,22 +282,33 @@ object ForecastPanel {
         val idx = slice.toList()
         val n = idx.size
 
-        // 1. day/night bands + midnight dividers
-        val bandPaint = Paint().apply { color = chrome.bandTint }
-        val slot = g.plotW / n
-        idx.forEachIndexed { k, i ->
-            if ((s.isDay.getOrNull(i) ?: true) == chrome.bandOnNight) return@forEachIndexed
-            c.drawRect(g.x0 + k * slot, g.top, g.x0 + (k + 1) * slot, g.bottom, bandPaint)
-        }
-        val dividerPaint = Paint().apply { color = chrome.hairline; strokeWidth = 1f * dp }
-        val datePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.faint; textSize = 9f * dp * ts; typeface = WidgetType.mono(context)
-        }
-        for (k in 1 until n) {
-            if (s.times.getOrNull(idx[k])?.take(10) == s.times.getOrNull(idx[k - 1])?.take(10)) continue
-            val x = g.xAt(k)
-            c.drawLine(x, g.top, x, g.bottom, dividerPaint)
-            if (widget.showDateFlags) c.drawText(dateLabel(s.times[idx[k]]), x + 4f * dp, g.top + 9f * dp * ts, datePaint)
+        // Plot field: a sunken fill under everything, so the chart area reads as its own
+        // surface and its top and bottom edges show where the y-axis bounds are.
+        c.drawRect(g.x0, g.top, g.x1, g.bottom, Paint().apply { color = chrome.sunken })
+
+        // 1. day/night shading + a SOLID grey line at each midnight and a DOTTED one at each
+        // noon, unlabelled — the shading is what differentiates the days, in place of dates.
+        if (widget.showDayNight) {
+            val bandPaint = Paint().apply { color = chrome.bandTint }
+            val slot = g.plotW / n
+            idx.forEachIndexed { k, i ->
+                if ((s.isDay.getOrNull(i) ?: true) == chrome.bandOnNight) return@forEachIndexed
+                c.drawRect(g.x0 + k * slot, g.top, g.x0 + (k + 1) * slot, g.bottom, bandPaint)
+            }
+            val midnight = Paint().apply { color = chrome.faint; strokeWidth = 1.4f * dp }
+            val noon = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = chrome.faint; strokeWidth = 1.4f * dp
+                pathEffect = DashPathEffect(floatArrayOf(2f * dp, 2.4f * dp), 0f)
+            }
+            for (k in 0 until n) {
+                val time = s.times.getOrNull(idx[k]) ?: continue
+                val x = g.xAt(k)
+                when {
+                    k > 0 && time.take(10) != s.times.getOrNull(idx[k - 1])?.take(10) ->
+                        c.drawLine(x, g.top, x, g.bottom, midnight)
+                    ForecastBuilder.hour(time) == 12 -> c.drawLine(x, g.top, x, g.bottom, noon)
+                }
+            }
         }
 
         val nowX = g.xAtFrac(nowFraction(s, slice, nowMs))
@@ -324,12 +335,15 @@ object ForecastPanel {
                 c.drawText("${v.roundToInt()}°", 0f, y - 2f * dp, gridText)
             }
             if (widget.showTemp) {
-                drawSeries(c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp, 2.4f * dp, dp, dashed = false)
+                drawSeries(
+                    c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp,
+                    2.4f * dp, dp, dashed = false, degF = idx.map { s.tempSeries.getOrNull(it) },
+                )
             }
             if (widget.showDew) {
                 drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, dashed = true)
             }
-            drawTags(context, c, idx, s, unit, g, lo, hi, d, dp, nowX, ts, widget.showTemp, widget.showDew)
+            drawExtremes(context, c, idx, s, unit, g, lo, hi, d, dp, ts, widget.showTemp, widget.showDew)
         }
 
         // 4. air quality strip, in its reserved band at the foot of the panel
@@ -446,6 +460,8 @@ object ForecastPanel {
     private fun drawSeries(
         c: Canvas, values: List<Double?>, g: Geom, lo: Double, hi: Double,
         color: Int, width: Float, dp: Float, dashed: Boolean,
+        /** Raw °F per hour: when given, each segment is tinted hot/cold (see [tempSegColor]). */
+        degF: List<Double?>? = null,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; style = Paint.Style.STROKE; strokeWidth = width
@@ -455,43 +471,58 @@ object ForecastPanel {
         for (k in 0 until values.size - 1) {
             val a = values[k] ?: continue
             val b = values[k + 1] ?: continue
+            paint.color = tempSegColor(color, degF, k)
             c.drawLine(g.xAt(k), g.yAt(a, lo, hi), g.xAt(k + 1), g.yAt(b, lo, hi), paint)
         }
     }
 
+    /** Hot (red) at/above [HOT_F], cold (blue) at/below [COLD_F], else [base]; null [degF] is [base]. */
+    private fun tempSegColor(base: Int, degF: List<Double?>?, k: Int): Int {
+        if (degF == null) return base
+        val a = degF.getOrNull(k) ?: return base
+        val f = (a + (degF.getOrNull(k + 1) ?: a)) / 2
+        return when {
+            f >= HOT_F -> HotRedArgb
+            f <= COLD_F -> ColdBlueArgb
+            else -> base
+        }
+    }
+
     /**
-     * `TEMP`/`DEW` plus each series' high/low at that line's left end. The start is pushed
-     * clear of the now-rule rather than pinned to the gutter, so the rule cannot strike
-     * through the label.
+     * Each shown series' high and low, printed over the very hour they fall on, in the series'
+     * own colour and with no label — the AQI strip's peak/trough treatment, extended to temp
+     * and dew. Replaces the start-of-line TEMP/DEW tags.
      */
-    private fun drawTags(
+    private fun drawExtremes(
         context: Context, c: Canvas, idx: List<Int>, s: Snapshot, unit: TempUnit, g: Geom,
-        lo: Double, hi: Double, d: Tokens.Data, dp: Float, nowX: Float, ts: Float,
-        showTemp: Boolean, showDew: Boolean,
+        lo: Double, hi: Double, d: Tokens.Data, dp: Float, ts: Float, showTemp: Boolean, showDew: Boolean,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = 9f * dp * ts; letterSpacing = 0.1f; typeface = WidgetType.monoBold(context)
+            textSize = 9f * dp * ts; typeface = WidgetType.monoBold(context); textAlign = Paint.Align.CENTER
         }
-        val x = max(g.x0 + 2f * dp, nowX + 5f * dp)
-        // Each tag carries the series' own high/low over the shown window and sits at that
-        // line's left end, so both the reading and the hour it starts at are at a glance —
-        // and DEW lands correctly whether or not the temperature line is drawn above it.
-        if (showTemp) {
-            val vals = idx.mapNotNull { s.tempSeries.getOrNull(it) }.map(unit::fromF)
-            val first = idx.firstNotNullOfOrNull { s.tempSeries.getOrNull(it) }?.let(unit::fromF)
-            if (first != null && vals.isNotEmpty()) {
-                paint.color = d.temp
-                c.drawText("TEMP ${vals.max().roundToInt()}°/${vals.min().roundToInt()}°", x, g.yAt(first, lo, hi) - 3f * dp, paint)
+        fun mark(series: List<Double?>, colour: Int) {
+            val known = series.indices.filter { series[it] != null }
+            if (known.isEmpty()) return
+            val hiIdx = known.maxByOrNull { series[it]!! }!!
+            val loIdx = known.minByOrNull { series[it]!! }!!
+            paint.color = colour
+            placeValue(c, unit.deg(series[hiIdx]!!), paint, g, hiIdx, g.yAt(unit.fromF(series[hiIdx]!!), lo, hi), above = true, dp, ts)
+            if (loIdx != hiIdx) {
+                placeValue(c, unit.deg(series[loIdx]!!), paint, g, loIdx, g.yAt(unit.fromF(series[loIdx]!!), lo, hi), above = false, dp, ts)
             }
         }
-        if (showDew) {
-            val vals = idx.mapNotNull { s.dewSeries.getOrNull(it) }.map(unit::fromF)
-            val first = idx.firstNotNullOfOrNull { s.dewSeries.getOrNull(it) }?.let(unit::fromF)
-            if (first != null && vals.isNotEmpty()) {
-                paint.color = d.dew
-                c.drawText("DEW ${vals.max().roundToInt()}°/${vals.min().roundToInt()}°", x, g.yAt(first, lo, hi) + 11f * dp * ts, paint)
-            }
-        }
+        if (showTemp) mark(idx.map { s.tempSeries.getOrNull(it) }, d.temp)
+        if (showDew) mark(idx.map { s.dewSeries.getOrNull(it) }, d.dew)
+    }
+
+    /** One extreme's value centred over its hour, above or below the point, clamped on-screen. */
+    private fun placeValue(
+        c: Canvas, text: String, paint: Paint, g: Geom, k: Int, atY: Float, above: Boolean, dp: Float, ts: Float,
+    ) {
+        val half = paint.measureText(text) / 2
+        val cx = g.xAt(k).coerceIn(g.x0 + half, g.x1 - half)
+        val y = (if (above) atY - 3f * dp else atY + 10f * dp * ts).coerceIn(g.top + 8f * dp * ts, g.bottom - 1f * dp)
+        c.drawText(text, cx, y, paint)
     }
 
     private fun drawTimeAxis(
@@ -581,11 +612,6 @@ object ForecastPanel {
         val h12 = (h % 12).let { if (it == 0) 12 else it }
         return "%d:%02d %s".format(h12, m, if (h < 12) "AM" else "PM")
     }
-
-    private fun dateLabel(iso: String): String = runCatching {
-        java.time.LocalDate.parse(iso.take(10))
-            .format(java.time.format.DateTimeFormatter.ofPattern("EEE M/d")).uppercase()
-    }.getOrDefault("")
 
     private fun fmtInches(v: Double): String =
         (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
