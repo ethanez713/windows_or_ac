@@ -351,7 +351,7 @@ object ForecastPanel {
 
         // 4. score strip (just below the plot) then the air-quality strip (below that), each
         // in its own reserved band at the foot of the panel.
-        if (widget.showScore) drawScoreStrip(context, c, s, idx, widget, g, d, chrome, dp, cfg)
+        if (widget.showScore) drawScoreStrip(context, c, s, idx, g, d, chrome, dp, cfg)
         if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, g.bottom + scoreBand + 3f * dp)
 
         // 5. the present, at the REAL clock time — the gap to the plot edge is staleness
@@ -469,7 +469,7 @@ object ForecastPanel {
      * colours are laid out as a gradient so the strip reads as a drift, never a set of blocks.
      */
     private fun drawScoreStrip(
-        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, widget: ForecastWidgetConfig,
+        context: Context, c: Canvas, s: Snapshot, idx: List<Int>,
         g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
     ) {
         if (s.scores.isEmpty()) return
@@ -587,9 +587,12 @@ object ForecastPanel {
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, chrome: Tokens.Chrome,
         dp: Float, nowX: Float, nowMs: Long, ts: Float, axisTop: Float,
     ) {
-        val baseline = axisTop + 11f * dp * ts
+        // The time axis is set small — on a par with the score widget's hour ticks (8.5sp)
+        // rather than the old 11sp — so the clock and hour marks read as chart furniture.
+        val axisText = 8.5f * dp * ts
+        val baseline = axisTop + 9f * dp * ts
         val clockPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.heading; textSize = 11f * dp * ts; typeface = WidgetType.monoBold(context)
+            color = chrome.heading; textSize = axisText; typeface = WidgetType.monoBold(context)
         }
         val clock = clockLabel(nowMs)
         val clockX = min(nowX + 3f * dp, g.x1 - clockPaint.measureText(clock))
@@ -597,7 +600,7 @@ object ForecastPanel {
         c.drawText(clock, clockX, baseline, clockPaint)
 
         val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = chrome.faint; textSize = 11f * dp * ts; typeface = WidgetType.mono(context)
+            color = chrome.faint; textSize = axisText; typeface = WidgetType.mono(context)
         }
         idx.forEachIndexed { k, i ->
             val time = s.times.getOrNull(i) ?: return@forEachIndexed
