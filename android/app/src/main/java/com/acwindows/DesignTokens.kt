@@ -134,6 +134,19 @@ object Tokens {
         val widgetCard = 24.dp
     }
 
+    /**
+     * Width in dp of a rain mark for an hour's rate (inches that hour). The score widget's
+     * rain line stroke, the forecast widget's rain column and the app's rain column all size
+     * from this, so one rate reads at one thickness whatever shape draws it. Absolute in/hr
+     * thresholds — a trace up to an inch-plus downpour — stepped wide enough to tell apart.
+     */
+    fun rainMarkDp(inchesPerHour: Double): Float = when {
+        inchesPerHour >= 1.0 -> 8f
+        inchesPerHour >= 0.33 -> 6f
+        inchesPerHour >= 0.05 -> 4f
+        else -> 2f
+    }
+
     /** Every graphical mark must clear this against its own card ground (§0.1). */
     const val MIN_MARK_CONTRAST = 3.0
 

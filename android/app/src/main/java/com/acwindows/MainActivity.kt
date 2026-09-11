@@ -613,7 +613,6 @@ private fun DayCard(
                 DetailDrawer(
                     day.points, comfort, unit,
                     palette = cfg.aqiPalette,
-                    rainScaleInPerHr = cfg.rainScaleInPerHr,
                     thunderAlertPct = cfg.thunderAlertPct,
                     isToday = isToday,
                     sel = sel,

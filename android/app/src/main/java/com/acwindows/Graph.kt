@@ -57,18 +57,6 @@ object Graph {
     /** How far elapsed hours fade behind the now-marker (see [drawNow]). */
     private const val PAST_ALPHA = 90
 
-    /**
-     * Line thickness in dp for an hour's rain rate (inches in that hour): a thin line
-     * for a trace, up to 8dp for an inch-plus downpour — the weight IS the intensity,
-     * so the steps are spread wide enough to read a downpour apart from a drizzle.
-     */
-    private fun rainStrokeDp(inchesPerHour: Double): Float = when {
-        inchesPerHour >= 1.0 -> 8f
-        inchesPerHour >= 0.33 -> 6f
-        inchesPerHour >= 0.05 -> 4f
-        else -> 2f
-    }
-
     /** Inches with the app's precision: 0.2″, 0.05″. */
     private fun fmtInches(v: Double): String =
         (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
@@ -449,7 +437,7 @@ object Graph {
      * chance sits where a 100-score bar tops out), so rain reads at a glance without a
      * second chart. Only hours that actually carry a chance are drawn, so a dry forecast
      * leaves the graph untouched. Thickness follows the hourly rain RATE
-     * ([rainStrokeDp], not text-scaled — it's a data line, not a label), and each run of
+     * ([Tokens.rainMarkDp], not text-scaled — it's a data line, not a label), and each run of
      * wet hours is labelled with the total inches it adds up to.
      */
     private fun drawRain(
@@ -486,11 +474,11 @@ object Graph {
             if (i + 1 < n && wet[i + 1]) {
                 // A segment spans two hours: take the wetter one, so a downpour never
                 // hides behind the drizzle beside it.
-                stroke(x(i), y(i), x(i + 1), y(i + 1), rainStrokeDp(maxOf(rate(i), rate(i + 1))) * sp)
+                stroke(x(i), y(i), x(i + 1), y(i + 1), Tokens.rainMarkDp(maxOf(rate(i), rate(i + 1))) * sp)
             } else if (i == 0 || !wet[i - 1]) {
                 // A lone wet hour has no segment to sit on — give it a flat tick. (The
                 // last hour of a longer run is already covered by the segment into it.)
-                stroke(x(i) - barW / 3, y(i), x(i) + barW / 3, y(i), rainStrokeDp(rate(i)) * sp)
+                stroke(x(i) - barW / 3, y(i), x(i) + barW / 3, y(i), Tokens.rainMarkDp(rate(i)) * sp)
             }
         }
 

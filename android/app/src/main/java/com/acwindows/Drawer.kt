@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -66,7 +65,6 @@ fun DetailDrawer(
     comfort: Comfort,
     unit: TempUnit,
     palette: AqiPalette,
-    rainScaleInPerHr: Double,
     thunderAlertPct: Double,
     isToday: Boolean,
     // Selected hour is hoisted to the card, so the score bars above can mark it too; null
@@ -100,7 +98,7 @@ fun DetailDrawer(
                 Spacer(Modifier.height(4.dp))
                 AqiBlock(points, palette, tm)
                 Spacer(Modifier.height(14.dp))
-                RainBlock(points, comfort, rainScaleInPerHr, thunderAlertPct, tm, nowFrac, selFrac)
+                RainBlock(points, comfort, thunderAlertPct, tm, nowFrac, selFrac)
                 TimeAxis(points, tm, nowFrac)
             }
         }
@@ -289,7 +287,7 @@ private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextM
  */
 @Composable
 private fun RainBlock(
-    points: List<ForecastPoint>, comfort: Comfort, rainScaleInPerHr: Double, thunderAlertPct: Double,
+    points: List<ForecastPoint>, comfort: Comfort, thunderAlertPct: Double,
     tm: TextMeasurer, nowFrac: Float?, selFrac: Float?,
 ) {
     val d = Skin.data
@@ -332,14 +330,12 @@ private fun RainBlock(
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
         )
 
-        val slot = (g.right - g.left) / points.size.coerceAtLeast(1)
         var peak = -1
         points.forEachIndexed { i, p ->
             val chance = p.precipProb ?: 0.0
             if (chance <= 0 && (p.precipIn ?: 0.0) <= 0) return@forEachIndexed
             if (peak < 0 || chance > (points[peak].precipProb ?: 0.0)) peak = i
-            val intensity = min(1.0, (p.precipIn ?: 0.0) / rainScaleInPerHr.coerceAtLeast(0.01))
-            val w = slot * (0.26 + 0.7 * intensity).toFloat()
+            val w = Tokens.rainMarkDp(p.precipIn ?: 0.0).dp.toPx()
             val h = max((chance / 100.0).toFloat() * colH, 2.dp.toPx())
             val cx = g.xAt(i).coerceIn(g.left, g.right)
             val storm = (p.thunderProb ?: 0.0) >= thunderAlertPct

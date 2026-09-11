@@ -372,7 +372,6 @@ object ForecastPanel {
         // a tall column.
         val colH = g.plotH
         val base = g.bottom
-        val slot = g.plotW / idx.size
         var peak = -1
         idx.forEachIndexed { k, i ->
             val chance = s.precipProb.getOrNull(i) ?: 0.0
@@ -381,10 +380,7 @@ object ForecastPanel {
             if (widget.hideUnlikelyRain && chance < cfg.comfort.rainProbIdeal && amount <= 0) return@forEachIndexed
             if (peak < 0 || chance > (s.precipProb.getOrNull(idx[peak]) ?: 0.0)) peak = k
 
-            val intensity = min(1.0, amount / cfg.rainScaleInPerHr.coerceAtLeast(0.01))
-            // Widen the intensity range so a drizzle column is a sliver and a downpour nearly
-            // fills its slot — the width difference is the whole point of the encoding.
-            val cw = slot * (0.12 + 0.85 * intensity).toFloat()
+            val cw = Tokens.rainMarkDp(amount) * dp
             val ch = max((chance / 100.0).toFloat() * colH, 2f * dp)
             // Width carries the intensity, so a column at the plot edge clamps its CENTRE
             // and keeps its width — narrowing it would say "drizzle" about a downpour.
