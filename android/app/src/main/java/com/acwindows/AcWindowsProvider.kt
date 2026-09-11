@@ -13,6 +13,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.os.Bundle
 import android.text.Spanned
+import androidx.annotation.VisibleForTesting
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
@@ -322,7 +323,10 @@ class AcWindowsProvider : AppWidgetProvider() {
             }
         }
 
-        private fun buildViews(
+        // internal, not private, so WidgetInflationTest can build the exact RemoteViews the
+        // launcher receives and run apply() on it.
+        @VisibleForTesting
+        internal fun buildViews(
             context: Context, s: Snapshot, refreshing: Boolean, size: Pair<Int, Int>,
         ): RemoteViews {
             val (wDp, hDp) = size

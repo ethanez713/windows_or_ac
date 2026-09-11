@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
+import androidx.annotation.VisibleForTesting
 import androidx.work.WorkManager
 
 /**
@@ -96,7 +97,10 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             return w to h
         }
 
-        private fun buildViews(
+        // internal, not private, so WidgetInflationTest can build the exact RemoteViews the
+        // launcher receives and run apply() on it.
+        @VisibleForTesting
+        internal fun buildViews(
             context: Context, id: Int, refreshing: Boolean, size: Pair<Int, Int>,
         ): RemoteViews {
             val (wDp, hDp) = size

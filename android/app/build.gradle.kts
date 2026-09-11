@@ -13,6 +13,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -38,6 +39,11 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
+    // Robolectric needs the merged resources/assets/manifest to inflate layouts and load
+    // fonts/drawables — without this the widget render tests see no resources.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -62,4 +68,15 @@ dependencies {
     // JVM unit tests for the pure logic (Score / Decision / ForecastBuilder) — they have
     // no Android dependencies, so they run on plain JUnit. `./gradlew test`.
     testImplementation("junit:junit:4.13.2")
+    // Robolectric runs the widget bitmap renderers on the JVM with a real (native-graphics)
+    // Canvas + resources, so a render that crashes or comes out blank fails `./gradlew test`
+    // in seconds, no emulator. It does NOT fully reproduce launcher RemoteViews inflation —
+    // that's the instrumented test's job (WidgetInflationTest).
+    testImplementation("org.robolectric:robolectric:4.14.1")
+
+    // Instrumented widget test: runs the real RemoteViews.apply() on a device/emulator, the
+    // exact inflation the launcher does. `./gradlew connectedDebugAndroidTest`.
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
 }
