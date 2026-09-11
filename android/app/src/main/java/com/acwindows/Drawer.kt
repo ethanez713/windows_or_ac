@@ -128,7 +128,13 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
         p.tempF?.let { parts += unit.degUnit(it) to d.temp }
         p.dewPointF?.let { parts += "dew ${unit.deg(it)}" to d.dew }
         p.aqi?.let { parts += "AQI $it" to d.aqi }
-        p.precipProb?.takeIf { it > 0 }?.let { parts += "rain ${it.roundToInt()}%" to d.rain }
+        p.precipProb?.takeIf { it > 0 }?.let { prob ->
+            val rain = buildString {
+                append("rain ${prob.roundToInt()}%")
+                (p.precipIn ?: 0.0).takeIf { it > 0 }?.let { append(" ${fmtIn(it, " in")}") }
+            }
+            parts += rain to d.rain
+        }
     } else {
         // A future day has no "now" to read, so it reports its own extremes instead.
         val temps = points.mapNotNull { it.tempF }
@@ -558,8 +564,8 @@ private fun DrawScope.series(
     }
 }
 
-private fun fmtIn(v: Double): String =
-    (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
+private fun fmtIn(v: Double, unit: String = "″"): String =
+    (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + unit
 
 private fun nowClock(): String {
     val now = java.time.LocalTime.now()
