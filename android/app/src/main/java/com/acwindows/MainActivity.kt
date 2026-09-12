@@ -611,7 +611,7 @@ private fun DayCard(
                 HorizontalDivider(color = Skin.chrome.hairline)
                 Spacer(Modifier.height(10.dp))
                 DetailDrawer(
-                    day.points, comfort, unit,
+                    day.points, unit,
                     palette = cfg.aqiPalette,
                     thunderAlertPct = cfg.thunderAlertPct,
                     isToday = isToday,

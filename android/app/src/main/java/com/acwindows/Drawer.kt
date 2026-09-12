@@ -62,7 +62,6 @@ private val ANNOTATION_TEXT = 9.sp
 @Composable
 fun DetailDrawer(
     points: List<ForecastPoint>,
-    comfort: Comfort,
     unit: TempUnit,
     palette: AqiPalette,
     thunderAlertPct: Double,
@@ -98,7 +97,7 @@ fun DetailDrawer(
                 Spacer(Modifier.height(4.dp))
                 AqiBlock(points, palette, tm)
                 Spacer(Modifier.height(14.dp))
-                RainBlock(points, comfort, thunderAlertPct, tm, nowFrac, selFrac)
+                RainBlock(points, thunderAlertPct, tm, nowFrac, selFrac)
                 TimeAxis(points, tm, nowFrac)
             }
         }
@@ -256,6 +255,9 @@ private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextM
             cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
         )
+        // The strip carries no axis, so the left gutter names it instead, centred on the bar.
+        val id = tm.measure("AQI", TextStyle(color = chrome.faint, fontSize = AXIS_TEXT, fontFamily = Mono))
+        drawText(id, topLeft = Offset(0f, (barTop + barH / 2 - id.size.height / 2).coerceIn(0f, size.height - id.size.height)))
         // Peak wins any collision: draw it first, and drop the trough only if the two labels
         // would touch (a flat day with one AQI draws a single number).
         fun labelFor(v: Int) = tm.measure(
@@ -293,7 +295,7 @@ private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextM
  */
 @Composable
 private fun RainBlock(
-    points: List<ForecastPoint>, comfort: Comfort, thunderAlertPct: Double,
+    points: List<ForecastPoint>, thunderAlertPct: Double,
     tm: TextMeasurer, nowFrac: Float?, selFrac: Float?,
 ) {
     val d = Skin.data
@@ -321,20 +323,16 @@ private fun RainBlock(
             return@Canvas
         }
 
-        label(tm, "100%", chrome.faint, AXIS_TEXT, 0f, 1.dp.toPx())
-        label(tm, "0", chrome.faint, AXIS_TEXT, 0f, base - 12.dp.toPx())
+        // Top label top-aligned to the 100% line (the plot top) so it sits inside the field;
+        // the "%" rides the shorter bottom label to keep the top one narrow in the gutter.
+        label(tm, "100", chrome.faint, AXIS_TEXT, 0f, colTop)
+        label(tm, "0%", chrome.faint, AXIS_TEXT, 0f, base - 12.dp.toPx())
 
         // Quarter gridlines across the 0–100% chance axis, so a column's height is a value.
         for (pct in intArrayOf(25, 50, 75)) {
             val gy = base - (pct / 100f) * colH
             drawLine(chrome.hairline, Offset(g.left, gy), Offset(g.right, gy), strokeWidth = 1f)
         }
-
-        val cutoffY = base - (comfort.rainProbIdeal / 100.0).toFloat() * colH
-        drawLine(
-            d.cutoffRule, Offset(g.left, cutoffY), Offset(g.right, cutoffY), strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
-        )
 
         var peak = -1
         points.forEachIndexed { i, p ->
