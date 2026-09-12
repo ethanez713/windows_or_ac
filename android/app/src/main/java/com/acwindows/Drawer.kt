@@ -104,19 +104,19 @@ fun DetailDrawer(
                 GradientBarBlock(
                     "AQI", points.map { it.aqi?.toDouble() },
                     AqiRamp.sweep(points.map { it.aqi }, palette, dark),
-                    fmt = { it.roundToInt().toString() }, show = BarValues.HIGH_LOW, tm = tm,
+                    fmt = { it.roundToInt().toString() }, show = BarValues.HIGH_LOW, sel = sel, tm = tm,
                 )
                 Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "UV", points.map { it.uvIndex },
                     UvRamp.sweep(points.map { it.uvIndex }, dark),
-                    fmt = { it.roundToInt().toString() }, show = BarValues.PEAK, tm = tm,
+                    fmt = { it.roundToInt().toString() }, show = BarValues.PEAK, sel = sel, tm = tm,
                 )
                 Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "cld", points.map { it.cloudPct },
                     CloudRamp.sweep(points.map { it.cloudPct }, points.map { it.isDay }),
-                    fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, tm = tm,
+                    fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, sel = sel, tm = tm,
                 )
                 Spacer(Modifier.height(4.dp))
                 RainBlock(points, thunderAlertPct, tm, nowFrac, selFrac)
@@ -252,6 +252,10 @@ private enum class BarValues { PEAK, HIGH_LOW }
  * which are printed ON the bar over the hours they fall on — white on a dark halo, so they
  * clear whatever colour the gradient runs under them and cost the block no extra height. The
  * left gutter names the strip, since a gradient carries no axis to label it.
+ *
+ * While an hour is actively scrubbed ([sel] non-null) the strip drops its day extremes and
+ * shows just that hour's reading over its own column — in line with the selection marker on
+ * the charts above and below — so a value can be read at a chosen hour, not interpolated.
  */
 @Composable
 private fun GradientBarBlock(
@@ -260,6 +264,7 @@ private fun GradientBarBlock(
     sweep: Pair<IntArray, FloatArray>,
     fmt: (Double) -> String,
     show: BarValues,
+    sel: Int?,
     tm: TextMeasurer,
 ) {
     val chrome = Skin.chrome
@@ -301,15 +306,26 @@ private fun GradientBarBlock(
             val at = Offset(x, cy - l.size.height / 2f)
             drawText(l, topLeft = at); drawText(l, topLeft = at)
         }
-        val hiL = tm.measure(fmt(maxV), style)
-        val hiX = (g.xAt(maxIdx) - hiL.size.width / 2f).coerceIn(g.left, g.right - hiL.size.width)
-        blit(hiL, hiX)
-        // Peak wins any collision; the trough is drawn only when it clears the peak's box.
-        if (show == BarValues.HIGH_LOW && minIdx != maxIdx) {
-            val loL = tm.measure(fmt(minV), style)
-            val loX = (g.xAt(minIdx) - loL.size.width / 2f).coerceIn(g.left, g.right - loL.size.width)
-            val gap = 3.dp.toPx()
-            if (loX + loL.size.width < hiX - gap || loX > hiX + hiL.size.width + gap) blit(loL, loX)
+        fun place(value: Double, atIdx: Int): ClosedFloatingPointRange<Float> {
+            val l = tm.measure(fmt(value), style)
+            val x = (g.xAt(atIdx) - l.size.width / 2f).coerceIn(g.left, g.right - l.size.width)
+            blit(l, x)
+            return x..(x + l.size.width)
+        }
+
+        if (sel != null) {
+            // Active scrub: this hour's reading over its column, aligned with the marker;
+            // nothing when this strip has no reading for the picked hour, never a fallback peak.
+            series.getOrNull(sel)?.let { place(it, sel) }
+        } else {
+            val hi = place(maxV, maxIdx)
+            // Peak wins any collision; the trough is drawn only when it clears the peak's box.
+            if (show == BarValues.HIGH_LOW && minIdx != maxIdx) {
+                val loL = tm.measure(fmt(minV), style)
+                val loX = (g.xAt(minIdx) - loL.size.width / 2f).coerceIn(g.left, g.right - loL.size.width)
+                val gap = 3.dp.toPx()
+                if (loX + loL.size.width < hi.start - gap || loX > hi.endInclusive + gap) blit(loL, loX)
+            }
         }
     }
 }
