@@ -20,8 +20,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -93,9 +96,26 @@ fun DetailDrawer(
         // scrub; a vertical one falls through to scroll the list.
         Box(Modifier.scrub(n) { onSel(it) }) {
             Column {
+                val dark = Skin.chrome.dark
                 TempDewBlock(points, unit, tm, nowFrac, selFrac)
                 Spacer(Modifier.height(4.dp))
-                AqiBlock(points, palette, tm)
+                GradientBarBlock(
+                    "AQI", points.map { it.aqi?.toDouble() },
+                    AqiRamp.sweep(points.map { it.aqi }, palette, dark),
+                    fmt = { it.roundToInt().toString() }, show = BarValues.HIGH_LOW, tm = tm,
+                )
+                Spacer(Modifier.height(6.dp))
+                GradientBarBlock(
+                    "UV", points.map { it.uvIndex },
+                    UvRamp.sweep(points.map { it.uvIndex }, dark),
+                    fmt = { it.roundToInt().toString() }, show = BarValues.PEAK, tm = tm,
+                )
+                Spacer(Modifier.height(6.dp))
+                GradientBarBlock(
+                    "cloud", points.map { it.cloudPct },
+                    CloudRamp.sweep(points.map { it.cloudPct }, dark),
+                    fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, tm = tm,
+                )
                 Spacer(Modifier.height(14.dp))
                 RainBlock(points, thunderAlertPct, tm, nowFrac, selFrac)
                 TimeAxis(points, tm, nowFrac)
@@ -198,14 +218,20 @@ private fun TempDewBlock(
         series(points, g, { it.dewPointF?.let(unit::fromF) }, ::y, d.dew, 2.dp.toPx(), dashed = true)
         tempSeries(points, g, unit, ::y, d.temp, 2.4.dp.toPx())
 
+        // Value labels are inked one notch toward the heading and haloed in the ground colour,
+        // so a number sitting on its own line stays readable rather than dissolving into it.
+        val halo = if (chrome.dark) Color(0xCC000000) else Color(0xCCFFFFFF)
+        val tempInk = lerp(d.temp, chrome.heading, 0.3f)
+        val dewInk = lerp(d.dew, chrome.heading, 0.3f)
+
         // Each series' own high and low over the day, printed on the hour they land on.
         extremes(points) { it.tempF }?.let { (hiIdx, loIdx) ->
-            pointValue(tm, unit.deg(points[hiIdx].tempF!!), d.temp, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].tempF!!)), above = true)
-            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].tempF!!), d.temp, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].tempF!!)), above = false)
+            pointValue(tm, unit.deg(points[hiIdx].tempF!!), tempInk, halo, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].tempF!!)), above = true)
+            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].tempF!!), tempInk, halo, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].tempF!!)), above = false)
         }
         extremes(points) { it.dewPointF }?.let { (hiIdx, loIdx) ->
-            pointValue(tm, unit.deg(points[hiIdx].dewPointF!!), d.dew, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].dewPointF!!)), above = true)
-            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].dewPointF!!), d.dew, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].dewPointF!!)), above = false)
+            pointValue(tm, unit.deg(points[hiIdx].dewPointF!!), dewInk, halo, g, g.xAt(hiIdx), y(unit.fromF(points[hiIdx].dewPointF!!)), above = true)
+            if (loIdx != hiIdx) pointValue(tm, unit.deg(points[loIdx].dewPointF!!), dewInk, halo, g, g.xAt(loIdx), y(unit.fromF(points[loIdx].dewPointF!!)), above = false)
         }
 
         markers(g, nowFrac, selFrac, chrome, g.top, g.bottom)
@@ -214,69 +240,69 @@ private fun TempDewBlock(
 
 // ---------------------------------------------------------------- 3. air quality
 
+/** Whether a bar prints just its day peak, or both extremes (the AQI treatment). */
+private enum class BarValues { PEAK, HIGH_LOW }
+
 /**
- * Air quality as ONE thin gradient bar rather than 24 columns. A running AQI has no per-hour
- * shape worth reading — what matters is the level and where it drifts — so the day's highest
- * and lowest readings are printed over the very hours they fall on, just above the strip,
- * and the label/value row the block used to carry is gone.
+ * A running scalar — air quality, UV index, cloud cover — as ONE gradient strip across the
+ * hour axis rather than a column per hour: the value has no per-hour shape worth plotting,
+ * only a level and where it drifts. The strip is exactly tall enough to seat its own numbers,
+ * which are printed ON the bar over the hours they fall on — white on a dark halo, so they
+ * clear whatever colour the gradient runs under them and cost the block no extra height. The
+ * left gutter names the strip, since a gradient carries no axis to label it.
  */
 @Composable
-private fun AqiBlock(points: List<ForecastPoint>, palette: AqiPalette, tm: TextMeasurer) {
+private fun GradientBarBlock(
+    tag: String,
+    series: List<Double?>,
+    sweep: Pair<IntArray, FloatArray>,
+    fmt: (Double) -> String,
+    show: BarValues,
+    tm: TextMeasurer,
+) {
     val chrome = Skin.chrome
-    val dark = chrome.dark
-    val series = points.map { it.aqi }
-    val vals = series.filterNotNull()
-    if (vals.isEmpty()) return
-    val maxV = vals.max()
-    val minV = vals.min()
-    val maxIdx = series.indexOfFirst { it == maxV }
-    val minIdx = series.indexOfLast { it == minV }
+    val known = series.withIndex().mapNotNull { (i, v) -> v?.let { i to it } }
+    if (known.isEmpty()) return
+    val (maxIdx, maxV) = known.maxByOrNull { it.second }!!
+    val (minIdx, minV) = known.minByOrNull { it.second }!!
 
-    Canvas(Modifier.fillMaxWidth().height(20.dp)) {
-        val g = plot(points.size)
-        val barH = 4.dp.toPx()
-        val barTop = size.height - barH
-        val r = CornerRadius(barH / 2)
-        val (colors, stops) = AqiRamp.sweep(series, palette, dark)
+    val probe = tm.measure("0", TextStyle(fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold))
+    val barH = with(LocalDensity.current) { probe.size.height.toDp() } + 4.dp
+
+    Canvas(Modifier.fillMaxWidth().height(barH)) {
+        val g = plot(series.size)
+        val rect = Size(g.right - g.left, size.height)
+        val r = CornerRadius(3.dp.toPx())
+        val (colors, stops) = sweep
         drawRoundRect(
             brush = Brush.horizontalGradient(
                 colorStops = Array(colors.size) { stops[it] to Color(colors[it]) },
                 startX = g.left, endX = g.right,
             ),
-            topLeft = Offset(g.left, barTop),
-            size = Size(g.right - g.left, barH),
-            cornerRadius = r,
+            topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
         )
-        // The outline is what gives the strip an edge under any palette.
         drawRoundRect(
-            color = chrome.hairline,
-            topLeft = Offset(g.left, barTop),
-            size = Size(g.right - g.left, barH),
-            cornerRadius = r,
+            color = chrome.hairline, topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
         )
-        // The strip carries no axis, so the left gutter names it instead, centred on the bar.
-        val id = tm.measure("AQI", TextStyle(color = chrome.faint, fontSize = AXIS_TEXT, fontFamily = Mono))
-        drawText(id, topLeft = Offset(0f, (barTop + barH / 2 - id.size.height / 2).coerceIn(0f, size.height - id.size.height)))
-        // Peak wins any collision: draw it first, and drop the trough only if the two labels
-        // would touch (a flat day with one AQI draws a single number).
-        fun labelFor(v: Int) = tm.measure(
-            "$v",
-            TextStyle(
-                color = Color(AqiRamp.colorAt(v.toDouble(), palette, dark)),
-                fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
-            ),
+        val name = tm.measure(tag, TextStyle(color = chrome.faint, fontSize = ANNOTATION_TEXT, fontFamily = Mono))
+        drawText(name, topLeft = Offset(0f, (size.height - name.size.height) / 2f))
+
+        val cy = size.height / 2f
+        val style = TextStyle(
+            color = Color.White, fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
+            shadow = Shadow(Color(0xCC000000), Offset.Zero, blurRadius = 2.dp.toPx()),
         )
-        val maxL = labelFor(maxV)
-        val labelY = barTop - maxL.size.height - 1.dp.toPx()
-        val maxX = (g.xAt(maxIdx) - maxL.size.width / 2f).coerceIn(g.left, g.right - maxL.size.width)
-        drawText(maxL, topLeft = Offset(maxX, labelY))
-        if (minV != maxV) {
-            val minL = labelFor(minV)
-            val minX = (g.xAt(minIdx) - minL.size.width / 2f).coerceIn(g.left, g.right - minL.size.width)
+        val hi = tm.measure(fmt(maxV), style)
+        val hiX = (g.xAt(maxIdx) - hi.size.width / 2f).coerceIn(g.left, g.right - hi.size.width)
+        drawText(hi, topLeft = Offset(hiX, cy - hi.size.height / 2f))
+        // Peak wins any collision; the trough is drawn only when it clears the peak's box.
+        if (show == BarValues.HIGH_LOW && minIdx != maxIdx) {
+            val lo = tm.measure(fmt(minV), style)
+            val loX = (g.xAt(minIdx) - lo.size.width / 2f).coerceIn(g.left, g.right - lo.size.width)
             val gap = 3.dp.toPx()
-            if (minX + minL.size.width < maxX - gap || minX > maxX + maxL.size.width + gap) {
-                drawText(minL, topLeft = Offset(minX, labelY))
+            if (loX + lo.size.width < hiX - gap || loX > hiX + hi.size.width + gap) {
+                drawText(lo, topLeft = Offset(loX, cy - lo.size.height / 2f))
             }
         }
     }
@@ -473,16 +499,19 @@ private fun DrawScope.fieldBg(g: Plot, chrome: ChromeColors) {
 }
 
 /**
- * One series' extreme reading printed over the hour it falls on, in the series' own colour and
- * no label — the same treatment the AQI strip gives its peak/trough. Above the point for a
- * high, below it for a low, clamped inside the canvas.
+ * One series' extreme reading printed over the hour it falls on, with no label. Above the
+ * point for a high, below it for a low, clamped inside the canvas. [halo] rings the glyphs in
+ * the ground colour so the number reads even where it lands on its own line.
  */
 private fun DrawScope.pointValue(
-    tm: TextMeasurer, text: String, color: Color, g: Plot, atX: Float, atY: Float, above: Boolean,
+    tm: TextMeasurer, text: String, color: Color, halo: Color, g: Plot, atX: Float, atY: Float, above: Boolean,
 ) {
     val l = tm.measure(
         text,
-        TextStyle(color = color, fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold),
+        TextStyle(
+            color = color, fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
+            shadow = Shadow(halo, Offset.Zero, blurRadius = 2.dp.toPx()),
+        ),
     )
     val x = (atX - l.size.width / 2f).coerceIn(g.left, g.right - l.size.width)
     val y = (if (above) atY - l.size.height - 2.dp.toPx() else atY + 2.dp.toPx())
