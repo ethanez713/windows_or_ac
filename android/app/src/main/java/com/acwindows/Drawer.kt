@@ -62,6 +62,9 @@ private val PLOT_RIGHT_INSET = 4.dp
 private val AXIS_TEXT = 11.sp
 private val ANNOTATION_TEXT = 9.sp
 
+/** The gradient strips are only this text tall; their on-bar numbers and gutter tag ride it. */
+private val BAR_TEXT = 5.sp
+
 @Composable
 fun DetailDrawer(
     points: List<ForecastPoint>,
@@ -113,7 +116,7 @@ fun DetailDrawer(
                 Spacer(Modifier.height(6.dp))
                 GradientBarBlock(
                     "cld", points.map { it.cloudPct },
-                    CloudRamp.sweep(points.map { it.cloudPct }, dark),
+                    CloudRamp.sweep(points.map { it.cloudPct }, points.map { it.isDay }),
                     fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, tm = tm,
                 )
                 Spacer(Modifier.height(4.dp))
@@ -266,13 +269,13 @@ private fun GradientBarBlock(
     val (maxIdx, maxV) = known.maxByOrNull { it.second }!!
     val (minIdx, minV) = known.minByOrNull { it.second }!!
 
-    val probe = tm.measure("0", TextStyle(fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold))
+    val probe = tm.measure("0", TextStyle(fontSize = BAR_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold))
     val barH = with(LocalDensity.current) { probe.size.height.toDp() }
 
     Canvas(Modifier.fillMaxWidth().height(barH)) {
         val g = plot(series.size)
         val rect = Size(g.right - g.left, size.height)
-        val r = CornerRadius(3.dp.toPx())
+        val r = CornerRadius(size.height / 3f)
         val (colors, stops) = sweep
         drawRoundRect(
             brush = Brush.horizontalGradient(
@@ -285,25 +288,29 @@ private fun GradientBarBlock(
             color = chrome.hairline, topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
         )
-        val name = tm.measure(tag, TextStyle(color = chrome.faint, fontSize = ANNOTATION_TEXT, fontFamily = Mono))
+        val name = tm.measure(tag, TextStyle(color = chrome.faint, fontSize = BAR_TEXT, fontFamily = Mono))
         drawText(name, topLeft = Offset(0f, (size.height - name.size.height) / 2f))
 
         val cy = size.height / 2f
+        // White over a strong opaque-black halo, drawn twice to build the halo up, so a number
+        // reads over any colour under it — the pale overcast/UV/yellow ends included.
         val style = TextStyle(
-            color = Color.White, fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
-            shadow = Shadow(Color(0xCC000000), Offset.Zero, blurRadius = 2.dp.toPx()),
+            color = Color.White, fontSize = BAR_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
+            shadow = Shadow(Color(0xFF000000), Offset.Zero, blurRadius = 2.5.dp.toPx()),
         )
-        val hi = tm.measure(fmt(maxV), style)
-        val hiX = (g.xAt(maxIdx) - hi.size.width / 2f).coerceIn(g.left, g.right - hi.size.width)
-        drawText(hi, topLeft = Offset(hiX, cy - hi.size.height / 2f))
+        fun blit(l: TextLayoutResult, x: Float) {
+            val at = Offset(x, cy - l.size.height / 2f)
+            drawText(l, topLeft = at); drawText(l, topLeft = at)
+        }
+        val hiL = tm.measure(fmt(maxV), style)
+        val hiX = (g.xAt(maxIdx) - hiL.size.width / 2f).coerceIn(g.left, g.right - hiL.size.width)
+        blit(hiL, hiX)
         // Peak wins any collision; the trough is drawn only when it clears the peak's box.
         if (show == BarValues.HIGH_LOW && minIdx != maxIdx) {
-            val lo = tm.measure(fmt(minV), style)
-            val loX = (g.xAt(minIdx) - lo.size.width / 2f).coerceIn(g.left, g.right - lo.size.width)
+            val loL = tm.measure(fmt(minV), style)
+            val loX = (g.xAt(minIdx) - loL.size.width / 2f).coerceIn(g.left, g.right - loL.size.width)
             val gap = 3.dp.toPx()
-            if (loX + lo.size.width < hiX - gap || loX > hiX + hi.size.width + gap) {
-                drawText(lo, topLeft = Offset(loX, cy - lo.size.height / 2f))
-            }
+            if (loX + loL.size.width < hiX - gap || loX > hiX + hiL.size.width + gap) blit(loL, loX)
         }
     }
 }
@@ -330,15 +337,14 @@ private fun RainBlock(
 
     Canvas(Modifier.fillMaxWidth().height(64.dp)) {
         val g = plot(points.size)
-        // Columns sit on the canvas floor and rise into a reserved top band, so the peak
-        // annotation always has room above the tallest column instead of spilling up into
-        // the AQI strip above the block.
-        val topBand = 15.dp.toPx()
+        // Columns rise from the floor over the full field; the peak annotation drops inside
+        // the column when a tall one would push it off the top, so no top band is reserved.
         val base = g.bottom
-        val colTop = topBand
+        val colTop = 0f
         val colH = base - colTop
 
-        fieldBg(Plot(g.left, colTop, g.right, base, points.size), chrome)
+        fieldBg(g, chrome)
+        bands(points, g, chrome)
 
         if (!anyRain) {
             val l = tm.measure(
@@ -383,10 +389,16 @@ private fun RainBlock(
                 (p.precipIn ?: 0.0).takeIf { it > 0 }?.let { append("  ${fmtIn(it)}") }
             }
             val storm = (p.thunderProb ?: 0.0) >= thunderAlertPct
-            val l = tm.measure(text, TextStyle(color = if (storm) d.storm else chrome.body, fontSize = AXIS_TEXT, fontFamily = Mono))
+            val halo = if (chrome.dark) Color(0xCC000000) else Color(0xCCFFFFFF)
+            val l = tm.measure(text, TextStyle(
+                color = if (storm) d.storm else chrome.body, fontSize = AXIS_TEXT, fontFamily = Mono,
+                shadow = Shadow(halo, Offset.Zero, blurRadius = 2.dp.toPx()),
+            ))
             val h = max(((p.precipProb ?: 0.0) / 100.0).toFloat() * colH, 2.dp.toPx())
             val x = (g.xAt(peak) - l.size.width / 2).coerceIn(g.left, g.right - l.size.width)
-            drawText(l, topLeft = Offset(x, base - h - l.size.height - 2.dp.toPx()))
+            // Above the column, but tucked just inside its top when a tall one would clip it.
+            val above = base - h - l.size.height - 2.dp.toPx()
+            drawText(l, topLeft = Offset(x, if (above < 0f) base - h + 2.dp.toPx() else above))
         }
 
         markers(g, nowFrac, selFrac, chrome, colTop, base)
