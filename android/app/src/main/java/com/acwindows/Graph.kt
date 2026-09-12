@@ -243,6 +243,9 @@ object Graph {
         val dewDisp = dewF.map { it?.let(unit::fromF) }
         val degVals = (if (showTemp) tempDisp.take(n).filterNotNull() else emptyList()) +
             (if (showDew) dewDisp.take(n).filterNotNull() else emptyList())
+        // Boxes the rain labels must dodge vertically, so a pill and a range label never
+        // share a spot (the pill is opaque and would otherwise bury the label under it).
+        val reserved = ArrayList<FloatArray>()
         if (degVals.isNotEmpty()) {
             val (lo, hi) = degBounds(degVals, unit.deltaFromF(MIN_DEG_SPAN_F))
             val yDeg = { v: Double -> base - (((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)) * plotH }
@@ -253,20 +256,27 @@ object Graph {
             // where it freezes — so `tempF` (raw °F) rides along for the per-segment test.
             if (showTemp) drawDegLine(c, tempDisp, tempColor, n, { i -> barLeft(i) + barW / 2 }, yDeg, barW, sp, nowPos, tempF)
             // Range labels on the right edge, tinted to whichever line owns the axis, so
-            // the numbers can't be read as belonging to the bars' scale.
+            // the numbers can't be read as belonging to the bars' scale. Cased so the number
+            // survives sitting on its own line or a bar.
             val degLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = if (showTemp) tempColor else dewColor
                 textSize = 8f * tsp; typeface = mono; textAlign = Paint.Align.RIGHT
+                setShadowLayer(2.2f * sp, 0f, 0f, casing)
             }
-            c.drawText("${hi.roundToInt()}°", w - 1f * sp, plotTop + 8f * sp, degLabel)
-            c.drawText("${lo.roundToInt()}°", w - 1f * sp, base - 1.5f * sp, degLabel)
+            fun rangeLabel(text: String, yBaseline: Float) {
+                c.drawText(text, w - 1f * sp, yBaseline, degLabel)
+                val tw = degLabel.measureText(text)
+                reserved.add(floatArrayOf(w - 1f * sp - tw, yBaseline + degLabel.ascent(), w - 1f * sp, yBaseline + degLabel.descent()))
+            }
+            rangeLabel("${hi.roundToInt()}°", plotTop + 8f * sp)
+            rangeLabel("${lo.roundToInt()}°", base - 1.5f * sp)
         }
 
         // Rain rides on top of the bars, under the day/noon markers.
         if (showRain) {
             drawRain(
                 c, precipProb, precipIn, n, { i -> barLeft(i) },
-                barW, base, plotTop, plotH, axisW, w, sp, tsp, rainColor, casing, chrome.card, mono,
+                barW, base, plotTop, plotH, axisW, w, sp, tsp, rainColor, casing, chrome.card, mono, reserved,
             )
         }
 
@@ -444,6 +454,7 @@ object Graph {
         c: Canvas, prob: List<Double>, inches: List<Double>, n: Int,
         barLeft: (Int) -> Float, barW: Float, base: Float, plotTop: Float, plotH: Float,
         axisW: Float, w: Int, sp: Float, tsp: Float, rainColor: Int, casing: Int, pillInk: Int, mono: Typeface?,
+        reserved: List<FloatArray>,
     ) {
         fun p(i: Int) = prob.getOrElse(i) { 0.0 }
         fun rate(i: Int) = inches.getOrElse(i) { 0.0 }
@@ -511,6 +522,7 @@ object Graph {
                 var ly = y(peak) - 4.5f * tsp
                 if (ly < plotTop + 9.5f * tsp) ly = y(peak) + 12f * tsp
                 ly = ly.coerceAtMost(base - 1.5f * tsp)
+                ly = dodgeVert(cx - tw / 2 - 3f * tsp, cx + tw / 2 + 3f * tsp, ly, reserved, plotTop + 9.5f * tsp, base - 1.5f * tsp, tsp)
                 if (cx - tw / 2 > lastRight) {
                     c.drawRoundRect(
                         cx - tw / 2 - 3f * tsp, ly - 8.5f * tsp, cx + tw / 2 + 3f * tsp, ly + 2.5f * tsp,
@@ -535,6 +547,30 @@ object Graph {
         val cx = (atX + tw / 2 + 3f * tsp).coerceAtMost(hi).coerceAtLeast(minOf(axisW + tw / 2, hi))
         c.drawRoundRect(cx - tw / 2 - 3f * tsp, topPad, cx + tw / 2 + 3f * tsp, topPad + 12f * tsp, 3f * tsp, 3f * tsp, pill)
         c.drawText(label, cx, topPad + 9f * tsp, text)
+    }
+
+    /**
+     * Nudges a rain label's baseline [ly] vertically — never horizontally, so the number stays
+     * over its own hour — until its pill clears every [reserved] box (the temp/dew range labels
+     * at the right edge). Prefers dropping below the box, then rising above it, and gives up
+     * inside [minLy]..[maxLy] rather than shove the label off the plot.
+     */
+    private fun dodgeVert(
+        pl: Float, pr: Float, ly: Float, reserved: List<FloatArray>, minLy: Float, maxLy: Float, tsp: Float,
+    ): Float {
+        var y = ly
+        for (r in reserved) {
+            if (pr <= r[0] || pl >= r[2]) continue           // no horizontal overlap
+            if (y + 2.5f * tsp <= r[1] || y - 8.5f * tsp >= r[3]) continue   // already clear
+            val down = r[3] + 10f * tsp                       // pill top just below the box
+            val up = r[1] - 4f * tsp                          // pill bottom just above the box
+            y = when {
+                down <= maxLy -> down
+                up >= minLy -> up
+                else -> y
+            }
+        }
+        return y
     }
 
     private fun day(times: List<String>, i: Int): String = times.getOrElse(i) { "" }.take(10)
