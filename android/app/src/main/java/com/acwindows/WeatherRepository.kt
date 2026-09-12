@@ -391,7 +391,7 @@ object WeatherRepository {
     ): List<Map<String, Any?>> = try {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
             "&hourly=temperature_2m,dew_point_2m,relative_humidity_2m,precipitation_probability," +
-            "precipitation,weather_code,cloud_cover,shortwave_radiation,wind_speed_10m,is_day&$forecastRange" +
+            "precipitation,weather_code,cloud_cover,uv_index,shortwave_radiation,wind_speed_10m,is_day&$forecastRange" +
             "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" +
             "&timezone=${cfg.timezone}"
         val h = getJson(url, cfg.userAgent).getJSONObject("hourly")
@@ -403,6 +403,8 @@ object WeatherRepository {
         val wcode = h.optJSONArray("weather_code")
         val isDay = h.optJSONArray("is_day")
         val sw = h.optJSONArray("shortwave_radiation")
+        val cloud = h.optJSONArray("cloud_cover")
+        val uv = h.optJSONArray("uv_index")
 
         // AQI from the separate air-quality endpoint, merged by timestamp.
         val aqiByTime = HashMap<String, Int>()
@@ -423,6 +425,7 @@ object WeatherRepository {
                 "weatherCode" to wcode?.dblAt(i)?.let { it.roundToInt() },
                 "isDay" to isDay?.dblAt(i)?.let { it >= 0.5 },
                 "shortwaveWm2" to sw?.dblAt(i), "aqi" to aqiByTime[t],
+                "cloudPct" to cloud?.dblAt(i), "uvIndex" to uv?.dblAt(i),
             )
         }
     } catch (e: Exception) {

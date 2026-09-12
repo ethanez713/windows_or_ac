@@ -94,6 +94,8 @@ object ForecastBuilder {
             val thunderProb = thunderConsensus(rainVoters, time, weatherCode)
             val isDay = h["isDay"] as? Boolean
             val shortwaveWm2 = h["shortwaveWm2"] as? Double
+            val uvIndex = h["uvIndex"] as? Double
+            val cloudPct = h["cloudPct"] as? Double
             val breakdown = Score.windowScoreBreakdown(
                 c, tempF = tempF, dewPointF = dewPointF, aqi = aqi, precipProb = precipProb,
             )
@@ -109,6 +111,8 @@ object ForecastBuilder {
                 weatherCode = weatherCode,
                 isDay = isDay,
                 shortwaveWm2 = shortwaveWm2,
+                uvIndex = uvIndex,
+                cloudPct = cloudPct,
                 nwsTempF = crossTemp[time],
                 breakdown = breakdown,
             )

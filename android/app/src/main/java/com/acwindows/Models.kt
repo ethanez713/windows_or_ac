@@ -87,6 +87,9 @@ data class ForecastPoint(
     val weatherCode: Int? = null,            // WMO weather code (for the summary icons)
     val isDay: Boolean? = null,              // true sunrise→sunset, false overnight (for graph shading)
     val shortwaveWm2: Double? = null,
+    val uvIndex: Double? = null,             // WHO UV index (all-sky, cloud-adjusted)
+    val cloudPct: Double? = null,            // total cloud cover, %
+
     val nwsTempF: Double? = null,
     val breakdown: ScoreBreakdown? = null,   // per-factor detail for the app UI
 )
