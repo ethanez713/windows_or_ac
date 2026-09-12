@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -62,8 +61,8 @@ private val PLOT_RIGHT_INSET = 4.dp
 private val AXIS_TEXT = 11.sp
 private val ANNOTATION_TEXT = 9.sp
 
-/** The gradient strips are only this text tall; their on-bar numbers and gutter tag ride it. */
-private val BAR_TEXT = 5.sp
+/** Gradient-strip height; the on-bar numbers are sized from it so their digits fill it. */
+private val BAR_H = 11.dp
 
 @Composable
 fun DetailDrawer(
@@ -107,13 +106,13 @@ fun DetailDrawer(
                     AqiRamp.sweep(points.map { it.aqi }, palette, dark),
                     fmt = { it.roundToInt().toString() }, show = BarValues.HIGH_LOW, tm = tm,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "UV", points.map { it.uvIndex },
                     UvRamp.sweep(points.map { it.uvIndex }, dark),
                     fmt = { it.roundToInt().toString() }, show = BarValues.PEAK, tm = tm,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "cld", points.map { it.cloudPct },
                     CloudRamp.sweep(points.map { it.cloudPct }, points.map { it.isDay }),
@@ -269,10 +268,7 @@ private fun GradientBarBlock(
     val (maxIdx, maxV) = known.maxByOrNull { it.second }!!
     val (minIdx, minV) = known.minByOrNull { it.second }!!
 
-    val probe = tm.measure("0", TextStyle(fontSize = BAR_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold))
-    val barH = with(LocalDensity.current) { probe.size.height.toDp() }
-
-    Canvas(Modifier.fillMaxWidth().height(barH)) {
+    Canvas(Modifier.fillMaxWidth().height(BAR_H)) {
         val g = plot(series.size)
         val rect = Size(g.right - g.left, size.height)
         val r = CornerRadius(size.height / 3f)
@@ -288,14 +284,17 @@ private fun GradientBarBlock(
             color = chrome.hairline, topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
         )
-        val name = tm.measure(tag, TextStyle(color = chrome.faint, fontSize = BAR_TEXT, fontFamily = Mono))
+        // Font sized so a digit's cap height fills the bar (cap ≈ 0.72·em); the taller line box
+        // overhangs top and bottom and is clipped to the strip, leaving the numbers edge-to-edge.
+        val digit = (size.height / 0.72f).toSp()
+        val name = tm.measure(tag, TextStyle(color = chrome.faint, fontSize = digit * 0.82f, fontFamily = Mono))
         drawText(name, topLeft = Offset(0f, (size.height - name.size.height) / 2f))
 
         val cy = size.height / 2f
         // White over a strong opaque-black halo, drawn twice to build the halo up, so a number
         // reads over any colour under it — the pale overcast/UV/yellow ends included.
         val style = TextStyle(
-            color = Color.White, fontSize = BAR_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold,
+            color = Color.White, fontSize = digit, fontFamily = Mono, fontWeight = FontWeight.Bold,
             shadow = Shadow(Color(0xFF000000), Offset.Zero, blurRadius = 2.5.dp.toPx()),
         )
         fun blit(l: TextLayoutResult, x: Float) {
