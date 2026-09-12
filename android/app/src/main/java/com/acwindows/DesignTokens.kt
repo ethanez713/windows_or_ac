@@ -44,9 +44,10 @@ object Tokens {
         /** Marker band behind the limiting factor in the forecast header (§C.2). */
         val marker: Int,
         /**
-         * The day/night band fill, and which half wears it. The tint is a 6% ink lift: it
-         * darkens paper but lightens dark ground, so the tinted half must flip with the
-         * theme or night reads brighter than day.
+         * The day/night band fill, and which half wears it. A small ink lift that must lift
+         * AWAY from the ground — a dark tint on light paper, a light tint on dark ground — so
+         * the tinted half reads as brighter daylight in either theme; a dark tint on dark
+         * ground is invisible.
          */
         val bandTint: Int,
         val bandOnNight: Boolean,
@@ -100,7 +101,7 @@ object Tokens {
         faint = 0xFF9A9385.toInt(),
         hairline = argb(26, 247, 244, 237),
         marker = 0xFF493B31.toInt(),
-        bandTint = argb(15, 33, 29, 24),
+        bandTint = argb(22, 247, 244, 237),
         bandOnNight = false,
     )
 
