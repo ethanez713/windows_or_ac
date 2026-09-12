@@ -62,7 +62,7 @@ private val AXIS_TEXT = 11.sp
 private val ANNOTATION_TEXT = 9.sp
 
 /** Gradient-strip height; the on-bar numbers are sized from it so their digits fill it. */
-private val BAR_H = 11.dp
+private val BAR_H = 7.dp
 
 @Composable
 fun DetailDrawer(
