@@ -9,7 +9,7 @@ package com.acwindows
  */
 object CloudRamp {
 
-    private const val CLEAR_DAY = 0xFF4AA8E0.toInt()      // sky blue
+    private const val CLEAR_DAY = 0xFF12B6DC.toInt()      // cyan sky — pulled off the grey so clear reads clear
     private const val CLEAR_NIGHT = 0xFF150A24.toInt()    // near-black violet — a clear night sky
     private const val OVERCAST = 0xFFCED4DA.toInt()        // white-grey cloud
 
