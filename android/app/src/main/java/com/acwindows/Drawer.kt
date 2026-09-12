@@ -112,11 +112,11 @@ fun DetailDrawer(
                 )
                 Spacer(Modifier.height(6.dp))
                 GradientBarBlock(
-                    "cloud", points.map { it.cloudPct },
+                    "cld", points.map { it.cloudPct },
                     CloudRamp.sweep(points.map { it.cloudPct }, dark),
                     fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, tm = tm,
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(4.dp))
                 RainBlock(points, thunderAlertPct, tm, nowFrac, selFrac)
                 TimeAxis(points, tm, nowFrac)
             }
@@ -267,7 +267,7 @@ private fun GradientBarBlock(
     val (minIdx, minV) = known.minByOrNull { it.second }!!
 
     val probe = tm.measure("0", TextStyle(fontSize = ANNOTATION_TEXT, fontFamily = Mono, fontWeight = FontWeight.Bold))
-    val barH = with(LocalDensity.current) { probe.size.height.toDp() } + 4.dp
+    val barH = with(LocalDensity.current) { probe.size.height.toDp() }
 
     Canvas(Modifier.fillMaxWidth().height(barH)) {
         val g = plot(series.size)
