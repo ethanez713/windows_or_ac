@@ -62,7 +62,7 @@ data class AppConfig(
         val KNOWN_SOURCES = listOf("open-meteo", "nws", "metno", "tomorrowio", "pirateweather", "airnow")
         const val DEFAULT_LAT = 40.7128            // your latitude (look it up at latlong.net)
         const val DEFAULT_LON = -74.0060           // your longitude
-        const val DEFAULT_TZ = "America/New_York"  // "auto" or an IANA tz name
+        const val DEFAULT_TZ = "auto"              // location-local via Open-Meteo; or an IANA tz name
         const val DEFAULT_UA = "ac-widget/0.1 (your-email@example.com)" // NWS asks for a contact
         // Comfort / decision setpoints seeded on first run:
         const val DEFAULT_MAX_TEMP_F = 78.0        // don't let the house get warmer than this
