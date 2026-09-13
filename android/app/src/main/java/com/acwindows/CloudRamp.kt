@@ -1,34 +1,28 @@
 package com.acwindows
 
 /**
- * Cloud cover as the colour of the sky itself: a clear hour is sky-blue by day and a near-black
- * violet by night, and cloud fills that in toward overcast white-grey as cover rises — so the
- * strip reads as "what the sky looks like this hour", with white always meaning cloud. A single
- * linear sRGB interpolation between the hour's clear-sky colour and overcast; the day/night end
- * is chosen per hour from [isDay], not from the app theme, because the sky's colour is objective.
+ * The clear-sky backdrop the cloud bar is painted on: cyan by day, near-black violet by
+ * night, chosen per hour from `isDay` (the sky's colour is objective, not theme-dependent).
+ * Cloud cover is NOT mixed into this — it is laid over the top as a halftone dot screen (see
+ * `halftone` in Drawer.kt), so the strip reads as sky with clouds drawn on it, [CLOUD] being
+ * the dots' white-grey.
  */
 object CloudRamp {
 
-    private const val CLEAR_DAY = 0xFF12B6DC.toInt()      // cyan sky — pulled off the grey so clear reads clear
+    private const val CLEAR_DAY = 0xFF12B6DC.toInt()      // cyan sky
     private const val CLEAR_NIGHT = 0xFF150A24.toInt()    // near-black violet — a clear night sky
-    private const val OVERCAST = 0xFFCED4DA.toInt()        // white-grey cloud
+    const val CLOUD = 0xFFDCE1E6.toInt()                  // halftone dot colour (white-grey cloud)
 
-    fun colorAt(pct: Double, isDay: Boolean): Int =
-        Tokens.lerpSrgb(if (isDay) CLEAR_DAY else CLEAR_NIGHT, OVERCAST, (pct / 100.0).toFloat().coerceIn(0f, 1f))
+    private fun sky(isDay: Boolean?) = if (isDay ?: true) CLEAR_DAY else CLEAR_NIGHT
 
-    /** Hours with no cover reading hold the last known cover; each hour's own day/night sets the clear end. */
-    fun sweep(cover: List<Double?>, isDay: List<Boolean?>): Pair<IntArray, FloatArray> {
-        if (cover.all { it == null }) {
-            val flat = colorAt(0.0, true)
-            return intArrayOf(flat, flat) to floatArrayOf(0f, 1f)
+    /** Per-hour clear-sky colour as a horizontal-gradient sweep; adjacent hours blend at dusk/dawn. */
+    fun skySweep(isDay: List<Boolean?>): Pair<IntArray, FloatArray> {
+        if (isDay.isEmpty()) {
+            val c = sky(true)
+            return intArrayOf(c, c) to floatArrayOf(0f, 1f)
         }
-        var last = cover.firstOrNull { it != null } ?: 0.0
-        val colors = IntArray(cover.size)
-        cover.forEachIndexed { i, v ->
-            if (v != null) last = v
-            colors[i] = colorAt(last, isDay.getOrNull(i) ?: true)
-        }
-        val denom = (cover.size - 1).coerceAtLeast(1).toFloat()
-        return colors to FloatArray(cover.size) { it / denom }
+        val colors = IntArray(isDay.size) { sky(isDay[it]) }
+        val denom = (isDay.size - 1).coerceAtLeast(1).toFloat()
+        return colors to FloatArray(isDay.size) { it / denom }
     }
 }

@@ -17,7 +17,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -37,6 +40,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * The expanded day's detail drawer (docs/ux-redesign.md §A.4): four blocks stacked on one
@@ -115,8 +119,9 @@ fun DetailDrawer(
                 Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "cld", points.map { it.cloudPct },
-                    CloudRamp.sweep(points.map { it.cloudPct }, points.map { it.isDay }),
+                    CloudRamp.skySweep(points.map { it.isDay }),
                     fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, sel = sel, tm = tm,
+                    overlay = { g -> halftone(g, points.map { it.cloudPct }) },
                 )
                 Spacer(Modifier.height(4.dp))
                 RainBlock(points, thunderAlertPct, tm, nowFrac, selFrac)
@@ -266,6 +271,7 @@ private fun GradientBarBlock(
     show: BarValues,
     sel: Int?,
     tm: TextMeasurer,
+    overlay: (DrawScope.(Plot) -> Unit)? = null,
 ) {
     val chrome = Skin.chrome
     val known = series.withIndex().mapNotNull { (i, v) -> v?.let { i to it } }
@@ -285,6 +291,11 @@ private fun GradientBarBlock(
             ),
             topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
         )
+        // A textured surface (the cloud halftone) drawn over the base, clipped to the strip.
+        overlay?.let { paint ->
+            val clip = Path().apply { addRoundRect(RoundRect(g.left, 0f, g.right, size.height, r)) }
+            clipPath(clip) { paint(g) }
+        }
         drawRoundRect(
             color = chrome.hairline, topLeft = Offset(g.left, 0f), size = rect, cornerRadius = r,
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.75.dp.toPx()),
@@ -523,6 +534,56 @@ private fun gridValues(lo: Double, hi: Double, count: Int): List<Double> {
  */
 private fun DrawScope.fieldBg(g: Plot, chrome: ChromeColors) {
     drawRect(chrome.sunken, topLeft = Offset(g.left, g.top), size = Size(g.right - g.left, g.bottom - g.top))
+}
+
+/**
+ * Cloud cover as an amplitude-modulated halftone screen over the sky base: a hex grid of soft
+ * dots whose AREA tracks the hour's cover (radius ∝ √cover, so the covered-pixel fraction ≈
+ * cover — the classic AM-screen relation). Cover is interpolated between hours so the screen
+ * thickens and thins smoothly instead of stepping at each column, and each dot is a radial fade
+ * so its edge is soft — together the fuzz that reads as cloud rather than as print dots.
+ */
+private fun DrawScope.halftone(g: Plot, cover: List<Double?>) {
+    val n = cover.size
+    if (n == 0) return
+    val f = FloatArray(n)
+    var last = 0f
+    for (i in 0 until n) {
+        cover[i]?.let { last = (it / 100.0).toFloat().coerceIn(0f, 1f) }
+        f[i] = last
+    }
+    val span = (g.right - g.left).coerceAtLeast(1f)
+    fun coverAt(x: Float): Float {
+        if (n == 1) return f[0]
+        val t = ((x - g.left) / span).coerceIn(0f, 1f) * (n - 1)
+        val i0 = t.toInt().coerceIn(0, n - 1)
+        val i1 = (i0 + 1).coerceAtMost(n - 1)
+        return f[i0] + (f[i1] - f[i0]) * (t - i0)
+    }
+    val s = 2.4.dp.toPx()
+    val rMax = s * 0.70f
+    val dot = Color(CloudRamp.CLOUD)
+    var row = 0
+    var y = s * 0.5f
+    while (y < size.height + s) {
+        var x = g.left + if (row % 2 == 0) 0f else s * 0.5f
+        while (x <= g.right) {
+            val c = coverAt(x)
+            if (c > 0.03f) {
+                val rr = sqrt(c) * rMax * 1.3f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to dot, 0.6f to dot, 1f to dot.copy(alpha = 0f),
+                        center = Offset(x, y), radius = rr,
+                    ),
+                    radius = rr, center = Offset(x, y),
+                )
+            }
+            x += s
+        }
+        y += s * 0.87f
+        row++
+    }
 }
 
 /**
