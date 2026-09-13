@@ -119,7 +119,7 @@ fun DetailDrawer(
                 GradientBarBlock(
                     "cld", points.map { it.cloudPct },
                     CloudRamp.skySweep(points.map { it.isDay }),
-                    fmt = { "${it.roundToInt()}%" }, show = BarValues.PEAK, sel = sel, tm = tm,
+                    fmt = { "${it.roundToInt()}%" }, show = BarValues.NONE, sel = sel, tm = tm,
                     overlay = { g -> halftone(g, points.map { it.cloudPct }) },
                 )
                 Spacer(Modifier.height(4.dp))
@@ -246,8 +246,8 @@ private fun TempDewBlock(
 
 // ---------------------------------------------------------------- 3. air quality
 
-/** Whether a bar prints just its day peak, or both extremes (the AQI treatment). */
-private enum class BarValues { PEAK, HIGH_LOW }
+/** Whether a bar prints both extremes (AQI), just its day peak, or no number at all (cloud). */
+private enum class BarValues { PEAK, HIGH_LOW, NONE }
 
 /**
  * A running scalar — air quality, UV index, cloud cover — as ONE gradient strip across the
@@ -323,7 +323,9 @@ private fun GradientBarBlock(
             return x..(x + l.size.width)
         }
 
-        if (sel != null) {
+        if (show == BarValues.NONE) {
+            // A self-explanatory strip (cloud) carries no number.
+        } else if (sel != null) {
             // Active scrub: this hour's reading over its column, aligned with the marker;
             // nothing when this strip has no reading for the picked hour, never a fallback peak.
             series.getOrNull(sel)?.let { place(it, sel) }
