@@ -246,7 +246,8 @@ private fun TempDewBlock(
 
 // ---------------------------------------------------------------- 3. air quality
 
-/** Whether a bar prints both extremes (AQI), just its day peak, or no number at all (cloud). */
+/** A bar's DEFAULT (un-scrubbed) number: both extremes (AQI), just the day peak, or none
+ *  (cloud — the halftone speaks for itself). The scrubbed-hour value always shows regardless. */
 private enum class BarValues { PEAK, HIGH_LOW, NONE }
 
 /**
@@ -323,20 +324,22 @@ private fun GradientBarBlock(
             return x..(x + l.size.width)
         }
 
-        if (show == BarValues.NONE) {
-            // A self-explanatory strip (cloud) carries no number.
-        } else if (sel != null) {
-            // Active scrub: this hour's reading over its column, aligned with the marker;
-            // nothing when this strip has no reading for the picked hour, never a fallback peak.
+        if (sel != null) {
+            // Active scrub always shows this hour's reading over its column, aligned with the
+            // marker — for every strip, cloud included; nothing only when the hour has no value.
             series.getOrNull(sel)?.let { place(it, sel) }
-        } else {
-            val hi = place(maxV, maxIdx)
-            // Peak wins any collision; the trough is drawn only when it clears the peak's box.
-            if (show == BarValues.HIGH_LOW && minIdx != maxIdx) {
-                val loL = tm.measure(fmt(minV), style)
-                val loX = (g.xAt(minIdx) - loL.size.width / 2f).coerceIn(g.left, g.right - loL.size.width)
-                val gap = 3.dp.toPx()
-                if (loX + loL.size.width < hi.start - gap || loX > hi.endInclusive + gap) blit(loL, loX)
+        } else when (show) {
+            BarValues.NONE -> Unit          // self-explanatory strip (cloud): no default number
+            BarValues.PEAK -> place(maxV, maxIdx)
+            BarValues.HIGH_LOW -> {
+                val hi = place(maxV, maxIdx)
+                // Peak wins any collision; the trough is drawn only when it clears the peak's box.
+                if (minIdx != maxIdx) {
+                    val loL = tm.measure(fmt(minV), style)
+                    val loX = (g.xAt(minIdx) - loL.size.width / 2f).coerceIn(g.left, g.right - loL.size.width)
+                    val gap = 3.dp.toPx()
+                    if (loX + loL.size.width < hi.start - gap || loX > hi.endInclusive + gap) blit(loL, loX)
+                }
             }
         }
     }
