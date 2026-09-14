@@ -541,25 +541,6 @@ private fun DrawScope.fieldBg(g: Plot, chrome: ChromeColors) {
 }
 
 /**
- * The dot radius (as a ratio of grid spacing) that makes a hex halftone's white-pixel fraction
- * equal [cover] — the numerically inverted coverage curve, sampled every 0.05 from cover 0 to 1
- * and linearly interpolated. A plain r = √(cover·cellArea/π) is exact only until the dots start
- * to overlap (~0.9) and then under-covers; these values correct the overlap and reach a solid
- * fill (dots merging) at 1.0. Validated by rasterisation: white-fraction error < ~1% throughout.
- */
-private val CLOUD_Q = floatArrayOf(
-    0.0000f, 0.1174f, 0.1658f, 0.2034f, 0.2347f, 0.2625f, 0.2876f, 0.3105f,
-    0.3321f, 0.3522f, 0.3713f, 0.3893f, 0.4070f, 0.4233f, 0.4392f, 0.4547f,
-    0.4697f, 0.4839f, 0.4981f, 0.5175f, 0.5690f,
-)
-
-private fun cloudDotRatio(cover: Float): Float {
-    val t = cover.coerceIn(0f, 1f) * 20f
-    val i = t.toInt().coerceIn(0, 19)
-    return CLOUD_Q[i] + (CLOUD_Q[i + 1] - CLOUD_Q[i]) * (t - i)
-}
-
-/**
  * Cloud cover as an amplitude-modulated halftone over the sky base: a hex grid of solid dots
  * whose AREA equals the hour's cover, so the fraction of white (cloud) pixels equals the cover.
  * Radius comes from [cloudDotRatio] (overlap-corrected), giving proportional cover up to a solid
@@ -593,7 +574,7 @@ private fun DrawScope.halftone(g: Plot, cover: List<Double?>) {
         var x = g.left + if (row % 2 == 0) 0f else s * 0.5f
         while (x <= g.right) {
             val c = coverAt(x)
-            if (c > 0.01f) drawCircle(dot, radius = cloudDotRatio(c) * s, center = Offset(x, y))
+            if (c > 0.01f) drawCircle(dot, radius = CloudRamp.dotRatio(c) * s, center = Offset(x, y))
             x += s
         }
         y += rowH

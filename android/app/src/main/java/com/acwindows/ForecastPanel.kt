@@ -32,6 +32,21 @@ object ForecastPanel {
     private const val PLOT_LEFT = 30f
     private const val AQI_H = 4f
     private const val SCORE_H = 5f
+    private const val UV_H = 4f
+    /** Taller than the gradient strips: the halftone dot screen needs the height to read. */
+    private const val CLOUD_H = 9f
+
+    /** The below-plot strips, top to bottom, each reserving a band of [bandH] at the panel foot. */
+    private enum class Strip(val h: Float) { SCORE(SCORE_H), AQI(AQI_H), UV(UV_H), CLOUD(CLOUD_H) }
+
+    private fun stripsOf(widget: ForecastWidgetConfig): List<Strip> = buildList {
+        if (widget.showScore) add(Strip.SCORE)
+        if (widget.showAqi) add(Strip.AQI)
+        if (widget.showUv) add(Strip.UV)
+        if (widget.showCloud) add(Strip.CLOUD)
+    }
+
+    private fun bandH(strip: Strip, dp: Float) = (strip.h + 5f) * dp
 
     /**
      * Band reserved BELOW the plot for the hour labels. The time axis is a layer of the
@@ -77,14 +92,12 @@ object ForecastPanel {
         val ts = textScale
         val plotTop = (HEADER_H + HEADER_GAP) * dp
         val axisH = AXIS_H * dp * ts
-        // Air quality moves to a thin band at the very BOTTOM of the panel (its own reserved
-        // strip below the plot, above the time axis), so it's out of the way of the
-        // full-height rain columns and reads as the floor of the chart.
-        val aqiBand = if (widget.showAqi) (AQI_H + 5f) * dp else 0f
-        // The score strip sits in its own reserved band between the plot and the AQI strip.
-        val scoreBand = if (widget.showScore) (SCORE_H + 5f) * dp else 0f
-        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - axisH - aqiBand - scoreBand, n)
-        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark, ts, aqiBand, scoreBand)
+        // The score, air-quality, UV and cloud strips each take their own reserved band at the
+        // very bottom of the panel (below the plot, above the time axis), so they're out of the
+        // way of the full-height rain columns and read as the floor of the chart.
+        val stripsBand = stripsOf(widget).fold(0f) { acc, strip -> acc + bandH(strip, dp) }
+        val g = Geom(PLOT_LEFT * dp, plotTop, w.toFloat(), h - axisH - stripsBand, n)
+        drawChart(context, c, s, slice, widget, unit, g, d, chrome, dp, cfg, nowMs, dark, ts)
         drawRefresh(context, c, chrome, dp, w, h)
         return bmp
     }
@@ -280,7 +293,7 @@ object ForecastPanel {
     private fun drawChart(
         context: Context, c: Canvas, s: Snapshot, slice: IntRange, widget: ForecastWidgetConfig,
         unit: TempUnit, g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
-        nowMs: Long, dark: Boolean, ts: Float, aqiBand: Float, scoreBand: Float,
+        nowMs: Long, dark: Boolean, ts: Float,
     ) {
         val idx = slice.toList()
         val n = idx.size
@@ -349,18 +362,26 @@ object ForecastPanel {
             drawExtremes(context, c, idx, s, unit, g, lo, hi, d, dp, ts, widget.showTemp, widget.showDew)
         }
 
-        // 4. score strip (just below the plot) then the air-quality strip (below that), each
-        // in its own reserved band at the foot of the panel.
-        if (widget.showScore) drawScoreStrip(context, c, s, idx, g, d, chrome, dp, cfg)
-        if (widget.showAqi) drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, g.bottom + scoreBand + 3f * dp)
+        // 4. the below-plot strips, in order, each in its own reserved band at the panel foot.
+        var bandTop = g.bottom
+        stripsOf(widget).forEach { strip ->
+            val y = bandTop + 3f * dp
+            when (strip) {
+                Strip.SCORE -> drawScoreStrip(context, c, s, idx, g, d, chrome, dp, cfg, y)
+                Strip.AQI -> drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, y)
+                Strip.UV -> drawUv(context, c, s, idx, chrome, dp, dark, ts, g.x0, g.x1, y)
+                Strip.CLOUD -> drawCloud(context, c, s, idx, chrome, dp, ts, g.x0, g.x1, y)
+            }
+            bandTop += bandH(strip, dp)
+        }
 
         // 5. the present, at the REAL clock time — the gap to the plot edge is staleness
         c.drawLine(nowX, g.top, nowX, g.bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = d.now; strokeWidth = 1.5f * dp
         })
 
-        // 6. time axis, below the score and AQI bands
-        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs, ts, g.bottom + scoreBand + aqiBand)
+        // 6. time axis, below every strip band
+        drawTimeAxis(context, c, s, idx, g, chrome, dp, nowX, nowMs, ts, bandTop)
     }
 
     private fun drawRain(
@@ -457,6 +478,102 @@ object ForecastPanel {
         c.drawText("AIR", g.x0 - 3f * dp, y + AQI_H * dp / 2 + 3f * dp, label)
     }
 
+    /** UV index as a gradient strip — the app drawer's UV bar (see [UvRamp]) at panel scale. */
+    private fun drawUv(
+        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
+        dp: Float, dark: Boolean, ts: Float, x0: Float, x1: Float, y: Float,
+    ) {
+        val series = idx.map { s.uvSeries.getOrNull(it) }
+        if (series.all { it == null }) return
+        val (colors, stops) = UvRamp.sweep(series, dark)
+        val bar = RectF(x0, y, x1, y + UV_H * dp)
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(x0, 0f, x1, 0f, colors, stops, Shader.TileMode.CLAMP)
+        })
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
+        })
+        stripLabel(context, c, "UV", chrome.muted, dp, ts, x0, y + UV_H * dp / 2)
+    }
+
+    /**
+     * Cloud cover as the app drawer's cloud bar: the objective clear-sky colour ([CloudRamp])
+     * with cover laid over it as a halftone dot screen, so the strip reads as sky with clouds
+     * drawn on it rather than a grey fade.
+     */
+    private fun drawCloud(
+        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
+        dp: Float, ts: Float, x0: Float, x1: Float, y: Float,
+    ) {
+        val cover = idx.map { s.cloudSeries.getOrNull(it) }
+        if (cover.all { it == null }) return
+        val (colors, stops) = CloudRamp.skySweep(idx.map { s.isDay.getOrNull(it) })
+        val bar = RectF(x0, y, x1, y + CLOUD_H * dp)
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(x0, 0f, x1, 0f, colors, stops, Shader.TileMode.CLAMP)
+        })
+        c.save()
+        c.clipRect(bar)
+        cloudHalftone(c, x0, x1, bar.top, bar.bottom, cover, dp)
+        c.restore()
+        c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
+        })
+        stripLabel(context, c, "cld", chrome.muted, dp, ts, x0, y + CLOUD_H * dp / 2)
+    }
+
+    /** A strip's gutter tag, right-aligned just left of the plot and vertically centred on it. */
+    private fun stripLabel(
+        context: Context, c: Canvas, text: String, color: Int, dp: Float, ts: Float, x0: Float, midY: Float,
+    ) {
+        c.drawText(text, x0 - 3f * dp, midY + 3f * dp, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color; textSize = 9f * dp * ts; textAlign = Paint.Align.RIGHT
+            typeface = WidgetType.monoBold(context)
+        })
+    }
+
+    /**
+     * The Canvas port of the app drawer's `halftone` (Drawer.kt): a hex grid of solid dots
+     * whose area equals each hour's cover, so the white-pixel fraction equals the cover. The
+     * overlap-corrected radius comes from [CloudRamp.dotRatio] — the one place that curve lives.
+     * Cover is interpolated between hours so the screen thickens and thins smoothly.
+     */
+    private fun cloudHalftone(
+        c: Canvas, x0: Float, x1: Float, top: Float, bottom: Float, cover: List<Double?>, dp: Float,
+    ) {
+        val n = cover.size
+        if (n == 0) return
+        val f = FloatArray(n)
+        var last = 0f
+        for (i in 0 until n) {
+            cover[i]?.let { last = (it / 100.0).toFloat().coerceIn(0f, 1f) }
+            f[i] = last
+        }
+        val span = (x1 - x0).coerceAtLeast(1f)
+        fun coverAt(x: Float): Float {
+            if (n == 1) return f[0]
+            val t = ((x - x0) / span).coerceIn(0f, 1f) * (n - 1)
+            val i0 = t.toInt().coerceIn(0, n - 1)
+            val i1 = (i0 + 1).coerceAtMost(n - 1)
+            return f[i0] + (f[i1] - f[i0]) * (t - i0)
+        }
+        val step = 2.4f * dp
+        val rowH = step * 0.8660254f                    // hex packing row pitch, √3/2 · s
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CloudRamp.CLOUD }
+        var row = 0
+        var y = top + rowH * 0.5f
+        while (y < bottom + rowH) {
+            var x = x0 + if (row % 2 == 0) 0f else step * 0.5f
+            while (x <= x1) {
+                val cv = coverAt(x)
+                if (cv > 0.01f) c.drawCircle(x, y, CloudRamp.dotRatio(cv) * step, dot)
+                x += step
+            }
+            y += rowH
+            row++
+        }
+    }
+
     /**
      * The Open-Window Score as a smooth horizontal colour strip, on the same footing as the
      * AQI strip: green where the hour clears the open threshold, and below it a MUTED blend of
@@ -466,7 +583,7 @@ object ForecastPanel {
      */
     private fun drawScoreStrip(
         context: Context, c: Canvas, s: Snapshot, idx: List<Int>,
-        g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig,
+        g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, y: Float,
     ) {
         if (s.scores.isEmpty()) return
         val threshold = cfg.comfort.openScoreMin
@@ -474,7 +591,6 @@ object ForecastPanel {
         idx.forEachIndexed { k, i -> colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d) }
         if (idx.size == 1) colors[1] = colors[0]
 
-        val y = g.bottom + 3f * dp
         val bar = RectF(g.x0, y, g.x1, y + SCORE_H * dp)
         val stops = FloatArray(colors.size) { it / (colors.size - 1).toFloat() }
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {

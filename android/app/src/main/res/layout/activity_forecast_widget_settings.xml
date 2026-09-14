@@ -78,6 +78,8 @@
             <CheckBox android:id="@+id/show_rain" style="@style/CfgCheck" android:text="Rain" />
             <CheckBox android:id="@+id/show_aqi" style="@style/CfgCheck" android:text="Air quality (drawn along the bottom)" />
             <CheckBox android:id="@+id/show_score" style="@style/CfgCheck" android:text="Open-window score (colour strip along the bottom)" />
+            <CheckBox android:id="@+id/show_uv" style="@style/CfgCheck" android:text="UV index (colour strip along the bottom)" />
+            <CheckBox android:id="@+id/show_cloud" style="@style/CfgCheck" android:text="Cloud cover (halftone strip along the bottom)" />
             <CheckBox android:id="@+id/show_daynight" style="@style/CfgCheck" android:text="Day/night shading (midnight + noon lines)" />
 
             <TextView style="@style/CfgLabel" android:text="Theme" />
