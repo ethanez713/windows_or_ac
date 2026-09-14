@@ -33,25 +33,12 @@ class WidgetRenderTest {
         val hPx = (186 * density).toInt()
         for (dark in booleanArrayOf(true, false)) {
             for (showScore in booleanArrayOf(true, false)) {
-                val widget = ForecastWidgetConfig(showScore = showScore)
+                // uv + cloud on for every case so the two opt-in strips (UvRamp gradient and the
+                // cloud halftone) are exercised on a real native canvas too, not just the score strip.
+                val widget = ForecastWidgetConfig(showScore = showScore, showUv = true, showCloud = true)
                 val bmp = ForecastPanel.render(ctx, s, cfg, widget, TempUnit.F, wPx, hPx, density, dark)
                 assertAlive(bmp, wPx, hPx, "forecast dark=$dark score=$showScore")
             }
-        }
-    }
-
-    @Test
-    fun scoreGraphRenders() {
-        val s = sampleSnapshot()
-        for (dark in booleanArrayOf(true, false)) {
-            val bmp = Graph.render(
-                scores = s.scores, times = s.times, worst = s.worst, isDay = s.isDay,
-                precipProb = s.precipProb, precipIn = s.precipIn,
-                bestStart = s.bestStart, bestEnd = s.bestEnd, threshold = 60.0,
-                widthPx = 500, heightPx = 360, density = density,
-                tempF = s.tempSeries, dewF = s.dewSeries, dark = dark,
-            )
-            assertAlive(bmp, 500, 360, "score dark=$dark")
         }
     }
 

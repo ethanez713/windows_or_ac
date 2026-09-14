@@ -30,15 +30,7 @@ data class AppConfig(
     val sourceWeights: Map<String, Double> = emptyMap(),  // per-source trust weight (default 1.0)
     val placeName: String? = null,        // label for lat/lon (device fix or address lookup), or null
     val useDeviceLocation: Boolean = false,  // follow the phone: re-read lat/lon before every fetch
-    val widgetOpacity: Int = 100,         // widget background opacity, 0–100%
-    val widgetForecastHours: Int = 36,    // how many hours the widget graph spans
-    // What the widget graph draws. Turning a layer off doesn't stop it being fetched or
-    // cached — it's purely how busy you want the chart (see Graph.render).
-    val widgetShowBars: Boolean = true,   // the Open-Window Score bars
-    val widgetShowTemp: Boolean = true,   // temperature line (°F axis)
-    val widgetShowDew: Boolean = true,    // dew point line (same °F axis)
-    val widgetShowRain: Boolean = true,   // rain-chance line, thickness = rain amount
-    val widgetShowThreshold: Boolean = true,  // dashed rule + label at the open-score cutoff
+    val widgetForecastHours: Int = 36,    // how many hours ahead the fetch spans
     val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
     val dayViewMode: DayViewMode = DayViewMode.TODAY,  // today's card: full day, or now→EOD
     val appShowHourlyRows: Boolean = false,  // hour-by-hour value strip above the Values charts
@@ -97,14 +89,8 @@ data class AppConfig(
                 },
                 placeName = p.getString("placeName", null)?.takeIf { it.isNotBlank() },
                 useDeviceLocation = p.getBoolean("useDeviceLocation", false),
-                widgetOpacity = p.getString("widgetOpacity", null)?.toIntOrNull()?.coerceIn(0, 100) ?: 100,
                 widgetForecastHours = p.getString("widgetForecastHours", null)?.toIntOrNull()
                     ?.coerceIn(6, 96) ?: DEFAULT_WIDGET_HOURS,
-                widgetShowBars = p.getBoolean("widgetShowBars", true),
-                widgetShowTemp = p.getBoolean("widgetShowTemp", true),
-                widgetShowDew = p.getBoolean("widgetShowDew", true),
-                widgetShowRain = p.getBoolean("widgetShowRain", true),
-                widgetShowThreshold = p.getBoolean("widgetShowThreshold", true),
                 appTextScalePct = p.getString("appTextScalePct", null)?.toIntOrNull()?.coerceIn(60, 200) ?: 100,
                 dayViewMode = p.getString("dayViewMode", null)
                     ?.let { name -> runCatching { DayViewMode.valueOf(name) }.getOrNull() }
@@ -137,7 +123,6 @@ data class AppConfig(
                 Seed("rainProbIdeal", base.rainProbIdeal.toString()),
                 Seed("rainProbMax", base.rainProbMax.toString()),
                 Seed("appTextScalePct", "100"),
-                Seed("widgetOpacity", "100"),
                 Seed("widgetForecastHours", DEFAULT_WIDGET_HOURS.toString()),
                 Seed("thunderAlertPct", DEFAULT_THUNDER_ALERT.toString()),
                 Seed("lat", DEFAULT_LAT.toString()),

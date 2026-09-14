@@ -83,7 +83,7 @@ fun nowBarPos(firstMs: Long, nowMs: Long, stepMinutes: Int): Double? =
 
 object WidgetCache {
 
-    /** Matches the widget's 10-minute auto-refresh tick (see AcWindowsProvider). */
+    /** Matches the widget's 10-minute auto-refresh tick (see ForecastWidgetProvider). */
     const val TTL_MS = 10 * 60 * 1000L
 
     /**

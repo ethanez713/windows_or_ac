@@ -36,6 +36,8 @@ internal fun sampleSnapshot(): Snapshot {
     val dew = ArrayList<Double?>(n)
     val aqi = ArrayList<Int?>(n)
     val thunder = ArrayList<Double?>(n)
+    val uv = ArrayList<Double?>(n)
+    val cloud = ArrayList<Double?>(n)
     for (i in 0 until n) {
         val t = start.plusHours(i.toLong())
         times.add(t.toString().take(16))
@@ -50,6 +52,8 @@ internal fun sampleSnapshot(): Snapshot {
         precipProb.add(rain)
         precipIn.add(if (i in 9..11) 0.15 * (i - 8) else 0.0)
         thunder.add(if (i == 11) 55.0 else 0.0)
+        uv.add(if (hour in 6..19) Math.max(0.0, 9 * Math.sin((hour - 6) / 13.0 * Math.PI)) else 0.0)
+        cloud.add((20 + (i * 13) % 80).toDouble())
         val sc = Score.windowScore(Comfort(), tf, tf - 15, a, rain, null)
         scores.add(sc)
         worst.add(if (sc >= 60) -1 else i % 4)
@@ -62,6 +66,7 @@ internal fun sampleSnapshot(): Snapshot {
         scores = scores, times = times, worst = worst, isDay = isDay,
         precipProb = precipProb, precipIn = precipIn,
         tempSeries = temp, dewSeries = dew, aqiSeries = aqi, thunderSeries = thunder,
+        uvSeries = uv, cloudSeries = cloud,
         bestStart = times[2], bestEnd = times[5], note = "",
         updatedAtMs = firstMs, firstHourMs = firstMs,
     )

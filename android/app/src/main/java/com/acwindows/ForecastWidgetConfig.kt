@@ -39,6 +39,8 @@ data class ForecastWidgetConfig(
     val tapOpensApp: Boolean = false,
     /** Scales every label the panel draws (see [ForecastPanel]); the chart itself is unchanged. */
     val textScalePct: Int = DEFAULT_TEXT_SCALE,
+    /** Card-background opacity, 0–100%; below 100 the wallpaper shows through. */
+    val opacityPct: Int = DEFAULT_OPACITY,
 ) {
     fun isDark(context: Context): Boolean = when (theme) {
         ForecastTheme.AUTO -> Tokens.isDarkTheme(context)
@@ -58,8 +60,11 @@ data class ForecastWidgetConfig(
         const val MAX_TEXT_SCALE = 200
         const val DEFAULT_TEXT_SCALE = 130
 
+        const val DEFAULT_OPACITY = 100
+
         fun clampHours(h: Int) = h.coerceIn(MIN_HOURS, MAX_HOURS)
         fun clampTextScale(p: Int) = p.coerceIn(MIN_TEXT_SCALE, MAX_TEXT_SCALE)
+        fun clampOpacity(p: Int) = p.coerceIn(0, 100)
 
         fun load(context: Context, id: Int): ForecastWidgetConfig {
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -81,6 +86,8 @@ data class ForecastWidgetConfig(
                 tapOpensApp = bool("forecastTapOpens", false),
                 textScalePct = p.getString("forecastTextScale_$id", null)?.toIntOrNull()
                     ?.let(::clampTextScale) ?: DEFAULT_TEXT_SCALE,
+                opacityPct = p.getString("forecastOpacity_$id", null)?.toIntOrNull()
+                    ?.let(::clampOpacity) ?: DEFAULT_OPACITY,
             )
         }
 
@@ -99,6 +106,7 @@ data class ForecastWidgetConfig(
                 .putBoolean("forecastHideRain_$id", cfg.hideUnlikelyRain)
                 .putBoolean("forecastTapOpens_$id", cfg.tapOpensApp)
                 .putString("forecastTextScale_$id", cfg.textScalePct.toString())
+                .putString("forecastOpacity_$id", cfg.opacityPct.toString())
                 .apply()
         }
 
@@ -118,6 +126,7 @@ data class ForecastWidgetConfig(
                 .remove("forecastHideRain_$id")
                 .remove("forecastTapOpens_$id")
                 .remove("forecastTextScale_$id")
+                .remove("forecastOpacity_$id")
                 .apply()
         }
     }

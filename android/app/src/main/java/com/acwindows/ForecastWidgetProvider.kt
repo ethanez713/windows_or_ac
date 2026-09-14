@@ -1,5 +1,6 @@
 package com.acwindows
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -13,27 +14,32 @@ import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import androidx.annotation.VisibleForTesting
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 /**
- * The forecast widget (docs/ux-redesign.md §C): one panel answering "what will the weather
- * do in the next N hours", as opposed to [AcWindowsProvider]'s "when do I open the windows".
- * The two questions are deliberately kept apart, so this is a separate widget rather than a
- * mode of that one.
+ * The forecast widget (docs/ux-redesign.md §C): one panel answering "what will the weather do
+ * in the next N hours". Configuration is PER WIDGET INSTANCE ([ForecastWidgetConfig]) — several
+ * can sit on one home screen at different horizons.
  *
- * Configuration is PER WIDGET INSTANCE ([ForecastWidgetConfig]) — several can sit on one
- * home screen at different horizons. It shares [AcWindowsProvider]'s alarm tick, the cached
- * [Snapshot] and the [RefreshWorker] fetch: this file only READS the cache and asks for a
- * refresh, never fetches.
+ * This is the app's only home-screen widget, so it also owns the shared refresh machinery:
+ * the 10-minute AlarmManager tick (with a WorkManager periodic job as a backstop — see
+ * [scheduleTick] for why it takes both), the coalesced [RefreshWorker] fetch, and the cached
+ * [Snapshot]. It only READS the cache and asks for a refresh; the fetch itself lives in
+ * [RefreshWorker].
  */
 class ForecastWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
         val snap = WidgetCache.load(context)
         ids.forEach { id -> drawId(context, mgr, id, refreshing = snap == null) }
-        if (snap == null || snap.ageMs() > WidgetCache.TTL_MS) AcWindowsProvider.enqueueRefresh(context)
-        AcWindowsProvider.scheduleTick(context)
-        AcWindowsProvider.schedulePeriodic(context)
+        if (snap == null || snap.ageMs() > WidgetCache.TTL_MS) enqueueRefresh(context)
+        scheduleTick(context)
+        schedulePeriodic(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -44,45 +50,125 @@ class ForecastWidgetProvider : AppWidgetProvider() {
 
     override fun onDeleted(context: Context, ids: IntArray) {
         ids.forEach { ForecastWidgetConfig.delete(context, it) }
-        AcWindowsProvider.scheduleTick(context)
+        scheduleTick(context)
     }
 
     override fun onEnabled(context: Context) {
-        AcWindowsProvider.scheduleTick(context)
-        AcWindowsProvider.schedulePeriodic(context)
+        scheduleTick(context)
+        schedulePeriodic(context)
     }
 
     override fun onDisabled(context: Context) {
-        AcWindowsProvider.scheduleTick(context)
-        if (AcWindowsProvider.widgetIds(context).isEmpty()) {
-            WorkManager.getInstance(context).cancelUniqueWork(AcWindowsProvider.PERIODIC_WORK)
-        }
+        WorkManager.getInstance(context).cancelUniqueWork(PERIODIC_WORK)
+        alarms(context)?.cancel(tickIntent(context))
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
             ACTION_REFRESH -> {
-                renderAll(context, refreshing = true)
-                AcWindowsProvider.enqueueRefresh(context)
+                renderAll(context, refreshing = true)   // immediate "pulling data" feedback
+                enqueueRefresh(context)
             }
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED ->
-                AcWindowsProvider.scheduleTick(context)
+            // The 10-minute auto-refresh tick. Re-arm first (so the chain survives even if the
+            // fetch never runs), then refresh quietly — the old data stays readable meanwhile.
+            ACTION_TICK -> {
+                scheduleTick(context)
+                enqueueRefresh(context)
+            }
+            // Alarms don't survive a reboot (WorkManager's own jobs do), so re-arm.
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                scheduleTick(context)
+                schedulePeriodic(context)
+            }
         }
     }
 
     companion object {
         const val ACTION_REFRESH = "com.acwindows.ACTION_FORECAST_REFRESH"
+        private const val ACTION_TICK = "com.acwindows.ACTION_TICK"
+        const val PERIODIC_WORK = "ac_windows_periodic"
+        private const val REFRESH_WORK = "ac_windows_refresh"
+
+        /**
+         * How often the widget refreshes itself, unprompted — and, by the same token, how long
+         * a cached snapshot is considered current (see [WidgetCache.TTL_MS]).
+         */
+        const val TICK_INTERVAL_MS = WidgetCache.TTL_MS
 
         fun widgetIds(context: Context): IntArray =
             AppWidgetManager.getInstance(context)
                 .getAppWidgetIds(ComponentName(context, ForecastWidgetProvider::class.java))
 
+        /** Redraw every instance from cache with the spinner off (keeps last good data). */
         fun refreshDone(context: Context) = renderAll(context, refreshing = false)
+
+        /** Draw immediately (spinner over current/loading view) and kick off a fetch. */
+        fun refreshNow(context: Context) {
+            renderAll(context, refreshing = true)
+            enqueueRefresh(context)
+        }
 
         fun renderAll(context: Context, refreshing: Boolean) {
             val mgr = AppWidgetManager.getInstance(context)
             widgetIds(context).forEach { drawId(context, mgr, it, refreshing) }
+        }
+
+        /**
+         * Queue a refresh, coalescing with one already queued or running (KEEP). Every trigger
+         * funnels through here — a tap, the 10-minute tick, a settings save, and onUpdate, which
+         * the system can fire several times in a row — so without a unique name a single moment
+         * could kick off overlapping fetches that fight over the snapshot.
+         */
+        fun enqueueRefresh(context: Context) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                REFRESH_WORK, ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<RefreshWorker>().build(),
+            )
+        }
+
+        private fun alarms(context: Context) =
+            context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+
+        /** The self-rescheduling 10-minute tick broadcast (see [scheduleTick]). */
+        private fun tickIntent(context: Context): PendingIntent {
+            val intent = Intent(context, ForecastWidgetProvider::class.java).setAction(ACTION_TICK)
+            return PendingIntent.getBroadcast(
+                context, 2, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /**
+         * Arm the next auto-refresh, [TICK_INTERVAL_MS] from now. Called on every widget update,
+         * on boot, and by [RefreshWorker] after each run, so the clock restarts from the last
+         * actual refresh and a dropped tick heals on the next one.
+         *
+         * WorkManager can't do this alone: its periodic floor is 15 min. setAndAllowWhileIdle is
+         * inexact and needs no permission, but still fires in Doze (throttled to ~9 min at
+         * worst), so 10 min is honoured whenever the phone is awake. With no widget placed there
+         * is nothing to refresh, so the alarm is cancelled rather than left self-perpetuating.
+         */
+        fun scheduleTick(context: Context) {
+            val am = alarms(context) ?: return
+            val pi = tickIntent(context)
+            if (widgetIds(context).isEmpty()) {
+                am.cancel(pi)
+                return
+            }
+            runCatching {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + TICK_INTERVAL_MS, pi)
+            }
+        }
+
+        fun schedulePeriodic(context: Context) {
+            // Backstop only — the 10-min alarm tick is the primary driver. 15 min is
+            // WorkManager's floor. UPDATE (not KEEP) so a reinstall/version bump re-applies the
+            // interval instead of keeping a stale longer one.
+            val work = PeriodicWorkRequestBuilder<RefreshWorker>(15, TimeUnit.MINUTES).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, work,
+            )
         }
 
         private fun drawId(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean) {
@@ -112,7 +198,7 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             val density = context.resources.displayMetrics.density
 
             return RemoteViews(context.packageName, R.layout.widget_forecast).apply {
-                setImageViewBitmap(R.id.forecast_card, cardBitmap(chrome.card, cfg.widgetOpacity, wDp, hDp, density))
+                setImageViewBitmap(R.id.forecast_card, cardBitmap(chrome.card, widget.opacityPct, wDp, hDp, density))
                 // ALWAYS set the panel, even with nothing to draw: the launcher reapplies a
                 // RemoteViews onto the views already on screen rather than re-inflating, so
                 // a panel we don't set keeps the previous one under freshly updated text.
@@ -142,9 +228,8 @@ class ForecastWidgetProvider : AppWidgetProvider() {
         }
 
         /**
-         * The rounded card ground. Drawn rather than styled for the same reason as
-         * [AcWindowsProvider.cardBitmap]: RemoteViews cannot tint a shape drawable before
-         * API 31, and the ground carries the user's opacity.
+         * The rounded card ground. Drawn rather than styled because RemoteViews cannot tint a
+         * shape drawable before API 31, and the ground carries the user's opacity.
          */
         private fun cardBitmap(color: Int, opacityPct: Int, wDp: Int, hDp: Int, density: Float): Bitmap {
             val w = (wDp * density).toInt().coerceIn(80, 1400)

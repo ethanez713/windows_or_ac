@@ -186,11 +186,10 @@ private fun SettingsButton() {
     Box(
         Modifier.size(48.dp).clip(CircleShape).combinedClickable(
             onClick = { context.startActivity(Intent(context, ConfigActivity::class.java)) },
-            onLongClick = { context.startActivity(Intent(context, WidgetSettingsActivity::class.java)) },
         ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings (long-press for widget settings)")
+        Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings")
     }
 }
 
@@ -871,7 +870,7 @@ private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () ->
                     // the settings screen applies, so the two can't disagree.
                     AppConfig.saveUseDeviceLocation(context, follow && LocationProvider.hasPermission(context))
                     WidgetCache.clear(context)
-                    AcWindowsProvider.refreshNow(context)
+                    ForecastWidgetProvider.refreshNow(context)
                     onSaved()
                 },
             ) { Text("Save") }

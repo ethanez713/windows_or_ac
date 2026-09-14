@@ -11,7 +11,7 @@ import java.time.ZoneId
 
 /**
  * Does the actual fetch+decide off the main thread, caches the result, then
- * pushes it to every widget instance. Enqueued by [AcWindowsProvider] on add, on
+ * pushes it to every widget instance. Enqueued by [ForecastWidgetProvider] on add, on
  * tap, on cache expiry, and on the 10-minute auto-refresh tick.
  *
  * Every run — however it was triggered — re-arms the next tick, so the auto-refresh
@@ -31,7 +31,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
      *
      * [Result.retry] is actively harmful here. A retrying unique work stays ENQUEUED for
      * the whole of its backoff (30s, doubling towards hours), and every refresh trigger
-     * goes through [AcWindowsProvider.enqueueRefresh], which uses KEEP — so while that
+     * goes through [ForecastWidgetProvider.enqueueRefresh], which uses KEEP — so while that
      * backoff ran, each 10-minute tick was silently dropped instead of retrying. One
      * transient DNS failure could therefore strand a widget with no cached snapshot on
      * "fetching weather…" for hours. The tick is the retry mechanism (re-armed at the top
@@ -41,13 +41,12 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         running.withLock { refresh() }
     } catch (e: Exception) {
         Log.w(TAG, "refresh failed; next tick will retry", e)
-        AcWindowsProvider.refreshDone(applicationContext)
         ForecastWidgetProvider.refreshDone(applicationContext)
         Result.success()
     }
 
     private suspend fun refresh(): Result {
-        AcWindowsProvider.scheduleTick(applicationContext)
+        ForecastWidgetProvider.scheduleTick(applicationContext)
         // loadResolved (not load): when the user has "use my phone's location" on, this is
         // where the current fix is picked up, so the widget follows you without any
         // separate location plumbing.
@@ -63,7 +62,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         // the same empty-data guard, so a dead refresh never clobbers the last good snapshot.
         if (!publish(applicationContext, cfg, result, final = true)) {
             Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${con.sourcesFailed}")
-            AcWindowsProvider.refreshDone(applicationContext)
             ForecastWidgetProvider.refreshDone(applicationContext)
         }
         return Result.success()   // see [doWork] — never retry(), the tick drives retries
@@ -142,7 +140,6 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                     "confidence=${con.confidence} now=${con.tempF} score=$nowScore -> ${rec.action}; " +
                     "best=${series.bestStart}..${series.bestEnd} hours=${series.scores.size}",
             )
-            AcWindowsProvider.renderAll(context, refreshing = !final)
             ForecastWidgetProvider.renderAll(context, refreshing = !final)
             return true
         }

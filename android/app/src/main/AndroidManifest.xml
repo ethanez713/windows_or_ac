@@ -36,26 +36,6 @@
             </intent-filter>
         </activity>
 
-        <!-- The home-screen widget. No launcher Activity is needed: you add the
-             widget from the launcher's widget tray. -->
-        <receiver
-            android:name=".AcWindowsProvider"
-            android:exported="true"
-            android:label="@string/app_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.acwindows.ACTION_REFRESH" />
-                <!-- The 10-minute self-rescheduling auto-refresh alarm. -->
-                <action android:name="com.acwindows.ACTION_TICK" />
-                <!-- Alarms are dropped on reboot / package replace: re-arm the tick. -->
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/ac_windows_info" />
-        </receiver>
-
         <!-- Global app / comfort settings (thresholds + location). Launched from the
              app's gear icon. Not the widget's configure screen anymore. -->
         <activity
@@ -64,21 +44,9 @@
             android:label="AC / Windows settings"
             android:theme="@android:style/Theme.Material" />
 
-        <!-- Widget-only settings (forecast length + opacity). Shown when the widget is
-             added / reconfigured, and via long-press on the app's gear icon. -->
-        <activity
-            android:name=".WidgetSettingsActivity"
-            android:exported="true"
-            android:label="Widget settings"
-            android:theme="@android:style/Theme.Material">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
-            </intent-filter>
-        </activity>
-
         <!-- The forecast widget: what the weather will do in the next N hours, as one
-             layered panel. Shares AcWindowsProvider's 10-minute alarm tick and the same
-             cached snapshot rather than owning either. -->
+             layered panel. The app's only home-screen widget, so it also owns the shared
+             10-minute alarm tick and the cached snapshot the refresh worker writes. -->
         <receiver
             android:name=".ForecastWidgetProvider"
             android:exported="true"
@@ -86,6 +54,9 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.acwindows.ACTION_FORECAST_REFRESH" />
+                <!-- The 10-minute self-rescheduling auto-refresh alarm. -->
+                <action android:name="com.acwindows.ACTION_TICK" />
+                <!-- Alarms are dropped on reboot / package replace: re-arm the tick. -->
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>

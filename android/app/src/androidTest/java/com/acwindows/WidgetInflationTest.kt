@@ -33,24 +33,20 @@ class WidgetInflationTest {
     fun forecastWidgetInflates() {
         WidgetCache.save(ctx, sampleSnapshot())
         val cases = listOf(
-            Triple(true, true, "forecast_score_daynight"),
-            Triple(false, true, "forecast_plain_daynight"),
-            Triple(true, false, "forecast_score_flat"),
+            ForecastWidgetConfig(showScore = true, showDayNight = true) to "forecast_score_daynight",
+            ForecastWidgetConfig(showScore = false, showDayNight = true) to "forecast_plain_daynight",
+            ForecastWidgetConfig(showScore = true, showDayNight = false) to "forecast_score_flat",
+            ForecastWidgetConfig(showUv = true, showCloud = true) to "forecast_uv_cloud",
         )
-        cases.forEach { (score, dayNight, name) ->
+        cases.forEach { (cfg, name) ->
             val id = 90_000 + (name.hashCode() and 0x7fff)
-            ForecastWidgetConfig.save(ctx, id, ForecastWidgetConfig(showScore = score, showDayNight = dayNight))
+            ForecastWidgetConfig.save(ctx, id, cfg)
             try {
                 inflateAndAssert(ForecastWidgetProvider.buildViews(ctx, id, false, 392 to 186), name, 392, 186)
             } finally {
                 ForecastWidgetConfig.delete(ctx, id)
             }
         }
-    }
-
-    @Test
-    fun scoreWidgetInflates() {
-        inflateAndAssert(AcWindowsProvider.buildViews(ctx, sampleSnapshot(), false, 250 to 180), "score_widget", 250, 180)
     }
 
     private fun inflateAndAssert(rv: RemoteViews, name: String, wDp: Int, hDp: Int) {

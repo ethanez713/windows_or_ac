@@ -410,7 +410,7 @@ class ConfigActivity : Activity() {
 
         // New comfort/location/keys → cached scores are stale; refetch + redraw.
         WidgetCache.clear(this)
-        AcWindowsProvider.refreshNow(this)
+        ForecastWidgetProvider.refreshNow(this)
 
         savedPlaceName = placeName
         staged.commit()

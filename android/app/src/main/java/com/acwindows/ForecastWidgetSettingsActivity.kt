@@ -77,6 +77,16 @@ class ForecastWidgetSettingsActivity : Activity() {
             override fun onStopTrackingTouch(sb: SeekBar?) = Unit
         })
 
+        val opacityValue = findViewById<TextView>(R.id.opacity_value)
+        findViewById<SeekBar>(R.id.opacity).setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                opacityValue.text = "$progress%"
+                changed()
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) = Unit
+            override fun onStopTrackingTouch(sb: SeekBar?) = Unit
+        })
+
         hoursField().addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) = changed()
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
@@ -105,7 +115,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         // the app has run): ask for a refresh and watch for it, so the preview fills in
         // instead of sitting empty for the whole visit.
         if (WidgetCache.load(this) == null) {
-            AcWindowsProvider.enqueueRefresh(this)
+            ForecastWidgetProvider.enqueueRefresh(this)
             pollsLeft = PREVIEW_POLLS
             poll.postDelayed(::pollForSnapshot, PREVIEW_POLL_MS)
         }
@@ -166,6 +176,9 @@ class ForecastWidgetSettingsActivity : Activity() {
         val textScale = findViewById<SeekBar>(R.id.text_scale)
         textScale.progress = ForecastWidgetConfig.clampTextScale(cfg.textScalePct)
         findViewById<TextView>(R.id.text_scale_value).text = "${textScale.progress}%"
+        val opacity = findViewById<SeekBar>(R.id.opacity)
+        opacity.progress = ForecastWidgetConfig.clampOpacity(cfg.opacityPct)
+        findViewById<TextView>(R.id.opacity_value).text = "${opacity.progress}%"
     }
 
     private fun check(id: Int) {
@@ -195,6 +208,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         hideUnlikelyRain = checkBox(R.id.hide_rain).isChecked,
         tapOpensApp = checkBox(R.id.tap_opens).isChecked,
         textScalePct = ForecastWidgetConfig.clampTextScale(findViewById<SeekBar>(R.id.text_scale).progress),
+        opacityPct = ForecastWidgetConfig.clampOpacity(findViewById<SeekBar>(R.id.opacity).progress),
     )
 
     /** The real renderer at the real frame size, so the preview IS the widget. */
