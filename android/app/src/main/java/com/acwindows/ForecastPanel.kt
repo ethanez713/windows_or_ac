@@ -86,7 +86,7 @@ object ForecastPanel {
         if (slice.isEmpty()) return bmp
         val n = slice.count()
 
-        val head = Head(s, cfg, unit, slice, widget)
+        val head = Head(s, cfg, unit, slice)
         drawHeader(context, c, head, d, chrome, dp, w)
 
         val ts = textScale
@@ -110,7 +110,7 @@ object ForecastPanel {
      * reader has already read.
      */
     private class Head(
-        s: Snapshot, cfg: AppConfig, unit: TempUnit, slice: IntRange, widget: ForecastWidgetConfig,
+        s: Snapshot, cfg: AppConfig, unit: TempUnit, slice: IntRange,
     ) {
         val tempF = s.tempF
         val hero = s.tempF?.let { unit.deg(it) } ?: "—°"
