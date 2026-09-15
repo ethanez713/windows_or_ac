@@ -30,13 +30,13 @@ object ForecastPanel {
     private const val HEADER_H = 40f
     private const val HEADER_GAP = 3f
     private const val PLOT_LEFT = 30f
-    /** The gradient strips share the score bar's height; the halftone cloud strip is twice
-     *  that, since the dot screen needs the height to read. */
+    /** The gradient strips share the score bar's height; the halftone cloud strip is taller,
+     *  since the dot screen needs the height to read. */
     private const val STRIP_H = 5f
     private const val AQI_H = STRIP_H
     private const val SCORE_H = STRIP_H
     private const val UV_H = STRIP_H
-    private const val CLOUD_H = STRIP_H * 2f
+    private const val CLOUD_H = 8f
 
     /** Gap above each strip — from the plot for the first, from the strip above for the rest. */
     private const val STRIP_GAP = 2f
