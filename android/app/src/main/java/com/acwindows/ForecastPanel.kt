@@ -30,12 +30,16 @@ object ForecastPanel {
     private const val HEADER_H = 40f
     private const val HEADER_GAP = 3f
     private const val PLOT_LEFT = 30f
-    /** All below-plot strips share one height, matching the score bar. */
+    /** The gradient strips share the score bar's height; the halftone cloud strip is twice
+     *  that, since the dot screen needs the height to read. */
     private const val STRIP_H = 5f
     private const val AQI_H = STRIP_H
     private const val SCORE_H = STRIP_H
     private const val UV_H = STRIP_H
-    private const val CLOUD_H = STRIP_H
+    private const val CLOUD_H = STRIP_H * 2f
+
+    /** Gap above each strip — from the plot for the first, from the strip above for the rest. */
+    private const val STRIP_GAP = 2f
 
     /** The below-plot strips, top to bottom, each reserving a band of [bandH] at the panel foot. */
     private enum class Strip(val h: Float) { SCORE(SCORE_H), AQI(AQI_H), UV(UV_H), CLOUD(CLOUD_H) }
@@ -47,7 +51,7 @@ object ForecastPanel {
         if (widget.showCloud) add(Strip.CLOUD)
     }
 
-    private fun bandH(strip: Strip, dp: Float) = (strip.h + 5f) * dp
+    private fun bandH(strip: Strip, dp: Float) = (strip.h + STRIP_GAP) * dp
 
     /**
      * Band reserved BELOW the plot for the hour labels. The time axis is a layer of the
@@ -366,7 +370,7 @@ object ForecastPanel {
         // 4. the below-plot strips, in order, each in its own reserved band at the panel foot.
         var bandTop = g.bottom
         stripsOf(widget).forEach { strip ->
-            val y = bandTop + 3f * dp
+            val y = bandTop + STRIP_GAP * dp
             when (strip) {
                 Strip.SCORE -> drawScoreStrip(context, c, s, idx, g, d, chrome, dp, cfg, y)
                 Strip.AQI -> drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, y)
