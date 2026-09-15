@@ -30,11 +30,12 @@ object ForecastPanel {
     private const val HEADER_H = 40f
     private const val HEADER_GAP = 3f
     private const val PLOT_LEFT = 30f
-    private const val AQI_H = 4f
-    private const val SCORE_H = 5f
-    private const val UV_H = 4f
-    /** Taller than the gradient strips: the halftone dot screen needs the height to read. */
-    private const val CLOUD_H = 9f
+    /** All below-plot strips share one height, matching the score bar. */
+    private const val STRIP_H = 5f
+    private const val AQI_H = STRIP_H
+    private const val SCORE_H = STRIP_H
+    private const val UV_H = STRIP_H
+    private const val CLOUD_H = STRIP_H
 
     /** The below-plot strips, top to bottom, each reserving a band of [bandH] at the panel foot. */
     private enum class Strip(val h: Float) { SCORE(SCORE_H), AQI(AQI_H), UV(UV_H), CLOUD(CLOUD_H) }

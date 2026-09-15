@@ -5,13 +5,13 @@ package com.acwindows
  * night, chosen per hour from `isDay` (the sky's colour is objective, not theme-dependent).
  * Cloud cover is NOT mixed into this — it is laid over the top as a halftone dot screen (see
  * `halftone` in Drawer.kt), so the strip reads as sky with clouds drawn on it, [CLOUD] being
- * the dots' white-grey.
+ * the dots' white.
  */
 object CloudRamp {
 
     private const val CLEAR_DAY = 0xFF12B6DC.toInt()      // cyan sky
     private const val CLEAR_NIGHT = 0xFF150A24.toInt()    // near-black violet — a clear night sky
-    const val CLOUD = 0xFFDCE1E6.toInt()                  // halftone dot colour (white-grey cloud)
+    const val CLOUD = 0xFFFFFFFF.toInt()                  // halftone dot colour — pure white, to read against the sky blue
 
     private fun sky(isDay: Boolean?) = if (isDay ?: true) CLEAR_DAY else CLEAR_NIGHT
 
