@@ -368,17 +368,24 @@ object ForecastPanel {
         }
 
         // 4. the below-plot strips, in order, each in its own reserved band at the panel foot.
+        // Each strip draws its own bar and, when it has data, contributes a gutter tag; the tags
+        // are placed together afterwards (see [drawStripLabels]) so the tight bands can't stack
+        // one on top of the next.
+        val labels = mutableListOf<StripLabel>()
         var bandTop = g.bottom
         stripsOf(widget).forEach { strip ->
             val y = bandTop + STRIP_GAP * dp
-            when (strip) {
-                Strip.SCORE -> drawScoreStrip(context, c, s, idx, g, d, chrome, dp, cfg, y)
-                Strip.AQI -> drawAqi(context, c, s, idx, g, d, chrome, dp, cfg, dark, ts, y)
-                Strip.UV -> drawUv(context, c, s, idx, chrome, dp, dark, ts, g.x0, g.x1, y)
-                Strip.CLOUD -> drawCloud(context, c, s, idx, chrome, dp, ts, g.x0, g.x1, y)
+            val mid = y + strip.h * dp / 2
+            val label = when (strip) {
+                Strip.SCORE -> if (drawScoreStrip(c, s, idx, g, d, chrome, dp, cfg, y)) StripLabel("WIN", d.score, mid) else null
+                Strip.AQI -> if (drawAqi(c, s, idx, g, d, chrome, dp, cfg, dark, y)) StripLabel("AIR", d.aqi, mid) else null
+                Strip.UV -> if (drawUv(c, s, idx, chrome, dp, dark, g.x0, g.x1, y)) StripLabel("UV", chrome.muted, mid) else null
+                Strip.CLOUD -> if (drawCloud(c, s, idx, chrome, dp, g.x0, g.x1, y)) StripLabel("cld", chrome.muted, mid) else null
             }
+            label?.let { labels += it }
             bandTop += bandH(strip, dp)
         }
+        drawStripLabels(context, c, labels, g.x0, dp, ts)
 
         // 5. the present, at the REAL clock time — the gap to the plot edge is staleness
         c.drawLine(nowX, g.top, nowX, g.bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -461,11 +468,11 @@ object ForecastPanel {
     }
 
     private fun drawAqi(
-        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, d: Tokens.Data,
-        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean, ts: Float, y: Float,
-    ) {
+        c: Canvas, s: Snapshot, idx: List<Int>, g: Geom, d: Tokens.Data,
+        chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, dark: Boolean, y: Float,
+    ): Boolean {
         val series = idx.map { s.aqiSeries.getOrNull(it) }
-        if (series.all { it == null }) return
+        if (series.all { it == null }) return false
         val (colors, stops) = AqiRamp.sweep(series, cfg.aqiPalette, dark)
         val bar = RectF(g.x0, y, g.x1, y + AQI_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -474,22 +481,16 @@ object ForecastPanel {
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
         })
-        // Named in the AQI text colour rather than left to the ramp: under the EPA palette
-        // the ramp's own hue collides with the temperature line.
-        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = d.aqi; textSize = 9f * dp * ts; textAlign = Paint.Align.RIGHT
-            typeface = WidgetType.monoBold(context)
-        }
-        c.drawText("AIR", g.x0 - 3f * dp, y + AQI_H * dp / 2 + 3f * dp, label)
+        return true
     }
 
     /** UV index as a gradient strip — the app drawer's UV bar (see [UvRamp]) at panel scale. */
     private fun drawUv(
-        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
-        dp: Float, dark: Boolean, ts: Float, x0: Float, x1: Float, y: Float,
-    ) {
+        c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
+        dp: Float, dark: Boolean, x0: Float, x1: Float, y: Float,
+    ): Boolean {
         val series = idx.map { s.uvSeries.getOrNull(it) }
-        if (series.all { it == null }) return
+        if (series.all { it == null }) return false
         val (colors, stops) = UvRamp.sweep(series, dark)
         val bar = RectF(x0, y, x1, y + UV_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -498,7 +499,7 @@ object ForecastPanel {
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
         })
-        stripLabel(context, c, "UV", chrome.muted, dp, ts, x0, y + UV_H * dp / 2)
+        return true
     }
 
     /**
@@ -507,11 +508,11 @@ object ForecastPanel {
      * drawn on it rather than a grey fade.
      */
     private fun drawCloud(
-        context: Context, c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
-        dp: Float, ts: Float, x0: Float, x1: Float, y: Float,
-    ) {
+        c: Canvas, s: Snapshot, idx: List<Int>, chrome: Tokens.Chrome,
+        dp: Float, x0: Float, x1: Float, y: Float,
+    ): Boolean {
         val cover = idx.map { s.cloudSeries.getOrNull(it) }
-        if (cover.all { it == null }) return
+        if (cover.all { it == null }) return false
         val (colors, stops) = CloudRamp.skySweep(idx.map { s.isDay.getOrNull(it) })
         val bar = RectF(x0, y, x1, y + CLOUD_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -524,17 +525,68 @@ object ForecastPanel {
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
         })
-        stripLabel(context, c, "cld", chrome.muted, dp, ts, x0, y + CLOUD_H * dp / 2)
+        return true
     }
 
-    /** A strip's gutter tag, right-aligned just left of the plot and vertically centred on it. */
-    private fun stripLabel(
-        context: Context, c: Canvas, text: String, color: Int, dp: Float, ts: Float, x0: Float, midY: Float,
+    /** One strip's gutter tag: text, hue, and the strip centre it wants to sit on. AIR takes
+     *  the AQI text hue rather than the ramp's, whose green collides with the temperature line. */
+    private class StripLabel(val text: String, val color: Int, val targetY: Float)
+
+    /**
+     * The strips' gutter tags, right-aligned just left of the plot. Each wants to sit on its
+     * strip's centre, but the 2dp bands pack the centres closer than the text is tall, so the
+     * tags are nudged apart: consecutive baselines are forced [minGap] apart while each moves as
+     * little as possible from its target — so the middle tags stay on their strip and the top and
+     * bottom ones give way. That least-squares fit under an ordering constraint is isotonic
+     * regression, solved exactly by pool-adjacent-violators (see [spreadApart]).
+     */
+    private fun drawStripLabels(
+        context: Context, c: Canvas, labels: List<StripLabel>, x0: Float, dp: Float, ts: Float,
     ) {
-        c.drawText(text, x0 - 3f * dp, midY + 3f * dp, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color; textSize = 9f * dp * ts; textAlign = Paint.Align.RIGHT
-            typeface = WidgetType.monoBold(context)
-        })
+        if (labels.isEmpty()) return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = 9f * dp * ts; textAlign = Paint.Align.RIGHT; typeface = WidgetType.monoBold(context)
+        }
+        val ys = spreadApart(FloatArray(labels.size) { labels[it].targetY }, paint.textSize)
+        labels.forEachIndexed { i, lab ->
+            paint.color = lab.color
+            c.drawText(lab.text, x0 - 3f * dp, ys[i] + 3f * dp, paint)
+        }
+    }
+
+    /**
+     * Least-squares placement of ascending [targets] under the constraint that consecutive
+     * outputs are at least [minGap] apart: minimises Σ(out−target)². Substituting z_i = out_i −
+     * i·minGap turns the spacing constraint into "non-decreasing", so the answer is the isotonic
+     * regression of the shifted targets — pool adjacent violators, each pool taking its members'
+     * mean.
+     */
+    private fun spreadApart(targets: FloatArray, minGap: Float): FloatArray {
+        val n = targets.size
+        if (n == 0) return targets
+        val mean = FloatArray(n)
+        val count = IntArray(n)
+        val start = IntArray(n)
+        var pools = 0
+        for (i in 0 until n) {
+            mean[pools] = targets[i] - i * minGap
+            count[pools] = 1
+            start[pools] = i
+            pools++
+            while (pools > 1 && mean[pools - 1] < mean[pools - 2]) {
+                val merged = count[pools - 1] + count[pools - 2]
+                mean[pools - 2] = (mean[pools - 1] * count[pools - 1] + mean[pools - 2] * count[pools - 2]) / merged
+                count[pools - 2] = merged
+                pools--
+            }
+        }
+        val out = FloatArray(n)
+        var i = 0
+        for (p in 0 until pools) {
+            val end = if (p + 1 < pools) start[p + 1] else n
+            while (i < end) { out[i] = mean[p] + i * minGap; i++ }
+        }
+        return out
     }
 
     /**
@@ -587,10 +639,10 @@ object ForecastPanel {
      * colours are laid out as a gradient so the strip reads as a drift, never a set of blocks.
      */
     private fun drawScoreStrip(
-        context: Context, c: Canvas, s: Snapshot, idx: List<Int>,
+        c: Canvas, s: Snapshot, idx: List<Int>,
         g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, y: Float,
-    ) {
-        if (s.scores.isEmpty()) return
+    ): Boolean {
+        if (s.scores.isEmpty()) return false
         val threshold = cfg.comfort.openScoreMin
         val colors = IntArray(idx.size.coerceAtLeast(2)) { d.score }
         idx.forEachIndexed { k, i -> colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d) }
@@ -604,11 +656,7 @@ object ForecastPanel {
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = chrome.hairline; style = Paint.Style.STROKE; strokeWidth = 0.75f * dp
         })
-        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = d.score; textSize = 9f * dp; textAlign = Paint.Align.RIGHT
-            typeface = WidgetType.monoBold(context)
-        }
-        c.drawText("WIN", g.x0 - 3f * dp, y + SCORE_H * dp / 2 + 3f * dp, label)
+        return true
     }
 
     /**
