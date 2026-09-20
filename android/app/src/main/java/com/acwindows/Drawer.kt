@@ -12,11 +12,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
@@ -101,7 +108,7 @@ fun DetailDrawer(
         // day toggle) woke it. The Canvas children draw only — none consume pointer events —
         // so a gesture on the Box reaches the whole stack. A horizontal drag is consumed to
         // scrub; a vertical one falls through to scroll the list.
-        Box(Modifier.scrub(n) { onSel(it) }) {
+        Box(Modifier.fillMaxWidth().scrub(n, onSel)) {
             Column {
                 val dark = Skin.chrome.dark
                 TempDewBlock(points, unit, tm, nowFrac, selFrac)
@@ -505,16 +512,32 @@ private fun DrawScope.plot(n: Int) =
  * Tap or horizontal-drag anywhere over the chart stack to pick the hour under the finger.
  * The horizontal drag is consumed so it scrubs rather than scrolls; a vertical drag isn't
  * touched, so the day list still scrolls through the overlay.
+ *
+ * [onSel] is read at event time, not captured when the handler starts: `pointerInput`'s
+ * block keeps the first lambda, and the default-open today card replaces its `sel` state
+ * on the first data refresh (same [n], new list) — so the handler would keep writing to
+ * the discarded state, looking dead until the drawer is disposed and recreated. Size is
+ * a key too: the first layout of that card is often empty, and `pointerInput` does not
+ * restart on size alone.
  */
-private fun Modifier.scrub(n: Int, onSel: (Int?) -> Unit): Modifier = this
-    .pointerInput(n) { detectTapGestures { o -> onSel(idxAt(o.x, size.width.toFloat(), n)) } }
-    .pointerInput(n) {
-        detectHorizontalDragGestures(
-            onDragStart = { o -> onSel(idxAt(o.x, size.width.toFloat(), n)) },
-        ) { change, _ ->
-            onSel(idxAt(change.position.x, size.width.toFloat(), n)); change.consume()
+private fun Modifier.scrub(n: Int, onSel: (Int?) -> Unit): Modifier = composed {
+    val currentOnSel by rememberUpdatedState(onSel)
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    onSizeChanged { boxSize = it }
+        .pointerInput(n, boxSize) {
+            if (boxSize.width <= 0 || boxSize.height <= 0) return@pointerInput
+            detectTapGestures { o -> currentOnSel(idxAt(o.x, size.width.toFloat(), n)) }
         }
-    }
+        .pointerInput(n, boxSize) {
+            if (boxSize.width <= 0 || boxSize.height <= 0) return@pointerInput
+            detectHorizontalDragGestures(
+                onDragStart = { o -> currentOnSel(idxAt(o.x, size.width.toFloat(), n)) },
+            ) { change, _ ->
+                currentOnSel(idxAt(change.position.x, size.width.toFloat(), n))
+                change.consume()
+            }
+        }
+}
 
 /** Which point index an x maps to, measured within the same [PLOT_LEFT]/inset gutters the charts use. */
 private fun Density.idxAt(x: Float, width: Float, n: Int): Int {

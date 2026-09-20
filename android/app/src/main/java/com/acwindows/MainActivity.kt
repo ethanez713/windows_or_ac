@@ -506,8 +506,13 @@ private fun DayCard(
             // hour-prefix match four rows could tie on).
             val nowIdx = remember(day) { nowIdxOf(day.points) }
             // Hour picked by scrubbing the expanded charts; it also drives the marker on the
-            // score bars above. Cleared when the card collapses or the day's rows change.
-            var sel by remember(day.points, expanded) { mutableStateOf<Int?>(null) }
+            // score bars above. Cleared when the card collapses or the day's rows change
+            // (length / first timestamp), not on every new list instance — a refresh of the
+            // same series would otherwise discard the state the in-flight pointerInput still
+            // writes to, and the default-open today card would look unscubbable.
+            var sel by remember(expanded, day.date, day.points.size, day.points.firstOrNull()?.time) {
+                mutableStateOf<Int?>(null)
+            }
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.width(labelW + colGap))
