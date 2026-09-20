@@ -124,6 +124,9 @@ object ForecastPanel {
         val hi: String
         val lo: String
         val factors: List<Triple<String, String, Factor>>
+        // UV and cloud aren't comfort factors — no penalty, no limiting marker — so they ride
+        // the tail of the factor line as plain context readouts rather than joining [factors].
+        val extras: List<Pair<String, String>>
         val limiting: Factor?
         val storm: Pair<String, Double>?
 
@@ -148,6 +151,11 @@ object ForecastPanel {
                 s.dewPointF?.let { Triple("DEW", unit.deg(it), Factor.DEW) },
                 s.aqi?.let { Triple("AIR", it.toString(), Factor.AQI) },
                 Triple("RAIN", "${rainNow.roundToInt()}%", Factor.RAIN),
+            )
+
+            extras = listOfNotNull(
+                s.uvSeries.getOrNull(slice.first)?.let { "UV" to it.roundToInt().toString() },
+                s.cloudSeries.getOrNull(slice.first)?.let { "CLD" to "${it.roundToInt()}%" },
             )
 
             val c = cfg.comfort
@@ -227,22 +235,32 @@ object ForecastPanel {
         val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = chrome.body; textSize = 11f * dp; typeface = WidgetType.mono(context)
         }
-        val sepPaint = Paint(valuePaint).apply { color = chrome.faint }
+        // The separator rides the proportional UI face, not mono: a monospace " · " reserves a
+        // full figure cell on each side and, with five readouts now on the line, that padding is
+        // exactly the horizontal room the row can least afford.
+        val sepPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = chrome.faint; textSize = 11f * dp; typeface = WidgetType.ui(context)
+        }
 
         var x = x0
-        head.factors.forEachIndexed { i, (label, value, factor) ->
-            if (i > 0) {
+        var drawn = 0
+        fun cell(label: String, value: String, labelColor: Int, factor: Factor?) {
+            if (drawn > 0) {
                 c.drawText(" · ", x, baseline, sepPaint)
                 x += sepPaint.measureText(" · ")
             }
             val pairW = labelPaint.measureText("$label ") + valuePaint.measureText(value)
-            if (head.limiting == factor) markerBand(c, chrome, x, baseline, pairW, labelPaint.textSize)
-            labelPaint.color = Tokens.factorHue(d, factor)
+            if (factor != null && head.limiting == factor) markerBand(c, chrome, x, baseline, pairW, labelPaint.textSize)
+            labelPaint.color = labelColor
             c.drawText("$label ", x, baseline, labelPaint)
             x += labelPaint.measureText("$label ")
             c.drawText(value, x, baseline, valuePaint)
             x += valuePaint.measureText(value)
+            drawn++
         }
+
+        head.factors.forEach { (label, value, factor) -> cell(label, value, Tokens.factorHue(d, factor), factor) }
+        head.extras.forEach { (label, value) -> cell(label, value, chrome.muted, null) }
     }
 
     /** A flat band over the bottom 42% of the line — a highlighter, not a box. */

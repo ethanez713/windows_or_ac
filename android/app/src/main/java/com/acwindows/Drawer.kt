@@ -5,6 +5,8 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -140,6 +142,7 @@ fun DetailDrawer(
  * says nothing the rain chart below doesn't already say more plainly. A non-zero chance
  * always shows.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) {
     val d = Skin.data
@@ -153,6 +156,10 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
         p.tempF?.let { parts += unit.degUnit(it) to d.temp }
         p.dewPointF?.let { parts += "dew ${unit.deg(it)}" to d.dew }
         p.aqi?.let { parts += "AQI $it" to d.aqi }
+        // UV and cloud follow AQI, mirroring the strip order below; UV drops at zero (night),
+        // where — like rain at zero — the reading says nothing its own strip doesn't.
+        p.uvIndex?.takeIf { it > 0 }?.let { parts += "UV ${it.roundToInt()}" to Color(UvRamp.colorAt(it, chrome.dark)) }
+        p.cloudPct?.let { parts += "cld ${it.roundToInt()}%" to chrome.muted }
         p.precipProb?.takeIf { it > 0 }?.let { prob ->
             val rain = buildString {
                 append("rain ${prob.roundToInt()}%")
@@ -165,18 +172,28 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
         val temps = points.mapNotNull { it.tempF }
         val dews = points.mapNotNull { it.dewPointF }
         val aqis = points.mapNotNull { it.aqi }
+        val uvs = points.mapNotNull { it.uvIndex }
+        val clouds = points.mapNotNull { it.cloudPct }
         val rain = points.mapNotNull { it.precipProb }.maxOrNull()
         parts += dayLabelOf(points.first().time) to chrome.heading
         temps.maxOrNull()?.let { parts += "peak ${unit.degUnit(it)}" to d.temp }
         dews.maxOrNull()?.let { parts += "dew ${unit.deg(it)}" to d.dew }
         aqis.maxOrNull()?.let { parts += "AQI $it" to d.aqi }
+        uvs.maxOrNull()?.takeIf { it > 0 }?.let { parts += "UV ${it.roundToInt()}" to Color(UvRamp.colorAt(it, chrome.dark)) }
+        clouds.maxOrNull()?.let { parts += "cld ${it.roundToInt()}%" to chrome.muted }
         rain?.takeIf { it > 0 }?.let { parts += "rain ${it.roundToInt()}%" to d.rain }
     }
 
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // A flow, not a Row: with UV and cloud added the readouts can outrun one line, and a Row
+    // would clip the overflow off the right edge (losing a reading) rather than wrap it. Each
+    // value carries its OWN trailing separator as one atomic unit, so a wrap never strands a
+    // leading " · " at the start of the next line.
+    FlowRow(Modifier.fillMaxWidth()) {
         parts.forEachIndexed { i, (text, color) ->
-            if (i > 0) ReadoutText(" · ", chrome.faint)
-            ReadoutText(text, color)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ReadoutText(text, color)
+                if (i < parts.lastIndex) ReadoutText(" · ", chrome.faint)
+            }
         }
     }
 }
