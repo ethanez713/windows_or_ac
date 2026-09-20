@@ -150,10 +150,10 @@ object Tokens {
      * thresholds — a trace up to an inch-plus downpour — stepped wide enough to tell apart.
      */
     fun rainMarkDp(inchesPerHour: Double): Float = when {
-        inchesPerHour >= 1.0 -> 8f
+        inchesPerHour >= 1.0 -> 9f
         inchesPerHour >= 0.33 -> 6f
-        inchesPerHour >= 0.05 -> 4f
-        else -> 2f
+        inchesPerHour >= 0.05 -> 3f
+        else -> 1f
     }
 
     /** Every graphical mark must clear this against its own card ground (§0.1). */
