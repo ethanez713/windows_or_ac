@@ -517,7 +517,7 @@ object ForecastPanel {
     ): Boolean {
         val series = idx.map { s.uvSeries.getOrNull(it) }
         if (series.all { it == null }) return false
-        val (colors, stops) = UvRamp.sweep(series, dark)
+        val (colors, stops) = UvRamp.sweep(series, idx.map { s.isDay.getOrNull(it) }, dark)
         val bar = RectF(x0, y, x1, y + UV_H * dp)
         c.drawRect(bar, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(x0, 0f, x1, 0f, colors, stops, Shader.TileMode.CLAMP)

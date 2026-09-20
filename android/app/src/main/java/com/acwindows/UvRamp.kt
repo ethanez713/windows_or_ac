@@ -5,6 +5,9 @@ package com.acwindows
  * (extreme) — drawn as a continuous gradient across the hour axis, the same treatment
  * [AqiRamp] gives air quality. Interpolated in plain sRGB between category breakpoints.
  *
+ * Night hours are not on this ramp: they take [CloudRamp.CLEAR_NIGHT], the same near-black
+ * as the cloud bar, so dusk is one sky rather than a leftover green "UV 0".
+ *
  * The light variant darkens the green and yellow steps, which are near-invisible at full
  * chroma on an off-white card, the same trade [AqiRamp] makes.
  */
@@ -35,18 +38,27 @@ object UvRamp {
         return s.last()
     }
 
-    /** Hours with no reading hold the last known colour rather than dropping to green. */
-    fun sweep(series: List<Double?>, dark: Boolean = true): Pair<IntArray, FloatArray> {
-        val known = series.filterNotNull()
-        if (known.isEmpty()) {
+    /**
+     * Per-hour colour across the axis. Daylight follows the WHO ramp; night hours
+     * ([isDay] == false) are [CloudRamp.CLEAR_NIGHT], matching the cloud bar. A missing
+     * [isDay] is daylight, the same default [CloudRamp.skySweep] uses. Hours with no UV
+     * reading hold the last known ramp colour rather than dropping to green — but a night
+     * hour still goes black, even if the held reading is a daytime index.
+     */
+    fun sweep(
+        series: List<Double?>,
+        isDay: List<Boolean?>,
+        dark: Boolean = true,
+    ): Pair<IntArray, FloatArray> {
+        if (series.isEmpty()) {
             val flat = colorAt(0.0, dark)
             return intArrayOf(flat, flat) to floatArrayOf(0f, 1f)
         }
-        var last = known.first()
+        var last = series.firstOrNull { it != null } ?: 0.0
         val colors = IntArray(series.size)
         series.forEachIndexed { i, v ->
             if (v != null) last = v
-            colors[i] = colorAt(last, dark)
+            colors[i] = if (isDay.getOrNull(i) ?: true) colorAt(last, dark) else CloudRamp.CLEAR_NIGHT
         }
         val denom = (series.size - 1).coerceAtLeast(1).toFloat()
         return colors to FloatArray(series.size) { it / denom }

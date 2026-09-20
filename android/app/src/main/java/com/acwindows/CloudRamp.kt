@@ -10,7 +10,8 @@ package com.acwindows
 object CloudRamp {
 
     private const val CLEAR_DAY = 0xFF12B6DC.toInt()      // cyan sky
-    private const val CLEAR_NIGHT = 0xFF150A24.toInt()    // near-black violet — a clear night sky
+    /** Near-black violet — a clear night sky. Shared with the UV bar so night is one colour. */
+    const val CLEAR_NIGHT = 0xFF150A24.toInt()
     const val CLOUD = 0xFFFFFFFF.toInt()                  // halftone dot colour — pure white, to read against the sky blue
 
     private fun sky(isDay: Boolean?) = if (isDay ?: true) CLEAR_DAY else CLEAR_NIGHT

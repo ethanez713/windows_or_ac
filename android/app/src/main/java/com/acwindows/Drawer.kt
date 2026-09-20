@@ -114,7 +114,7 @@ fun DetailDrawer(
                 Spacer(Modifier.height(3.dp))
                 GradientBarBlock(
                     "UV", points.map { it.uvIndex },
-                    UvRamp.sweep(points.map { it.uvIndex }, dark),
+                    UvRamp.sweep(points.map { it.uvIndex }, points.map { it.isDay }, dark),
                     fmt = { it.roundToInt().toString() }, show = BarValues.PEAK, sel = sel, tm = tm,
                 )
                 Spacer(Modifier.height(3.dp))
