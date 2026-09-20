@@ -287,10 +287,9 @@ This follows a proportionate, personal-project security posture:
 
 ## Publishing
 
-Notes on getting this into other people's hands — what's already safe to make
-public, and the concrete blockers between here and a Google Play listing
-(`targetSdk`, release signing, privacy policy, feature graphic, and the 14-day
-closed test) — are in [docs/PUBLISHING.md](docs/PUBLISHING.md).
+What's already safe to make public, and the Google Play launch checklist
+(account, closed testing, targetSdk, signing, privacy policy, store assets) —
+[docs/PUBLISHING.md](docs/PUBLISHING.md).
 
 The launcher icon is an adaptive icon (with a themed-icon `monochrome` layer);
 the Play Store's 512×512 PNG is generated from the same geometry by
