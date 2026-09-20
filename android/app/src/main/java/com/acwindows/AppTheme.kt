@@ -27,6 +27,8 @@ class DataColors(t: Tokens.Data) {
     val storm = Color(t.storm)
     val blockedBase = Color(t.blockedBase)
     val cutoffRule = Color(t.cutoffRule)
+    val sun = Color(t.sun)
+    val cloud = Color(t.cloud)
     val raw = t
 }
 

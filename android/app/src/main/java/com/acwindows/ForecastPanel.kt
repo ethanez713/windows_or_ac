@@ -244,7 +244,7 @@ object ForecastPanel {
 
         var x = x0
         var drawn = 0
-        fun cell(label: String, value: String, labelColor: Int, factor: Factor?) {
+        fun cell(label: String, value: String, labelColor: Int, factor: Factor?, valueColor: Int = chrome.body) {
             if (drawn > 0) {
                 c.drawText(" · ", x, baseline, sepPaint)
                 x += sepPaint.measureText(" · ")
@@ -254,13 +254,21 @@ object ForecastPanel {
             labelPaint.color = labelColor
             c.drawText("$label ", x, baseline, labelPaint)
             x += labelPaint.measureText("$label ")
+            valuePaint.color = valueColor
             c.drawText(value, x, baseline, valuePaint)
             x += valuePaint.measureText(value)
             drawn++
         }
 
         head.factors.forEach { (label, value, factor) -> cell(label, value, Tokens.factorHue(d, factor), factor) }
-        head.extras.forEach { (label, value) -> cell(label, value, chrome.muted, null) }
+        head.extras.forEach { (label, value) ->
+            val color = when (label) {
+                "UV" -> d.sun
+                "CLD" -> d.cloud
+                else -> chrome.muted
+            }
+            cell(label, value, color, null, color)
+        }
     }
 
     /** A flat band over the bottom 42% of the line — a highlighter, not a box. */

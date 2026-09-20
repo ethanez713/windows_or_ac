@@ -14,6 +14,7 @@ class TokensTest {
     private fun marks(d: Tokens.Data) = mapOf(
         "temp" to d.temp, "dew" to d.dew, "aqi" to d.aqi, "rain" to d.rain,
         "score" to d.score, "now" to d.now, "storm" to d.storm, "blockedBase" to d.blockedBase,
+        "sun" to d.sun, "cloud" to d.cloud,
     )
 
     private fun assertClearsFloor(theme: String, dark: Boolean) {

@@ -29,6 +29,10 @@ object Tokens {
         val storm: Int,
         val blockedBase: Int,
         val cutoffRule: Int,
+        /** UV readout identity — sunlight, not the WHO ramp (a low index would paint green). */
+        val sun: Int,
+        /** Cloud-cover readout identity — the halftone's white, darkened on paper. */
+        val cloud: Int,
     )
 
     /** Everything that isn't data (§0.3). This *is* the theme. */
@@ -63,6 +67,8 @@ object Tokens {
         storm = 0xFF6D28D9.toInt(),
         blockedBase = 0xFF8893A1.toInt(),
         cutoffRule = argb(115, 62, 56, 48),
+        sun = 0xFFA16207.toInt(),
+        cloud = 0xFF64748B.toInt(),
     )
 
     private val DARK_DATA = Data(
@@ -75,6 +81,8 @@ object Tokens {
         storm = 0xFFA78BFA.toInt(),
         blockedBase = 0xFF606B7A.toInt(),
         cutoffRule = argb(128, 214, 208, 197),
+        sun = 0xFFFBBF24.toInt(),
+        cloud = CloudRamp.CLOUD,
     )
 
     private val LIGHT_CHROME = Chrome(
