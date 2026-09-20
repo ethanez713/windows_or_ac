@@ -147,11 +147,11 @@ object Tokens {
      * Width in dp of a rain mark for an hour's rate (inches that hour). The score widget's
      * rain line stroke, the forecast widget's rain column and the app's rain column all size
      * from this, so one rate reads at one thickness whatever shape draws it. Absolute in/hr
-     * thresholds — a trace up to an inch-plus downpour — stepped wide enough to tell apart.
+     * thresholds, stepped wide enough to tell apart.
      */
     fun rainMarkDp(inchesPerHour: Double): Float = when {
-        inchesPerHour >= 1.0 -> 9f
-        inchesPerHour >= 0.33 -> 6f
+        inchesPerHour >= 0.3 -> 9f
+        inchesPerHour >= 0.1 -> 6f
         inchesPerHour >= 0.05 -> 3f
         else -> 1f
     }
