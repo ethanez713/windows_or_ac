@@ -135,12 +135,11 @@ fun DetailDrawer(
 // ---------------------------------------------------------------- 1. readings line
 
 /**
- * One mono line of the hour's actual numbers, each in its own series colour.
+ * One running line of the hour's actual numbers, each in its own series colour.
  *
- * The rain item is dropped at zero chance: six items measure past the content box and wrap,
- * orphaning the last one behind a dangling separator, and `rain 0%` is the one reading that
- * says nothing the rain chart below doesn't already say more plainly. A non-zero chance
- * always shows.
+ * Rain is dropped at zero chance: `rain 0%` says nothing the rain chart below doesn't.
+ * Cloud cover is omitted entirely — the halftone strip is the reading. UV drops at zero
+ * (night), for the same reason. A non-zero rain chance always shows.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -156,14 +155,11 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
         p.tempF?.let { parts += unit.degUnit(it) to d.temp }
         p.dewPointF?.let { parts += "dew ${unit.deg(it)}" to d.dew }
         p.aqi?.let { parts += "AQI $it" to d.aqi }
-        // UV and cloud follow AQI, mirroring the strip order below; UV drops at zero (night),
-        // where — like rain at zero — the reading says nothing its own strip doesn't.
         p.uvIndex?.takeIf { it > 0 }?.let { parts += "UV ${it.roundToInt()}" to Color(UvRamp.colorAt(it, chrome.dark)) }
-        p.cloudPct?.let { parts += "cld ${it.roundToInt()}%" to chrome.muted }
         p.precipProb?.takeIf { it > 0 }?.let { prob ->
             val rain = buildString {
                 append("rain ${prob.roundToInt()}%")
-                (p.precipIn ?: 0.0).takeIf { it > 0 }?.let { append(" ${fmtIn(it, " in")}") }
+                (p.precipIn ?: 0.0).takeIf { it > 0 }?.let { append(" ${fmtIn(it)}") }
             }
             parts += rain to d.rain
         }
@@ -173,21 +169,18 @@ private fun ReadingsLine(points: List<ForecastPoint>, unit: TempUnit, idx: Int) 
         val dews = points.mapNotNull { it.dewPointF }
         val aqis = points.mapNotNull { it.aqi }
         val uvs = points.mapNotNull { it.uvIndex }
-        val clouds = points.mapNotNull { it.cloudPct }
         val rain = points.mapNotNull { it.precipProb }.maxOrNull()
         parts += dayLabelOf(points.first().time) to chrome.heading
         temps.maxOrNull()?.let { parts += "peak ${unit.degUnit(it)}" to d.temp }
         dews.maxOrNull()?.let { parts += "dew ${unit.deg(it)}" to d.dew }
         aqis.maxOrNull()?.let { parts += "AQI $it" to d.aqi }
         uvs.maxOrNull()?.takeIf { it > 0 }?.let { parts += "UV ${it.roundToInt()}" to Color(UvRamp.colorAt(it, chrome.dark)) }
-        clouds.maxOrNull()?.let { parts += "cld ${it.roundToInt()}%" to chrome.muted }
         rain?.takeIf { it > 0 }?.let { parts += "rain ${it.roundToInt()}%" to d.rain }
     }
 
-    // A flow, not a Row: with UV and cloud added the readouts can outrun one line, and a Row
-    // would clip the overflow off the right edge (losing a reading) rather than wrap it. Each
-    // value carries its OWN trailing separator as one atomic unit, so a wrap never strands a
-    // leading " · " at the start of the next line.
+    // A flow, not a Row: overflow wraps rather than clipping a reading off the right edge.
+    // Each value carries its own trailing separator as one atomic unit, so a wrap never
+    // strands a leading " · " at the start of the next line.
     FlowRow(Modifier.fillMaxWidth()) {
         parts.forEachIndexed { i, (text, color) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -692,8 +685,8 @@ private fun DrawScope.series(
     }
 }
 
-private fun fmtIn(v: Double, unit: String = "″"): String =
-    (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + unit
+private fun fmtIn(v: Double): String =
+    (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
 
 private fun nowClock(): String {
     val now = java.time.LocalTime.now()
