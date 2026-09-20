@@ -446,7 +446,7 @@ object WeatherRepository {
     private fun fetchOpenMeteoMinutely15(cfg: AppConfig, steps: Int): List<Map<String, Any?>> = try {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
             "&minutely_15=temperature_2m,dew_point_2m,precipitation,precipitation_probability," +
-            "weather_code,is_day,shortwave_radiation&forecast_minutely_15=$steps" +
+            "weather_code,is_day,shortwave_radiation,cloud_cover,uv_index&forecast_minutely_15=$steps" +
             "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" +
             "&timezone=${cfg.timezone}"
         val m = getJson(url, cfg.userAgent).getJSONObject("minutely_15")
@@ -458,6 +458,8 @@ object WeatherRepository {
         val wcode = m.optJSONArray("weather_code")
         val isDay = m.optJSONArray("is_day")
         val sw = m.optJSONArray("shortwave_radiation")
+        val cloud = m.optJSONArray("cloud_cover")
+        val uv = m.optJSONArray("uv_index")
 
         // AQI is hourly-only. Fetch it hourly and assign each 15-minute row the AQI of its
         // containing hour (timestamp truncated to "yyyy-MM-ddTHH", same keying the rest of
@@ -485,6 +487,7 @@ object WeatherRepository {
                 "weatherCode" to wcode?.dblAt(i)?.let { it.roundToInt() },
                 "isDay" to isDay?.dblAt(i)?.let { it >= 0.5 },
                 "shortwaveWm2" to sw?.dblAt(i), "aqi" to aqiByHour[t.take(13)],
+                "cloudPct" to cloud?.dblAt(i), "uvIndex" to uv?.dblAt(i),
             )
         }
     } catch (e: Exception) {
