@@ -275,30 +275,43 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
 /**
  * Swipe the forecast sideways to step through locations: left for the next, right for the
  * previous. A chart's scrub consumes its horizontal drag before this sees it, so scrubbing
- * never switches location; anywhere else a horizontal drag past [SWIPE_DISTANCE] does. The
- * content trails the finger at a fraction of the drag and springs back on release.
+ * never switches location; anywhere else a horizontal drag past [SWIPE_DISTANCE] does.
+ *
+ * The content tracks the finger nearly 1:1 and fades as it goes. A committed swipe throws it
+ * the rest of the way off-screen, switches, and brings the next location in from the opposite
+ * side; a short one springs back.
  */
 @Composable
 private fun Modifier.locationSwipe(enabled: Boolean, onSwipe: (Int) -> Unit): Modifier {
     if (!enabled) return this
     val scope = rememberCoroutineScope()
     val shift = remember { Animatable(0f) }
+    var width by remember { mutableFloatStateOf(1f) }
     val threshold = with(LocalDensity.current) { SWIPE_DISTANCE.toPx() }
     val currentOnSwipe by rememberUpdatedState(onSwipe)
     // pointerInput sits outside the layer so the drag is measured in untranslated space.
     return pointerInput(Unit) {
         var total = 0f
-        fun settle() { scope.launch { shift.animateTo(0f, tween(200)) } }
         detectHorizontalDragGestures(
-            onDragStart = { total = 0f },
+            onDragStart = { total = 0f; width = size.width.toFloat().coerceAtLeast(1f) },
             onDragEnd = {
-                when {
-                    total <= -threshold -> currentOnSwipe(1)
-                    total >= threshold -> currentOnSwipe(-1)
+                val step = when {
+                    total <= -threshold -> 1
+                    total >= threshold -> -1
+                    else -> 0
                 }
-                settle()
+                scope.launch {
+                    if (step == 0) {
+                        shift.animateTo(0f, tween(SWIPE_MS))
+                        return@launch
+                    }
+                    shift.animateTo(-step * width, tween(SWIPE_MS))
+                    currentOnSwipe(step)
+                    shift.snapTo(step * width * SWIPE_ENTER_FROM)
+                    shift.animateTo(0f, tween(SWIPE_MS * 3 / 2))
+                }
             },
-            onDragCancel = ::settle,
+            onDragCancel = { scope.launch { shift.animateTo(0f, tween(SWIPE_MS)) } },
         ) { change, dx ->
             change.consume()
             total += dx
@@ -306,12 +319,16 @@ private fun Modifier.locationSwipe(enabled: Boolean, onSwipe: (Int) -> Unit): Mo
         }
     }.graphicsLayer {
         translationX = shift.value
-        alpha = 1f - (abs(shift.value) / (threshold * 2)).coerceAtMost(0.35f)
+        // Gone by the time it has travelled [SWIPE_FADE_BY] of the width.
+        alpha = (1f - abs(shift.value) / (width * SWIPE_FADE_BY)).coerceIn(0f, 1f)
     }
 }
 
 private val SWIPE_DISTANCE = 72.dp
-private const val SWIPE_TRAIL = 0.35f
+private const val SWIPE_TRAIL = 0.9f
+private const val SWIPE_FADE_BY = 0.6f
+private const val SWIPE_ENTER_FROM = 0.35f
+private const val SWIPE_MS = 160
 
 /** Tap = app/comfort settings; long-press = widget-only settings. */
 @OptIn(ExperimentalFoundationApi::class)
