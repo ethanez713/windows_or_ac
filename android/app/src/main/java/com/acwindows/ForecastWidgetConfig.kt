@@ -15,6 +15,8 @@ enum class ForecastTheme { AUTO, LIGHT, DARK }
  * the panel can be a thermometer, an air-quality strip, a rain chart, or any mix.
  */
 data class ForecastWidgetConfig(
+    /** The [SavedLocation] this widget shows; an id no longer saved reads as Current location. */
+    val locationId: String = Locations.CURRENT_ID,
     /** Look-ahead, always starting at the current hour. */
     val hours: Int = DEFAULT_HOURS,
     val showTemp: Boolean = true,
@@ -62,6 +64,8 @@ data class ForecastWidgetConfig(
 
         const val DEFAULT_OPACITY = 100
 
+        fun locationKey(id: Int) = "forecastLocation_$id"
+
         fun clampHours(h: Int) = h.coerceIn(MIN_HOURS, MAX_HOURS)
         fun clampTextScale(p: Int) = p.coerceIn(MIN_TEXT_SCALE, MAX_TEXT_SCALE)
         fun clampOpacity(p: Int) = p.coerceIn(0, 100)
@@ -70,6 +74,7 @@ data class ForecastWidgetConfig(
             val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             fun bool(key: String, fallback: Boolean) = p.getBoolean("${key}_$id", fallback)
             return ForecastWidgetConfig(
+                locationId = p.getString(locationKey(id), null) ?: Locations.CURRENT_ID,
                 hours = p.getString("forecastHours_$id", null)?.toIntOrNull()
                     ?.let(::clampHours) ?: DEFAULT_HOURS,
                 showTemp = bool("forecastShowTemp", true),
@@ -93,6 +98,7 @@ data class ForecastWidgetConfig(
 
         fun save(context: Context, id: Int, cfg: ForecastWidgetConfig) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(locationKey(id), cfg.locationId)
                 .putString("forecastHours_$id", cfg.hours.toString())
                 .putBoolean("forecastShowTemp_$id", cfg.showTemp)
                 .putBoolean("forecastShowDew_$id", cfg.showDew)
@@ -113,6 +119,7 @@ data class ForecastWidgetConfig(
         /** Drop this widget id's keys, so a removed widget doesn't leak settings forever. */
         fun delete(context: Context, id: Int) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .remove(locationKey(id))
                 .remove("forecastHours_$id")
                 .remove("forecastShowTemp_$id")
                 .remove("forecastShowDew_$id")

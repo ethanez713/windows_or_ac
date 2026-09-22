@@ -184,6 +184,31 @@ object LocationProvider {
         }
 
     /**
+     * What a place search box means: a bare "lat, lon" pair is taken as-is (and labelled by
+     * reverse lookup, else by the numbers), anything else is geocoded. Coordinates come back
+     * rounded with [AppConfig.round4]. Null when nothing resolves.
+     */
+    suspend fun resolve(context: Context, query: String): Geo? {
+        val q = query.trim()
+        val typed = parseLatLon(q)
+        val hit = if (typed != null) {
+            val (lat, lon) = typed
+            Geo(lat, lon, placeName(context, lat, lon) ?: "$lat, $lon")
+        } else {
+            geocodeAddress(context, q)
+        } ?: return null
+        return hit.copy(lat = AppConfig.round4(hit.lat), lon = AppConfig.round4(hit.lon))
+    }
+
+    fun parseLatLon(q: String): Pair<Double, Double>? {
+        val parts = q.split(',', ' ').filter { it.isNotBlank() }
+        if (parts.size != 2) return null
+        val lat = parts[0].toDoubleOrNull() ?: return null
+        val lon = parts[1].toDoubleOrNull() ?: return null
+        return if (lat in -90.0..90.0 && lon in -180.0..180.0) lat to lon else null
+    }
+
+    /**
      * API 33+ geocoder calls are callback-based. [start] hands our listener to whichever
      * of getFromLocation / getFromLocationName the caller wants; both deliver the same
      * address list, so one wrapper covers forward and reverse lookups.

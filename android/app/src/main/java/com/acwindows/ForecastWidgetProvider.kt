@@ -19,6 +19,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
 /**
@@ -29,15 +30,19 @@ import java.util.concurrent.TimeUnit
  * This is the app's only home-screen widget, so it also owns the shared refresh machinery:
  * the 10-minute AlarmManager tick (with a WorkManager periodic job as a backstop — see
  * [scheduleTick] for why it takes both), the coalesced [RefreshWorker] fetch, and the cached
- * [Snapshot]. It only READS the cache and asks for a refresh; the fetch itself lives in
- * [RefreshWorker].
+ * [Snapshot]s — one per location a widget is bound to. It only READS the cache and asks for a
+ * refresh; the fetch itself lives in [RefreshWorker].
  */
 class ForecastWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
-        val snap = WidgetCache.load(context)
-        ids.forEach { id -> drawId(context, mgr, id, refreshing = snap == null) }
-        if (snap == null || snap.ageMs() > WidgetCache.TTL_MS) enqueueRefresh(context)
+        var due = false
+        ids.forEach { id ->
+            val snap = WidgetCache.load(context, locationOf(context, id).id)
+            drawId(context, mgr, id, refreshing = snap == null)
+            if (snap == null || snap.ageMs() > WidgetCache.TTL_MS) due = true
+        }
+        if (due) enqueueRefresh(context)
         scheduleTick(context)
         schedulePeriodic(context)
     }
@@ -45,7 +50,7 @@ class ForecastWidgetProvider : AppWidgetProvider() {
     override fun onAppWidgetOptionsChanged(
         context: Context, mgr: AppWidgetManager, id: Int, newOptions: Bundle,
     ) {
-        drawId(context, mgr, id, refreshing = WidgetCache.load(context) == null)
+        drawId(context, mgr, id, refreshing = WidgetCache.load(context, locationOf(context, id).id) == null)
     }
 
     override fun onDeleted(context: Context, ids: IntArray) {
@@ -109,10 +114,25 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             enqueueRefresh(context)
         }
 
-        fun renderAll(context: Context, refreshing: Boolean) {
+        /** Redraw every instance, or only those showing [locationId] when it is given. */
+        fun renderAll(context: Context, refreshing: Boolean, locationId: String? = null) {
             val mgr = AppWidgetManager.getInstance(context)
-            widgetIds(context).forEach { drawId(context, mgr, it, refreshing) }
+            widgetIds(context)
+                .filter { locationId == null || locationOf(context, it).id == locationId }
+                .forEach { drawId(context, mgr, it, refreshing) }
         }
+
+        fun locationOf(context: Context, widgetId: Int): SavedLocation {
+            // Load the list first: on an upgraded install that read is what binds existing
+            // widgets to their place, and it has to land before the widget's config is read.
+            val list = Locations.load(context)
+            val id = ForecastWidgetConfig.load(context, widgetId).locationId
+            return list.firstOrNull { it.id == id } ?: list.first { it.isCurrent }
+        }
+
+        /** The locations background refresh fetches: those shown by a placed widget, and no others. */
+        fun boundLocations(context: Context): List<SavedLocation> =
+            widgetIds(context).map { locationOf(context, it) }.distinctBy { it.id }
 
         /**
          * Queue a refresh, coalescing with one already queued or running (KEEP). Every trigger
@@ -124,6 +144,20 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             WorkManager.getInstance(context).enqueueUniqueWork(
                 REFRESH_WORK, ExistingWorkPolicy.KEEP,
                 OneTimeWorkRequestBuilder<RefreshWorker>().build(),
+            )
+        }
+
+        /**
+         * Fetch one location that no placed widget shows yet — the settings preview of a widget
+         * still being added. Its own unique name, so a routine refresh already queued can't
+         * swallow it.
+         */
+        fun enqueueRefresh(context: Context, locationId: String) {
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "$REFRESH_WORK:$locationId", ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<RefreshWorker>()
+                    .setInputData(workDataOf(RefreshWorker.KEY_LOCATION to locationId))
+                    .build(),
             )
         }
 
@@ -193,8 +227,9 @@ class ForecastWidgetProvider : AppWidgetProvider() {
             val widget = ForecastWidgetConfig.load(context, id)
             val dark = widget.isDark(context)
             val chrome = Tokens.chrome(dark)
-            val cfg = AppConfig.load(context)
-            val snap = WidgetCache.load(context)
+            val loc = Locations.byId(context, widget.locationId)
+            val cfg = AppConfig.load(context, loc)
+            val snap = WidgetCache.load(context, loc.id)
             val density = context.resources.displayMetrics.density
 
             return RemoteViews(context.packageName, R.layout.widget_forecast).apply {

@@ -14,7 +14,7 @@ import kotlin.math.abs
 enum class DayViewMode { TODAY, NOW }
 
 /**
- * App configuration: your home location and comfort target.
+ * App configuration: the comfort target and display settings, bound to one [SavedLocation].
  *
  * The DEFAULT_* constants and [Comfort]'s defaults are a first-run *seed*, not a live
  * source — see [Companion.freezeDefaults]. Once an install has been seeded its settings
@@ -29,7 +29,8 @@ data class AppConfig(
     val secrets: Secrets = Secrets(),     // user-pasted provider API keys (see SecretsStore)
     val sourceWeights: Map<String, Double> = emptyMap(),  // per-source trust weight (default 1.0)
     val placeName: String? = null,        // label for lat/lon (device fix or address lookup), or null
-    val useDeviceLocation: Boolean = false,  // follow the phone: re-read lat/lon before every fetch
+    val useDeviceLocation: Boolean = false,  // the Current location: re-read lat/lon before every fetch
+    val locationId: String = Locations.CURRENT_ID,
     val widgetForecastHours: Int = 36,    // how many hours ahead the fetch spans
     val appTextScalePct: Int = 100,       // app-wide text scale, 60–200% (widget has its own)
     val dayViewMode: DayViewMode = DayViewMode.TODAY,  // today's card: full day, or now→EOD
@@ -63,13 +64,13 @@ data class AppConfig(
         const val DEFAULT_THUNDER_ALERT = 50.0     // % thunder chance that earns storm treatment
         // The rest live in Comfort() (dew point 60/65°F, AQI 100/150).
 
-        fun load(context: Context): AppConfig {
+        fun load(context: Context, loc: SavedLocation = Locations.selected(context)): AppConfig {
             val p = context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE)
             freezeDefaults(p)
             val base = Comfort()
             return AppConfig(
-                lat = p.getString("lat", null)?.toDoubleOrNull() ?: DEFAULT_LAT,
-                lon = p.getString("lon", null)?.toDoubleOrNull() ?: DEFAULT_LON,
+                lat = loc.lat,
+                lon = loc.lon,
                 timezone = p.getString("tz", null) ?: DEFAULT_TZ,
                 userAgent = p.getString("ua", null) ?: DEFAULT_UA,
                 comfort = Comfort(
@@ -87,8 +88,9 @@ data class AppConfig(
                 sourceWeights = KNOWN_SOURCES.associateWith { s ->
                     p.getString("weight_$s", null)?.toDoubleOrNull()?.coerceIn(0.0, 10.0) ?: 1.0
                 },
-                placeName = p.getString("placeName", null)?.takeIf { it.isNotBlank() },
-                useDeviceLocation = p.getBoolean("useDeviceLocation", false),
+                placeName = loc.placeName,
+                useDeviceLocation = loc.isCurrent,
+                locationId = loc.id,
                 widgetForecastHours = p.getString("widgetForecastHours", null)?.toIntOrNull()
                     ?.coerceIn(6, 96) ?: DEFAULT_WIDGET_HOURS,
                 appTextScalePct = p.getString("appTextScalePct", null)?.toIntOrNull()?.coerceIn(60, 200) ?: 100,
@@ -125,8 +127,6 @@ data class AppConfig(
                 Seed("appTextScalePct", "100"),
                 Seed("widgetForecastHours", DEFAULT_WIDGET_HOURS.toString()),
                 Seed("thunderAlertPct", DEFAULT_THUNDER_ALERT.toString()),
-                Seed("lat", DEFAULT_LAT.toString()),
-                Seed("lon", DEFAULT_LON.toString()),
             )
         }
 
@@ -166,21 +166,9 @@ data class AppConfig(
         }
 
         /**
-         * The header's location chip writes this directly, the same way [saveDayViewMode]
-         * does, so a choice made from the forecast list takes effect on the next refresh
-         * without a trip through the settings screen. [ConfigActivity]'s checkbox writes
-         * the same key.
-         */
-        fun saveUseDeviceLocation(context: Context, on: Boolean) {
-            context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE).edit()
-                .putBoolean("useDeviceLocation", on)
-                .apply()
-        }
-
-        /**
-         * [load], plus — when "use my phone's location" is on — a fresh device fix before
+         * [load], plus — when [loc] is the Current location — a fresh device fix before
          * the weather fetch, so the forecast follows you instead of being pinned to
-         * wherever you last opened settings. Every refresh path (widget worker and app)
+         * wherever the app was last opened. Every refresh path (widget worker and app)
          * goes through here, so there is one place that decides what "here" means.
          *
          * Degrades to the last saved coordinates whenever the fix can't be had — the widget
@@ -195,38 +183,27 @@ data class AppConfig(
          * to know which town you're in. The saved pair is written on every successful
          * resolve, so the widget still tracks you — one app launch behind.
          */
-        suspend fun loadResolved(context: Context): AppConfig {
-            val cfg = load(context)
+        suspend fun loadResolved(
+            context: Context, loc: SavedLocation = Locations.selected(context),
+        ): AppConfig {
+            val cfg = load(context, loc)
             if (!cfg.useDeviceLocation || !LocationProvider.hasPermission(context)) return cfg
             // Short leash: this runs ahead of every weather fetch, and in the background
             // no fix is coming at all, so the settings screen's patient 12s budget would
             // just stall each refresh for 12s before falling back to the saved coordinates.
-            val loc = LocationProvider.currentLocation(context, timeoutMs = 5_000) ?: run {
+            val fix = LocationProvider.currentLocation(context, timeoutMs = 5_000) ?: run {
                 Log.i(TAG, "device location unavailable; using last saved coordinates")
                 return cfg
             }
-            val lat = round4(loc.latitude)
-            val lon = round4(loc.longitude)
+            val lat = round4(fix.latitude)
+            val lon = round4(fix.longitude)
             // Re-geocoding on every 10-minute tick is wasted work (and battery) when you
             // haven't gone anywhere, so only relabel once the fix has actually moved.
             val moved = abs(lat - cfg.lat) > RELABEL_DEG || abs(lon - cfg.lon) > RELABEL_DEG
             val place = if (moved || cfg.placeName == null)
                 LocationProvider.placeName(context, lat, lon) else cfg.placeName
-            saveLocation(context, lat, lon, place)
+            Locations.updateCurrentFix(context, lat, lon, place)
             return cfg.copy(lat = lat, lon = lon, placeName = place)
-        }
-
-        /**
-         * Persist a resolved location. Shared by [loadResolved] and the settings screen so
-         * both write the same three keys — the saved pair doubles as the fallback when
-         * device location later becomes unavailable.
-         */
-        fun saveLocation(context: Context, lat: Double, lon: Double, placeName: String?) {
-            context.getSharedPreferences("ac_windows", Context.MODE_PRIVATE).edit()
-                .putString("lat", lat.toString())
-                .putString("lon", lon.toString())
-                .putString("placeName", placeName ?: "")
-                .apply()
         }
 
         /** ~11 m — enough precision for weather, and no more of your position than needed. */

@@ -9,6 +9,8 @@ import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.CompoundButton
@@ -17,6 +19,7 @@ import android.widget.ImageView
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 
 /**
@@ -33,6 +36,7 @@ class ForecastWidgetSettingsActivity : Activity() {
 
     private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     private var saved: ForecastWidgetConfig = ForecastWidgetConfig()
+    private val locations by lazy { Locations.load(this) }
 
     private val poll = Handler(Looper.getMainLooper())
     private var pollsLeft = 0
@@ -47,7 +51,12 @@ class ForecastWidgetSettingsActivity : Activity() {
         setResult(RESULT_OK, resultIntent())
 
         setContentView(R.layout.activity_forecast_widget_settings)
+        // A deleted location reads as Current, so the picker opens on what the widget shows.
         saved = ForecastWidgetConfig.load(this, widgetId)
+            .copy(locationId = ForecastWidgetProvider.locationOf(this, widgetId).id)
+        locationSpinner().adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, locations.map { it.label },
+        ).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         apply(saved)
 
         // How far ahead the app fetches is one global setting shared with the windows
@@ -87,6 +96,14 @@ class ForecastWidgetSettingsActivity : Activity() {
             override fun onStopTrackingTouch(sb: SeekBar?) = Unit
         })
 
+        locationSpinner().onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                changed()
+                ensureSnapshot()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
         hoursField().addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) = changed()
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
@@ -111,14 +128,21 @@ class ForecastWidgetSettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         renderPreview()
-        // Nothing has ever been fetched (fresh install, or the widget is being added before
-        // the app has run): ask for a refresh and watch for it, so the preview fills in
-        // instead of sitting empty for the whole visit.
-        if (WidgetCache.load(this) == null) {
-            ForecastWidgetProvider.enqueueRefresh(this)
-            pollsLeft = PREVIEW_POLLS
-            poll.postDelayed(::pollForSnapshot, PREVIEW_POLL_MS)
-        }
+        ensureSnapshot()
+    }
+
+    /**
+     * Nothing has been fetched for the picked location yet (fresh install, a place no widget
+     * shows, or the widget is being added before the app has run): fetch it and watch for it,
+     * so the preview fills in instead of sitting empty for the whole visit.
+     */
+    private fun ensureSnapshot() {
+        val locationId = current().locationId
+        if (WidgetCache.load(this, locationId) != null) return
+        ForecastWidgetProvider.enqueueRefresh(this, locationId)
+        poll.removeCallbacksAndMessages(null)
+        pollsLeft = PREVIEW_POLLS
+        poll.postDelayed(::pollForSnapshot, PREVIEW_POLL_MS)
     }
 
     override fun onPause() {
@@ -128,7 +152,7 @@ class ForecastWidgetSettingsActivity : Activity() {
     }
 
     private fun pollForSnapshot() {
-        if (WidgetCache.load(this) != null) {
+        if (WidgetCache.load(this, current().locationId) != null) {
             renderPreview()
             return
         }
@@ -155,6 +179,7 @@ class ForecastWidgetSettingsActivity : Activity() {
         )
 
     private fun apply(cfg: ForecastWidgetConfig) {
+        locationSpinner().setSelection(locations.indexOfFirst { it.id == cfg.locationId }.coerceAtLeast(0))
         hoursField().setText(cfg.hours.toString())
         checkBox(R.id.show_temp).isChecked = cfg.showTemp
         checkBox(R.id.show_dew).isChecked = cfg.showDew
@@ -188,9 +213,11 @@ class ForecastWidgetSettingsActivity : Activity() {
     private fun checkBox(id: Int): CheckBox = findViewById(id)
 
     private fun hoursField(): EditText = findViewById(R.id.hours)
+    private fun locationSpinner(): Spinner = findViewById(R.id.location)
 
     /** A half-typed or out-of-range field keeps the saved value rather than snapping to it. */
     private fun current() = ForecastWidgetConfig(
+        locationId = locations.getOrNull(locationSpinner().selectedItemPosition)?.id ?: saved.locationId,
         hours = ForecastWidgetConfig.clampHours(hoursField().text.toString().toIntOrNull() ?: saved.hours),
         showTemp = checkBox(R.id.show_temp).isChecked,
         showDew = checkBox(R.id.show_dew).isChecked,
@@ -215,7 +242,9 @@ class ForecastWidgetSettingsActivity : Activity() {
     private fun renderPreview() {
         val view = findViewById<ImageView>(R.id.preview)
         val empty = findViewById<TextView>(R.id.preview_empty)
-        val snap = WidgetCache.load(this)
+        val cfg = current()
+        val loc = Locations.byId(this, cfg.locationId)
+        val snap = WidgetCache.load(this, loc.id)
         if (snap == null || snap.scores.isEmpty()) {
             view.setImageBitmap(null)
             empty.visibility = View.VISIBLE
@@ -227,11 +256,10 @@ class ForecastWidgetSettingsActivity : Activity() {
             return
         }
         empty.visibility = View.GONE
-        val cfg = current()
         val density = resources.displayMetrics.density
         view.setImageBitmap(
             ForecastPanel.render(
-                this, snap, AppConfig.load(this), cfg, TempUnit.load(this),
+                this, snap, AppConfig.load(this, loc), cfg, TempUnit.load(this),
                 widthPx = (372 * density).toInt(),
                 heightPx = (166 * density).toInt(),
                 density = density,

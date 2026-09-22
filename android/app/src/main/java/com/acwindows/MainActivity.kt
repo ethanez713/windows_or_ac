@@ -54,11 +54,16 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -76,26 +81,72 @@ data class AppUiState(
     val updatedAtMs: Long = 0L,
 )
 
-/** Fetches [AppState] off the main thread; offline-first (keep last data on error). */
+/**
+ * Fetches [AppState] off the main thread, one slot per saved location, so switching back to a
+ * place already fetched this session is instant; offline-first (keep last data on error).
+ */
 class AppViewModel(app: Application) : AndroidViewModel(app) {
-    private val _ui = MutableStateFlow(AppUiState())
-    val ui: StateFlow<AppUiState> = _ui.asStateFlow()
+    private val _locations = MutableStateFlow(Locations.load(app))
+    val locations: StateFlow<List<SavedLocation>> = _locations.asStateFlow()
+
+    private val _selectedId = MutableStateFlow(Locations.selected(app).id)
+    val selectedId: StateFlow<String> = _selectedId.asStateFlow()
+
+    private val slots = MutableStateFlow<Map<String, AppUiState>>(emptyMap())
+    val ui: StateFlow<AppUiState> = combine(slots, _selectedId) { m, id -> m[id] ?: AppUiState() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppUiState())
 
     init { refresh() }
 
-    fun refresh() {
-        if (_ui.value.refreshing) return
-        _ui.update { it.copy(refreshing = true, error = null) }
+    /** Show [id], fetching it when this session has nothing for it or what it has is stale. */
+    fun select(id: String) {
+        if (id == _selectedId.value) return
+        Locations.select(getApplication(), id)
+        _selectedId.value = id
+        val slot = slots.value[id]
+        if (slot?.state == null || System.currentTimeMillis() - slot.updatedAtMs > WidgetCache.TTL_MS) refresh()
+    }
+
+    /** Pick up edits made on the Locations screen: order, nicknames, removals, a new fix. */
+    fun reloadLocations() {
+        val app = getApplication<Application>()
+        val list = Locations.load(app)
+        val ids = list.map { it.id }.toSet()
+        _locations.value = list
+        slots.update { m -> m.filterKeys { it in ids } }
+        val selected = Locations.selected(app).id
+        if (selected != _selectedId.value) {
+            _selectedId.value = selected
+            if (slots.value[selected]?.state == null) refresh()
+        }
+    }
+
+    private fun slot(id: String, f: (AppUiState) -> AppUiState) =
+        slots.update { m -> m + (id to f(m[id] ?: AppUiState())) }
+
+    /** Locations whose in-flight fetch is already out of date and must run again when it lands. */
+    private val rerun = mutableSetOf<String>()
+
+    /** [force]: a fetch already running is stale (e.g. location permission just landed). */
+    fun refresh(force: Boolean = false) {
+        val id = _selectedId.value
+        if (slots.value[id]?.refreshing == true) {
+            if (force) rerun += id
+            return
+        }
+        slot(id) { it.copy(refreshing = true, error = null) }
         viewModelScope.launch {
             val result = runCatching {
                 // Progressive: surface the first state as soon as 3+ sources answer, then
                 // refresh it (and the "N/X sources" count + graphs) on every later arrival.
-                // loadResolved: honours "use my phone's location" by re-reading the fix
-                // before the fetch, so the app and the widget agree on where "here" is.
-                val cfg = AppConfig.loadResolved(getApplication())
+                // loadResolved: for the Current location, re-reads the fix before the fetch,
+                // so the app and the widget agree on where "here" is.
+                val app = getApplication<Application>()
+                val cfg = AppConfig.loadResolved(app, Locations.byId(app, id))
+                if (id == Locations.CURRENT_ID) _locations.value = Locations.load(app)
                 WeatherRepository.fetchAppStateProgressive(cfg) { partial ->
                     val empty = partial.consensus.confidence == "none" && partial.forecast.points.isEmpty()
-                    if (!empty) _ui.update {
+                    if (!empty) slot(id) {
                         // Keep refreshing=true across partials: an early partial may carry current
                         // conditions but no hourly forecast yet, and the UI shows skeleton chips
                         // (not "No forecast available") for as long as a fetch is still in flight.
@@ -106,7 +157,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
-            _ui.update { cur ->
+            slot(id) { cur ->
                 result.fold(
                     onSuccess = { newState ->
                         // Don't clobber good data with an empty result (all sources failed but no
@@ -124,6 +175,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     onFailure = { cur.copy(loading = false, refreshing = false, error = it.message ?: "fetch failed") },
                 )
             }
+            if (rerun.remove(id) && id == _selectedId.value) refresh()
         }
     }
 }
@@ -142,6 +194,30 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(vm: AppViewModel = viewModel()) {
     val ui by vm.ui.collectAsState()
+    val locations by vm.locations.collectAsState()
+    val selectedId by vm.selectedId.collectAsState()
+    val context = LocalContext.current
+    val selected = locations.firstOrNull { it.id == selectedId } ?: locations.first()
+
+    // Back from the Locations screen (or anywhere): its edits are already saved, so re-read.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.reloadLocations() }
+
+    // Re-read per fetch and resume: the permission or the system location switch can change
+    // while the app sits open.
+    val locationMode = remember(ui.updatedAtMs, locations) { LocationProvider.mode(context, true) }
+
+    // Current location without permission would silently forecast the last saved fix, so
+    // ask — once per launch, and only when Current is what's on screen.
+    var askedPermission by rememberSaveable { mutableStateOf(false) }
+    val askPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { if (LocationProvider.hasPermission(context)) vm.refresh(force = true) }
+    LaunchedEffect(selected.isCurrent) {
+        if (selected.isCurrent && !askedPermission && !LocationProvider.hasPermission(context)) {
+            askedPermission = true
+            askPermission.launch(LocationProvider.permissions)
+        }
+    }
 
     // Pull down anywhere on the list to refresh (replaces the old top-bar button).
     val ptr = rememberPullToRefreshState()
@@ -157,6 +233,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
+        bottomBar = {
+            if (locations.size >= 2) LocationCarousel(locations, selectedId, locationMode, vm::select)
+        },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
             val s = ui.state
@@ -171,7 +250,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 }
                 // Still loading the first data → skeleton chips, not a spinner or empty message.
                 s == null -> SkeletonForecast()
-                else -> ForecastScreen(s, ui.updatedAtMs, ui.refreshing, vm::refresh)
+                else -> ForecastScreen(s, selected, locationMode, ui.updatedAtMs, ui.refreshing)
             }
             PullToRefreshContainer(ptr, Modifier.align(Alignment.TopCenter))
         }
@@ -356,14 +435,15 @@ private fun nowSeriesFor(state: AppState, todayHourly: DayForecast): DayForecast
 @Composable
 private fun ForecastScreen(
     state: AppState,
+    location: SavedLocation,
+    locationMode: LocationProvider.LocationMode,
     updatedAtMs: Long,
     refreshing: Boolean,
-    onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
-    // Keyed on the refresh time: with "use my phone's location" on, a fetch can move the
+    // Keyed on the refresh time too: for the Current location a fetch can move the
     // coordinates and the place label, and the header has to follow.
-    val cfg = remember(updatedAtMs) { AppConfig.load(context) }
+    val cfg = remember(location, updatedAtMs) { AppConfig.load(context, location) }
     val unit = remember(updatedAtMs) { TempUnit.load(context) }
     val comfort = cfg.comfort
     val threshold = comfort.openScoreMin
@@ -392,7 +472,6 @@ private fun ForecastScreen(
     var userPicked by rememberSaveable { mutableStateOf(false) }
     val expanded = if (userPicked) userPick else defaultExpanded
     var showSources by rememberSaveable { mutableStateOf(false) }
-    var showLocation by rememberSaveable { mutableStateOf(false) }
 
     // Today's card only: whole-day (hourly, like every other card) vs. now-to-EOD. Seeded
     // from the persisted default and re-persisted on every toggle — see AppConfig.DayViewMode.
@@ -428,15 +507,10 @@ private fun ForecastScreen(
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         item {
-            // Re-read per fetch rather than once: the permission or the system location
-            // switch can be changed while the app sits open, and each refresh is the
-            // cheapest honest moment to notice.
-            val locationMode = remember(cfg.useDeviceLocation, updatedAtMs) {
-                LocationProvider.mode(context, cfg.useDeviceLocation)
-            }
             SourceStatusHeader(
-                state, updatedAtMs, cfg.placeName, locationMode,
-                onLocationClick = { showLocation = true },
+                state, updatedAtMs, location.placeLabel,
+                pin = locationMode.takeIf { location.isCurrent },
+                onLocationClick = { context.startActivity(Intent(context, LocationsActivity::class.java)) },
                 onClick = { showSources = true },
             )
         }
@@ -458,11 +532,6 @@ private fun ForecastScreen(
         }
     }
     if (showSources) SourceDetailDialog(state.sources, state.consensus, unit) { showSources = false }
-    if (showLocation) LocationDialog(
-        cfg,
-        onDismiss = { showLocation = false },
-        onSaved = { showLocation = false; onRefresh() },
-    )
 }
 
 @Composable
@@ -627,21 +696,18 @@ private fun DayCard(
     }
 }
 
-
-
-
 /**
  * Prominent header for the current data view: where the forecast is for, how many sources
  * were successfully polled (X/N), the consensus confidence colour, and when this data was
- * fetched. Tap the place to change location; tap anywhere else for the per-source
+ * fetched. Tap the place to manage locations; tap anywhere else for the per-source
  * breakdown — handy when the reported numbers look off versus a local reading.
  */
 @Composable
 private fun SourceStatusHeader(
     state: AppState,
     updatedAtMs: Long,
-    place: String?,
-    locationMode: LocationProvider.LocationMode,
+    place: String,
+    pin: LocationProvider.LocationMode?,
     onLocationClick: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -657,7 +723,6 @@ private fun SourceStatusHeader(
             java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(updatedAtMs))
         else null
     }
-    val placeLabel = place?.trim()?.takeIf { it.isNotEmpty() }
     Surface(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onClick() },
         color = Skin.chrome.card,
@@ -667,48 +732,35 @@ private fun SourceStatusHeader(
             Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (placeLabel != null) {
-                // Condensed single line: "📍 City, ST ▾ · ● 6/6 · 3:45 PM  ›". The city name
-                // ellipsizes inside the weighted inner row so the count/time never get pushed
-                // off; the chevron stays pinned to the right edge. The place is its own
-                // clickable — the tap that opens the location editor — and the rest of the
-                // row still opens the source breakdown.
-                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    LocationChip(Modifier.weight(1f, fill = false), onLocationClick) {
-                        LocationPin(locationMode, onVar)
+            // Condensed single line: "📍 City, ST ▾ · ● 6/6 · 3:45 PM  ›". The city name
+            // ellipsizes inside the weighted inner row so the count/time never get pushed
+            // off; the chevron stays pinned to the right edge. The place is its own
+            // clickable — the tap that opens the Locations screen — and the rest of the
+            // row still opens the source breakdown.
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                LocationChip(Modifier.weight(1f, fill = false), onLocationClick) {
+                    pin?.let {
+                        LocationPin(it, onVar)
                         Spacer(Modifier.width(4.dp))
-                        Text(
-                            placeLabel,
-                            Modifier.weight(1f, fill = false),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(" ▾", fontSize = 12.sp, color = primary)
                     }
-                    Text(" · ", fontSize = 13.sp, color = onVar)
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-                    Spacer(Modifier.width(6.dp))
-                    Text("$ok/$total", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
-                    updated?.let { Text(" · $it", fontSize = 12.sp, color = onVar, maxLines = 1, softWrap = false) }
-                }
-                Text(" ›", fontSize = 13.sp, color = primary)
-            } else {
-                LocationChip(onClick = onLocationClick) {
-                    LocationPin(locationMode, onVar)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Set location ▾", fontSize = 13.sp, color = primary, maxLines = 1)
+                    Text(
+                        place,
+                        Modifier.weight(1f, fill = false),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(" ▾", fontSize = 12.sp, color = primary)
                 }
                 Text(" · ", fontSize = 13.sp, color = onVar)
                 Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Text("$ok/$total", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = onSurface)
                 updated?.let { Text(" · $it", fontSize = 12.sp, color = onVar, maxLines = 1, softWrap = false) }
-                Spacer(Modifier.weight(1f))
-                Text("›", fontSize = 13.sp, color = primary)
             }
+            Text(" ›", fontSize = 13.sp, color = primary)
         }
     }
 }
@@ -734,167 +786,6 @@ private fun LocationChip(
     verticalAlignment = Alignment.CenterVertically,
     content = content,
 )
-
-/**
- * Change where the forecast is for, from the header rather than the settings screen:
- * follow the phone, or resolve a typed place. The same box also takes a bare "lat, lon"
- * pair, so the settings screen's two coordinate fields aren't the only way in.
- *
- * Nothing is written until Save, so dismissing leaves the current location alone.
- */
-@Composable
-private fun LocationDialog(cfg: AppConfig, onDismiss: () -> Unit, onSaved: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val onVar = MaterialTheme.colorScheme.onSurfaceVariant
-    var follow by remember { mutableStateOf(cfg.useDeviceLocation) }
-    var query by remember { mutableStateOf("") }
-    var picked by remember { mutableStateOf<LocationProvider.Geo?>(null) }
-    var status by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-
-    fun readDeviceFix() {
-        busy = true
-        status = "Finding your location…"
-        scope.launch {
-            val loc = LocationProvider.currentLocation(context)
-            if (loc == null) {
-                status = "Couldn't get a fix — check location is on, or type a place below."
-            } else {
-                val lat = AppConfig.round4(loc.latitude)
-                val lon = AppConfig.round4(loc.longitude)
-                val label = LocationProvider.placeName(context, lat, lon) ?: coordLabel(lat, lon)
-                picked = LocationProvider.Geo(lat, lon, label)
-                status = "Using $label"
-            }
-            busy = false
-        }
-    }
-
-    val askPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { grants ->
-        if (grants.values.any { it }) {
-            readDeviceFix()
-        } else {
-            follow = false
-            status = "Location permission denied — type a place instead."
-        }
-    }
-
-    fun lookUp() {
-        val q = query.trim()
-        if (q.isEmpty()) return
-        busy = true
-        status = "Looking up “$q”…"
-        scope.launch {
-            val typedCoords = parseLatLon(q)
-            val hit = if (typedCoords != null) {
-                val (lat, lon) = typedCoords
-                LocationProvider.Geo(lat, lon, LocationProvider.placeName(context, lat, lon) ?: coordLabel(lat, lon))
-            } else {
-                LocationProvider.geocodeAddress(context, q)
-            }
-            if (hit == null) {
-                status = "Couldn't find “$q”."
-            } else {
-                picked = hit
-                // A place you typed is a place you want kept, so following the phone —
-                // which would overwrite it on the next refresh — goes off with it.
-                follow = false
-                status = "Using ${hit.label}  (${hit.lat}, ${hit.lon})"
-            }
-            busy = false
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Skin.chrome.card,
-        shape = RoundedCornerShape(16.dp),
-        title = { Text("Location", fontFamily = Heading, fontSize = 20.sp, color = Skin.chrome.heading) },
-        text = {
-            Column {
-                // Current place on the left, the follow-my-phone toggle in line with it on
-                // the right, so the two decisions sit on one row instead of stacking with a
-                // gap between them.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Currently", fontSize = 11.sp, color = onVar)
-                        Text(
-                            picked?.label ?: cfg.placeName ?: coordLabel(cfg.lat, cfg.lon),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                            color = Skin.chrome.heading,
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("My location", fontSize = 11.sp, color = onVar)
-                        Switch(
-                            checked = follow,
-                            onCheckedChange = { on ->
-                                follow = on
-                                if (on) {
-                                    if (LocationProvider.hasPermission(context)) readDeviceFix()
-                                    else askPermission.launch(LocationProvider.permissions)
-                                }
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                // Short label so it never wraps; the longer example is the placeholder, which
-                // a single-line field keeps on one line instead of stacking it two-high.
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Search a place") },
-                    placeholder = { Text("City, ZIP, or lat, lon") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp),
-                    trailingIcon = {
-                        TextButton(onClick = { lookUp() }, enabled = !busy && query.isNotBlank()) {
-                            Text("Find")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                status?.let {
-                    Spacer(Modifier.height(6.dp))
-                    Text(it, fontSize = 12.sp, color = onVar)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !busy && (picked != null || follow != cfg.useDeviceLocation),
-                onClick = {
-                    picked?.let { AppConfig.saveLocation(context, it.lat, it.lon, it.label) }
-                    // Only honour "follow" once the permission actually landed — same rule
-                    // the settings screen applies, so the two can't disagree.
-                    AppConfig.saveUseDeviceLocation(context, follow && LocationProvider.hasPermission(context))
-                    WidgetCache.clear(context)
-                    ForecastWidgetProvider.refreshNow(context)
-                    onSaved()
-                },
-            ) { Text("Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-/** What the place box shows when nothing has a name: the coordinates themselves. */
-private fun coordLabel(lat: Double, lon: Double) = "$lat, $lon"
-
-/** "40.71, -74.01" typed into the place box is a coordinate pair, not a name to geocode. */
-private fun parseLatLon(q: String): Pair<Double, Double>? {
-    val parts = q.split(',', ' ').filter { it.isNotBlank() }
-    if (parts.size != 2) return null
-    val lat = parts[0].toDoubleOrNull() ?: return null
-    val lon = parts[1].toDoubleOrNull() ?: return null
-    return if (lat in -90.0..90.0 && lon in -180.0..180.0) lat to lon else null
-}
 
 private fun confidenceColor(confidence: String): Color = when (confidence) {
     "high" -> OpenGreen
@@ -1113,19 +1004,6 @@ private fun OpenWindowFlags(
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /** Static dashed "now" marker at the current hour (today's graphs only). When [tm] is
  *  given, also draws a small "now" label clamped on-screen. */
 private fun DrawScope.nowMarker(
@@ -1141,7 +1019,6 @@ private fun DrawScope.nowMarker(
         drawText(l, topLeft = Offset(x.coerceAtLeast(0f), top))
     }
 }
-
 
 
 /**

@@ -93,7 +93,13 @@ object WidgetCache {
      */
     const val STALE_MS = 3 * TTL_MS
     private const val PREFS = "ac_windows"
-    private const val KEY = "snapshot"
+    private const val KEY_PREFIX = "snapshot_"
+
+    /** The single-location key; [Locations] moves it under [keyFor] on first read. */
+    const val LEGACY_KEY = "snapshot"
+
+    /** One snapshot per saved location, so each widget draws the place it is bound to. */
+    fun keyFor(locationId: String) = KEY_PREFIX + locationId
 
     /** A double series that may have holes — a missing hour is written as JSON null. */
     private fun nullableArray(xs: List<Double?>): JSONArray =
@@ -103,7 +109,7 @@ object WidgetCache {
     private fun nullableIntArray(xs: List<Int?>): JSONArray =
         JSONArray().apply { xs.forEach { put(it ?: JSONObject.NULL) } }
 
-    fun save(context: Context, s: Snapshot) {
+    fun save(context: Context, locationId: String, s: Snapshot) {
         val o = JSONObject()
             .put("action", s.action.name)
             .put("headline", s.headline)
@@ -133,11 +139,11 @@ object WidgetCache {
             .put("updatedAtMs", s.updatedAtMs)
             .put("firstHourMs", s.firstHourMs)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, o.toString()).apply()
+            .edit().putString(keyFor(locationId), o.toString()).apply()
     }
 
-    fun load(context: Context): Snapshot? {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
+    fun load(context: Context, locationId: String): Snapshot? {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(keyFor(locationId), null)
             ?: return null
         return try {
             val o = JSONObject(raw)
@@ -190,8 +196,15 @@ object WidgetCache {
         }
     }
 
-    /** Drop the cache so the next render refetches (e.g. after a settings change). */
-    fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).apply()
+    fun clear(context: Context, locationId: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(keyFor(locationId)).apply()
+    }
+
+    /** Drop every location's snapshot so the next render refetches (e.g. after a settings change). */
+    fun clearAll(context: Context) {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val e = p.edit()
+        p.all.keys.filter { it.startsWith(KEY_PREFIX) }.forEach { e.remove(it) }
+        e.apply()
     }
 }

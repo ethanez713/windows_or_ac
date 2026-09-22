@@ -36,13 +36,20 @@
             </intent-filter>
         </activity>
 
-        <!-- Global app / comfort settings (thresholds + location). Launched from the
+        <!-- Global app / comfort settings. Launched from the
              app's gear icon. Not the widget's configure screen anymore. -->
         <activity
             android:name=".ConfigActivity"
             android:exported="false"
             android:label="AC / Windows settings"
             android:theme="@android:style/Theme.Material" />
+
+        <!-- Settings → Locations: the saved places, their order and nicknames. -->
+        <activity
+            android:name=".LocationsActivity"
+            android:exported="false"
+            android:label="Locations"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
         <!-- The forecast widget: what the weather will do in the next N hours, as one
              layered panel. The app's only home-screen widget, so it also owns the shared

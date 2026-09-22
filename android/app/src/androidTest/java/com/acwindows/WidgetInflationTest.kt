@@ -31,7 +31,7 @@ class WidgetInflationTest {
 
     @Test
     fun forecastWidgetInflates() {
-        WidgetCache.save(ctx, sampleSnapshot())
+        WidgetCache.save(ctx, Locations.CURRENT_ID, sampleSnapshot())
         val cases = listOf(
             ForecastWidgetConfig(showScore = true, showDayNight = true) to "forecast_score_daynight",
             ForecastWidgetConfig(showScore = false, showDayNight = true) to "forecast_plain_daynight",

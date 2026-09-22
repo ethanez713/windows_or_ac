@@ -32,7 +32,7 @@
             android:paddingEnd="20dp"
             android:paddingBottom="20dp">
 
-            <TextView style="@style/CfgHint" android:text="These settings apply to THIS widget only — place another one for a different horizon." />
+            <TextView style="@style/CfgHint" android:text="These settings apply to THIS widget only — place another one for a different place or horizon." />
 
             <!-- The preview is the actual widget renderer at the real 4x2 size, not a
                  mock-up, so what it shows is what the home screen will show. -->
@@ -49,6 +49,13 @@
                 android:layout_marginBottom="4dp"
                 android:gravity="center"
                 android:visibility="gone" />
+
+            <TextView style="@style/CfgLabel" android:text="Location" />
+            <Spinner
+                android:id="@+id/location"
+                style="@style/CfgField"
+                android:minHeight="48dp" />
+            <TextView style="@style/CfgHint" android:text="Add, rename or reorder places in the app's settings under Locations." />
 
             <TextView style="@style/CfgLabel" android:text="How far ahead" />
             <LinearLayout

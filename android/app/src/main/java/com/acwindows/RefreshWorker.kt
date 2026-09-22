@@ -10,8 +10,8 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
- * Does the actual fetch+decide off the main thread, caches the result, then
- * pushes it to every widget instance. Enqueued by [ForecastWidgetProvider] on add, on
+ * Does the actual fetch+decide off the main thread for each location a placed widget shows,
+ * caches each result under its location, then pushes it to the widgets showing that location. Enqueued by [ForecastWidgetProvider] on add, on
  * tap, on cache expiry, and on the 10-minute auto-refresh tick.
  *
  * Every run — however it was triggered — re-arms the next tick, so the auto-refresh
@@ -46,29 +46,47 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
     }
 
     private suspend fun refresh(): Result {
-        ForecastWidgetProvider.scheduleTick(applicationContext)
-        // loadResolved (not load): when the user has "use my phone's location" on, this is
-        // where the current fix is picked up, so the widget follows you without any
-        // separate location plumbing.
-        val cfg = AppConfig.loadResolved(applicationContext)
-        // Render progressively: paint as soon as 3+ sources answer, then redraw on every
-        // later source/forecast arrival (each call updates the widget's "N/X sources" count).
-        val result = WeatherRepository.fetchProgressive(cfg) { partial ->
-            publish(applicationContext, cfg, partial, final = false)
-        }
-        val con = result.consensus
-        // A final paint covers the case where no progressive frame ever published (e.g. the
-        // soft deadline passed with exactly 3 sources and they all failed). publish() applies
-        // the same empty-data guard, so a dead refresh never clobbers the last good snapshot.
-        if (!publish(applicationContext, cfg, result, final = true)) {
-            Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${con.sourcesFailed}")
-            ForecastWidgetProvider.refreshDone(applicationContext)
+        val context = applicationContext
+        ForecastWidgetProvider.scheduleTick(context)
+        val requested = inputData.getString(KEY_LOCATION)?.let { Locations.byId(context, it) }
+        val targets = (ForecastWidgetProvider.boundLocations(context) + listOfNotNull(requested))
+            .distinctBy { it.id }
+        // One location at a time: each already fans out to every source in parallel, and a
+        // failure in one must not cost the others their refresh.
+        targets.forEach { loc ->
+            try {
+                refreshLocation(context, loc)
+            } catch (e: Exception) {
+                Log.w(TAG, "refresh failed for one location; next tick will retry", e)
+                ForecastWidgetProvider.renderAll(context, refreshing = false, locationId = loc.id)
+            }
         }
         return Result.success()   // see [doWork] — never retry(), the tick drives retries
     }
 
+    private suspend fun refreshLocation(context: Context, loc: SavedLocation) {
+        // loadResolved (not load): for the Current location this is where the phone's fix is
+        // picked up, so the widget follows you without any separate location plumbing.
+        val cfg = AppConfig.loadResolved(context, loc)
+        // Render progressively: paint as soon as 3+ sources answer, then redraw on every
+        // later source/forecast arrival (each call updates the widget's "N/X sources" count).
+        val result = WeatherRepository.fetchProgressive(cfg) { partial ->
+            publish(context, cfg, partial, final = false)
+        }
+        // A final paint covers the case where no progressive frame ever published (e.g. the
+        // soft deadline passed with exactly 3 sources and they all failed). publish() applies
+        // the same empty-data guard, so a dead refresh never clobbers the last good snapshot.
+        if (!publish(context, cfg, result, final = true)) {
+            Log.w(TAG, "refresh returned no data; keeping last cached snapshot; failed=${result.consensus.sourcesFailed}")
+            ForecastWidgetProvider.renderAll(context, refreshing = false, locationId = cfg.locationId)
+        }
+    }
+
     companion object {
         private const val TAG = "AcWindows"
+
+        /** Input: a location to fetch even though no placed widget shows it yet. */
+        const val KEY_LOCATION = "locationId"
 
         /**
          * Serialises refreshes across the whole process. WorkManager will happily run the
@@ -103,7 +121,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
             // graph we already have, so keep the cached series instead. It stays honest
             // because the series carries its own wall-clock anchor: the graph draws "now"
             // wherever it really falls in those bars, however old they are.
-            val series = seriesOf(fc, cfg) ?: seriesOf(WidgetCache.load(context)) ?: Series()
+            val series = seriesOf(fc, cfg) ?: seriesOf(WidgetCache.load(context, cfg.locationId)) ?: Series()
             val snapshot = Snapshot(
                 action = rec.action,
                 headline = windowHeadline(rec, series),
@@ -133,14 +151,14 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
                 updatedAtMs = System.currentTimeMillis(),
                 firstHourMs = series.firstHourMs,
             )
-            WidgetCache.save(context, snapshot)
+            WidgetCache.save(context, cfg.locationId, snapshot)
             Log.i(
                 TAG,
                 "fetch ok=${con.sourcesOk}/${con.sourcesAttempted} failed=${con.sourcesFailed} " +
                     "confidence=${con.confidence} now=${con.tempF} score=$nowScore -> ${rec.action}; " +
                     "best=${series.bestStart}..${series.bestEnd} hours=${series.scores.size}",
             )
-            ForecastWidgetProvider.renderAll(context, refreshing = !final)
+            ForecastWidgetProvider.renderAll(context, refreshing = !final, locationId = cfg.locationId)
             return true
         }
 
