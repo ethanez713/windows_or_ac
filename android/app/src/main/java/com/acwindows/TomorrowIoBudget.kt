@@ -43,7 +43,8 @@ class TomorrowIoBudget(context: Context) {
             } catch (e: WeatherRepository.HttpStatusException) {
                 if (e.code != 429) throw e
                 prefs.edit().putLong(KEY_PAUSED_UNTIL, now + PAUSE_MS).apply()
-                Log.i(TAG, "tomorrowio 429 on $kind; pausing ${PAUSE_MS / 60_000} min; cachedAgeMin=${age / 60_000}")
+                val cached = if (file.exists()) "${age / 60_000}min" else "none"
+                Log.i(TAG, "tomorrowio 429 on $kind; pausing ${PAUSE_MS / 60_000} min; cached=$cached")
                 if (age < STALE_OK_MS) return file.readText()
                 throw RateLimited()
             }
