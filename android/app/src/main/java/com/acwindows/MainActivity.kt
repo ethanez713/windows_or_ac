@@ -29,6 +29,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -105,6 +109,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _selectedId.value = id
         val slot = slots.value[id]
         if (slot?.state == null || System.currentTimeMillis() - slot.updatedAtMs > WidgetCache.TTL_MS) refresh()
+    }
+
+    /** Step through the list in carousel order, wrapping at both ends. */
+    fun selectAdjacent(step: Int) {
+        val list = _locations.value
+        if (list.size < 2) return
+        val i = list.indexOfFirst { it.id == _selectedId.value }.coerceAtLeast(0)
+        select(list[(i + step).mod(list.size)].id)
     }
 
     /** Pick up edits made on the Locations screen: order, nicknames, removals, a new fix. */
@@ -237,7 +249,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             if (locations.size >= 2) LocationCarousel(locations, selectedId, locationMode, vm::select)
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().nestedScroll(ptr.nestedScrollConnection)) {
+        Box(
+            Modifier.padding(padding).fillMaxSize().nestedScroll(ptr.nestedScrollConnection)
+                .locationSwipe(enabled = locations.size >= 2, onSwipe = vm::selectAdjacent),
+        ) {
             val s = ui.state
             when {
                 // Genuine failure with nothing to show → error + retry.
@@ -256,6 +271,47 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         }
     }
 }
+
+/**
+ * Swipe the forecast sideways to step through locations: left for the next, right for the
+ * previous. A chart's scrub consumes its horizontal drag before this sees it, so scrubbing
+ * never switches location; anywhere else a horizontal drag past [SWIPE_DISTANCE] does. The
+ * content trails the finger at a fraction of the drag and springs back on release.
+ */
+@Composable
+private fun Modifier.locationSwipe(enabled: Boolean, onSwipe: (Int) -> Unit): Modifier {
+    if (!enabled) return this
+    val scope = rememberCoroutineScope()
+    val shift = remember { Animatable(0f) }
+    val threshold = with(LocalDensity.current) { SWIPE_DISTANCE.toPx() }
+    val currentOnSwipe by rememberUpdatedState(onSwipe)
+    // pointerInput sits outside the layer so the drag is measured in untranslated space.
+    return pointerInput(Unit) {
+        var total = 0f
+        fun settle() { scope.launch { shift.animateTo(0f, tween(200)) } }
+        detectHorizontalDragGestures(
+            onDragStart = { total = 0f },
+            onDragEnd = {
+                when {
+                    total <= -threshold -> currentOnSwipe(1)
+                    total >= threshold -> currentOnSwipe(-1)
+                }
+                settle()
+            },
+            onDragCancel = ::settle,
+        ) { change, dx ->
+            change.consume()
+            total += dx
+            scope.launch { shift.snapTo(total * SWIPE_TRAIL) }
+        }
+    }.graphicsLayer {
+        translationX = shift.value
+        alpha = 1f - (abs(shift.value) / (threshold * 2)).coerceAtMost(0.35f)
+    }
+}
+
+private val SWIPE_DISTANCE = 72.dp
+private const val SWIPE_TRAIL = 0.35f
 
 /** Tap = app/comfort settings; long-press = widget-only settings. */
 @OptIn(ExperimentalFoundationApi::class)

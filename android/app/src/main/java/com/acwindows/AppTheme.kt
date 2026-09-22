@@ -44,6 +44,11 @@ class ChromeColors(t: Tokens.Chrome, val dark: Boolean) {
     val marker = Color(t.marker)
     val bandTint = Color(t.bandTint)
     val bandOnNight = t.bandOnNight
+    val accent = Color(t.accent)
+    val onAccent = Color(t.onAccent)
+    val control = Color(t.control)
+    val controlBorder = Color(t.controlBorder)
+    val controlText = Color(t.controlText)
     val raw = t
 }
 

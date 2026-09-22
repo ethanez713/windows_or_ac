@@ -11,24 +11,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -58,7 +56,9 @@ import kotlin.math.abs
 
 /**
  * The bottom location selector: flat pills after the design system's touch
- * `SegmentedControl` (30dp pills, 6dp gap, 44dp touch rows, selected one filled with the accent).
+ * `SegmentedControl` (30dp pills, 6dp gap, 44dp touch rows, selected one filled with the
+ * orange accent, the rest warm-grey controls on the card surface). Current location is the
+ * bare pin glyph, the platform idiom for "where I am".
  *
  * When every pill fits across the bar the row is static and centred. When they overflow it
  * rotates: the list repeats endlessly in both directions, a fling settles with the nearest pill
@@ -73,8 +73,8 @@ fun LocationCarousel(
     onSelect: (String) -> Unit,
 ) {
     val chrome = Skin.chrome
-    Column(Modifier.fillMaxWidth().background(chrome.sunken).navigationBarsPadding()) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(chrome.hairline))
+    Column(Modifier.fillMaxWidth().background(chrome.card).navigationBarsPadding()) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(chrome.controlBorder))
         BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             val widths = pillWidths(locations, locationMode)
             val fits = widths.fold(0.dp) { a, w -> a + w } + PILL_GAP * (locations.size - 1) + EDGE * 2 <= maxWidth
@@ -110,12 +110,16 @@ private fun RotatingPills(
     val currentSelected by rememberUpdatedState(selectedId)
     val select by rememberUpdatedState(onSelect)
 
-    // Bring the selection to the centre on first layout and whenever it changes from outside
-    // (a reload after the Locations screen). Picks the copy nearest what is already on screen.
+    // Bring the selection to the centre whenever it changes from outside (a swipe on the
+    // forecast, a reload after the Locations screen): jump on first layout, glide after.
+    // Picks the copy nearest what is already on screen, so a swipe past the end wraps.
+    val placed = remember { mutableStateOf(false) }
     LaunchedEffect(selectedId, n) {
         snapshotFlow { state.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
-        if (centredIndex(state)?.mod(n) == selectedIdx) return@LaunchedEffect
-        centre(state, nearestCopy(state, n, selectedIdx), animate = false)
+        if (centredIndex(state)?.mod(n) != selectedIdx) {
+            centre(state, nearestCopy(state, n, selectedIdx), animate = placed.value)
+        }
+        placed.value = true
     }
 
     // Settle → centre the nearest pill exactly and select it.
@@ -184,8 +188,7 @@ private fun Pill(
     onClick: () -> Unit,
 ) {
     val chrome = Skin.chrome
-    val accent = MaterialTheme.colorScheme.primary
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else chrome.muted
+    val fg = if (selected) chrome.onAccent else chrome.controlText
     val shape = RoundedCornerShape(50)
     // The 44dp touch row around the 30dp pill.
     Box(
@@ -199,22 +202,22 @@ private fun Pill(
     ) {
         Row(
             Modifier.height(PILL_H).widthIn(max = PILL_MAX_W).clip(shape)
-                .background(if (selected) accent else chrome.sunken)
-                .border(1.dp, if (selected) accent else chrome.hairline, shape)
-                .padding(horizontal = PILL_PAD),
+                .background(if (selected) chrome.accent else chrome.control)
+                .border(1.dp, if (selected) chrome.accent else chrome.controlBorder, shape)
+                .padding(horizontal = if (loc.isCurrent) PIN_PAD else PILL_PAD),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (loc.isCurrent) {
                 Icon(
-                    painterResource(locationMode.iconRes), contentDescription = null,
-                    tint = fg, modifier = Modifier.size(ICON),
+                    painterResource(locationMode.iconRes), contentDescription = loc.label,
+                    tint = fg, modifier = Modifier.size(PIN),
                 )
-                Spacer(Modifier.width(ICON_GAP))
+            } else {
+                Text(
+                    loc.label, style = pillText, color = fg,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
-            Text(
-                loc.label, style = pillText, color = fg,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -229,9 +232,9 @@ private fun pillWidths(
     val density = LocalDensity.current
     return remember(locations, locationMode, density) {
         locations.map { loc ->
+            if (loc.isCurrent) return@map PIN + PIN_PAD * 2
             val text = with(density) { measurer.measure(loc.label, pillText).size.width.toDp() }
-            val icon = if (loc.isCurrent) ICON + ICON_GAP else 0.dp
-            (text + icon + PILL_PAD * 2).coerceAtMost(PILL_MAX_W)
+            (text + PILL_PAD * 2).coerceAtMost(PILL_MAX_W)
         }
     }
 }
@@ -243,8 +246,8 @@ private val PILL_PAD = 12.dp
 private val PILL_GAP = 6.dp
 private val PILL_MAX_W = 160.dp
 private val EDGE = 12.dp
-private val ICON = 14.dp
-private val ICON_GAP = 4.dp
+private val PIN = 16.dp
+private val PIN_PAD = 10.dp
 
 /** Copies of the list laid end to end; far more than any fling can cross. */
 private const val LAPS = 1000

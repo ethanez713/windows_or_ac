@@ -55,6 +55,18 @@ object Tokens {
          */
         val bandTint: Int,
         val bandOnNight: Boolean,
+        /**
+         * Selection controls, straight from the Ethan design system: the brand orange fill
+         * (`--accent`, identical in both themes) under its warm-white label (`--on-accent`),
+         * and the warm-grey resting control (`--ink-050` fill, `--ink-200` border, `--ink-600`
+         * label). Warm white on orange is 2.8:1 — the system's one sanctioned exception, for
+         * control and badge labels only.
+         */
+        val accent: Int,
+        val onAccent: Int,
+        val control: Int,
+        val controlBorder: Int,
+        val controlText: Int,
     )
 
     private val LIGHT_DATA = Data(
@@ -97,6 +109,11 @@ object Tokens {
         marker = 0xFFFED7AA.toInt(),
         bandTint = argb(15, 33, 29, 24),
         bandOnNight = true,
+        accent = 0xFFDD7A32.toInt(),
+        onAccent = 0xFFFFF8F1.toInt(),
+        control = 0xFFF2EFE8.toInt(),
+        controlBorder = 0xFFD8D1C5.toInt(),
+        controlText = 0xFF574F45.toInt(),
     )
 
     private val DARK_CHROME = Chrome(
@@ -111,6 +128,11 @@ object Tokens {
         marker = 0xFF493B31.toInt(),
         bandTint = argb(22, 247, 244, 237),
         bandOnNight = false,
+        accent = 0xFFDD7A32.toInt(),
+        onAccent = 0xFFFFF8F1.toInt(),
+        control = 0xFF2A2620.toInt(),
+        controlBorder = 0xFF423D34.toInt(),
+        controlText = 0xFFB4AEA2.toInt(),
     )
 
     fun data(dark: Boolean): Data = if (dark) DARK_DATA else LIGHT_DATA
