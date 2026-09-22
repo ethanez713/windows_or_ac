@@ -156,7 +156,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val app = getApplication<Application>()
                 val cfg = AppConfig.loadResolved(app, Locations.byId(app, id))
                 if (id == Locations.CURRENT_ID) _locations.value = Locations.load(app)
-                WeatherRepository.fetchAppStateProgressive(cfg, TomorrowIoBudget(app)) { partial ->
+                WeatherRepository.fetchAppStateProgressive(cfg, ResponseCache(app)) { partial ->
                     val empty = partial.consensus.confidence == "none" && partial.forecast.points.isEmpty()
                     if (!empty) slot(id) {
                         // Keep refreshing=true across partials: an early partial may carry current
