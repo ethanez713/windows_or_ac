@@ -12,7 +12,10 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
@@ -260,12 +263,12 @@ object WeatherRepository {
             "&current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature," +
             "precipitation,weather_code,wind_speed_10m" +
             "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm" +
-            "&timezone=${cfg.timezone}"
+            "&timezone=${cfg.timezoneParam}"
         val cur = getJson(base, cfg.userAgent).getJSONObject("current")
         var aqi: Int? = null
         try {
             val aqUrl = "https://air-quality-api.open-meteo.com/v1/air-quality" +
-                "?latitude=${cfg.lat}&longitude=${cfg.lon}&current=us_aqi&timezone=${cfg.timezone}"
+                "?latitude=${cfg.lat}&longitude=${cfg.lon}&current=us_aqi&timezone=${cfg.timezoneParam}"
             getJson(aqUrl, cfg.userAgent).getJSONObject("current").dblOrNull("us_aqi")?.let {
                 aqi = it.roundToInt()
             }
@@ -393,7 +396,7 @@ object WeatherRepository {
             "&hourly=temperature_2m,dew_point_2m,relative_humidity_2m,precipitation_probability," +
             "precipitation,weather_code,cloud_cover,uv_index,shortwave_radiation,wind_speed_10m,is_day&$forecastRange" +
             "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" +
-            "&timezone=${cfg.timezone}"
+            "&timezone=${cfg.timezoneParam}"
         val h = getJson(url, cfg.userAgent).getJSONObject("hourly")
         val times = h.getJSONArray("time")
         val temp = h.getJSONArray("temperature_2m")
@@ -411,7 +414,7 @@ object WeatherRepository {
         try {
             val aqUrl = "https://air-quality-api.open-meteo.com/v1/air-quality" +
                 "?latitude=${cfg.lat}&longitude=${cfg.lon}&hourly=us_aqi&$aqiRange" +
-                "&timezone=${cfg.timezone}"
+                "&timezone=${cfg.timezoneParam}"
             val ah = getJson(aqUrl, cfg.userAgent).getJSONObject("hourly")
             val at = ah.getJSONArray("time"); val av = ah.getJSONArray("us_aqi")
             for (i in 0 until at.length()) av.dblAt(i)?.let { aqiByTime[at.getString(i)] = it.roundToInt() }
@@ -448,7 +451,7 @@ object WeatherRepository {
             "&minutely_15=temperature_2m,dew_point_2m,precipitation,precipitation_probability," +
             "weather_code,is_day,shortwave_radiation,cloud_cover,uv_index&forecast_minutely_15=$steps" +
             "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" +
-            "&timezone=${cfg.timezone}"
+            "&timezone=${cfg.timezoneParam}"
         val m = getJson(url, cfg.userAgent).getJSONObject("minutely_15")
         val times = m.getJSONArray("time")
         val temp = m.getJSONArray("temperature_2m")
@@ -473,7 +476,7 @@ object WeatherRepository {
                 // exactly-sized request runs out before the last few rows and leaves them with a
                 // null AQI (which scores as non-blocking, i.e. quietly optimistic).
                 "?latitude=${cfg.lat}&longitude=${cfg.lon}&hourly=us_aqi&forecast_hours=${steps / 4 + 2}" +
-                "&timezone=${cfg.timezone}"
+                "&timezone=${cfg.timezoneParam}"
             val ah = getJson(aqUrl, cfg.userAgent).getJSONObject("hourly")
             val at = ah.getJSONArray("time"); val av = ah.getJSONArray("us_aqi")
             for (i in 0 until at.length()) av.dblAt(i)?.let { aqiByHour[at.getString(i).take(13)] = it.roundToInt() }
@@ -498,15 +501,18 @@ object WeatherRepository {
         val pts = getJson("https://api.weather.gov/points/${cfg.lat},${cfg.lon}", cfg.userAgent)
         val hourlyUrl = pts.getJSONObject("properties").getString("forecastHourly")
         val periods = getJson(hourlyUrl, cfg.userAgent).getJSONObject("properties").getJSONArray("periods")
-        (0 until minOf(hours, periods.length())).map { i ->
+        (0 until minOf(hours, periods.length())).mapNotNull { i ->
             val p = periods.getJSONObject(i)
+            // startTime carries the LOCATION's offset; dropping it would label the row in
+            // the location's clock instead of the phone's.
+            val t = offsetHourKey(p.optString("startTime"), cfg.zone()) ?: return@mapNotNull null
             var temp = p.dblOrNull("temperature")
             if (temp != null && p.optString("temperatureUnit") == "C") temp = cToF(temp)
             val dewC = p.optJSONObject("dewpoint")?.let { if (it.isNull("value")) null else it.optDouble("value") }
             val pop = p.optJSONObject("probabilityOfPrecipitation")
                 ?.let { if (it.isNull("value")) null else it.optDouble("value") }
             mapOf(
-                "time" to p.optString("startTime").take(16),
+                "time" to t,
                 "tempF" to temp, "dewPointF" to cToF(dewC), "precipProb" to pop,
             )
         }
@@ -526,7 +532,7 @@ object WeatherRepository {
     private fun fetchOpenMeteoEcmwfRain(cfg: AppConfig, forecastRange: String): List<Map<String, Any?>> = try {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}" +
             "&hourly=precipitation_probability,precipitation&$forecastRange" +
-            "&models=ecmwf_ifs025&precipitation_unit=inch&timezone=${cfg.timezone}"
+            "&models=ecmwf_ifs025&precipitation_unit=inch&timezone=${cfg.timezoneParam}"
         val h = getJson(url, cfg.userAgent).getJSONObject("hourly")
         val times = h.getJSONArray("time")
         val pop = h.optJSONArray("precipitation_probability")
@@ -548,28 +554,39 @@ object WeatherRepository {
      * everywhere else, so there is nothing here to vote on the chance with.
      *
      * Two shape differences from the Open-Meteo rows this merges into, both handled
-     * here so ForecastBuilder sees one format: times are UTC and have to be moved into
-     * the forecast's own zone to key against it, and amounts are millimetres. Rows past
+     * here so ForecastBuilder sees one format: times are UTC and have to be keyed with
+     * [utcHourKey], and amounts are millimetres. Rows past
      * met.no's ~2.5-day hourly horizon carry only a `next_6_hours` block; those are
      * skipped rather than smeared across six hours it never forecast.
      */
-    /** The local-ISO key the hourly feeds are joined on, from a source's UTC timestamp. */
-    private fun utcToLocalHour(fmt: DateTimeFormatter, utcIso: String): String? =
-        runCatching { fmt.format(Instant.parse(utcIso)) }.getOrNull()
+    /**
+     * The key the hourly feeds are joined on: the hour containing [instant], as wall-clock
+     * time in [zone]. Truncated to the hour because Open-Meteo labels its rows on whole
+     * local hours even in a half-hour-offset zone (+5:30 gives "02:00", not "02:30"), so an
+     * exact conversion of another source's UTC hour would land between its rows.
+     */
+    internal fun hourKey(instant: Instant, zone: ZoneId): String =
+        instant.atZone(zone).truncatedTo(ChronoUnit.HOURS).format(HOUR_KEY)
 
-    private fun hourKeyFormat(cfg: AppConfig): DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm").withZone(cfg.zone())
+    /** [hourKey] of a UTC timestamp ("2026-08-02T14:00:00Z"), or null if unparseable. */
+    internal fun utcHourKey(utcIso: String, zone: ZoneId): String? =
+        runCatching { hourKey(Instant.parse(utcIso), zone) }.getOrNull()
+
+    /** [hourKey] of a timestamp carrying its own offset ("2026-08-02T14:00:00-04:00"), as NWS sends. */
+    internal fun offsetHourKey(iso: String, zone: ZoneId): String? =
+        runCatching { hourKey(OffsetDateTime.parse(iso).toInstant(), zone) }.getOrNull()
+
+    private val HOUR_KEY = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
 
     private fun fetchMetnoHourly(cfg: AppConfig, hours: Int): List<Map<String, Any?>> = try {
         val url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${cfg.lat}&lon=${cfg.lon}"
         val ts = getJson(url, cfg.userAgent).getJSONObject("properties").getJSONArray("timeseries")
-        val fmt = hourKeyFormat(cfg)
         (0 until minOf(hours, ts.length())).mapNotNull { i ->
             val e = ts.getJSONObject(i)
             val mm = e.optJSONObject("data")?.optJSONObject("next_1_hours")
                 ?.optJSONObject("details")?.dblOrNull("precipitation_amount")
                 ?: return@mapNotNull null
-            val t = utcToLocalHour(fmt, e.optString("time")) ?: return@mapNotNull null
+            val t = utcHourKey(e.optString("time"), cfg.zone()) ?: return@mapNotNull null
             mapOf<String, Any?>("time" to t, "precipIn" to mm / MM_PER_INCH)
         }
     } catch (e: Exception) {
@@ -601,10 +618,9 @@ object WeatherRepository {
         val url = "https://api.tomorrow.io/v4/weather/forecast?location=${cfg.lat},${cfg.lon}" +
             "&timesteps=1h&units=imperial&apikey=$key"
         val hourly = getJson(url, cfg.userAgent).getJSONObject("timelines").getJSONArray("hourly")
-        val fmt = hourKeyFormat(cfg)
         (0 until hourly.length()).mapNotNull { i ->
             val row = hourly.getJSONObject(i)
-            val t = utcToLocalHour(fmt, row.optString("time")) ?: return@mapNotNull null
+            val t = utcHourKey(row.optString("time"), cfg.zone()) ?: return@mapNotNull null
             val v = row.optJSONObject("values") ?: return@mapNotNull null
             mapOf<String, Any?>(
                 "time" to t,

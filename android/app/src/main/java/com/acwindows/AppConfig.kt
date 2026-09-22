@@ -3,6 +3,7 @@ package com.acwindows
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import java.net.URLEncoder
 import java.time.ZoneId
 import kotlin.math.abs
 
@@ -23,7 +24,6 @@ enum class DayViewMode { TODAY, NOW }
 data class AppConfig(
     val lat: Double,
     val lon: Double,
-    val timezone: String,
     val userAgent: String,
     val comfort: Comfort,
     val secrets: Secrets = Secrets(),     // user-pasted provider API keys (see SecretsStore)
@@ -41,13 +41,14 @@ data class AppConfig(
     val thunderAlertPct: Double = 50.0,    // storm treatment at/above this thunder chance
 ) {
     /**
-     * The zone the hourly forecast timestamps are expressed in — the same one sent to
-     * Open-Meteo, so a row's "2026-08-02T14:00" can be turned back into an instant.
-     * Falls back to the device zone for "auto" or an unparseable name.
+     * The zone every hourly row's time is written in: the phone's, whichever location is
+     * shown, so all times read in the viewer's clock. Day/night shading is unaffected — each
+     * row's `isDay` is the location's own sun at that instant.
      */
-    fun zone(): ZoneId = runCatching {
-        if (timezone.isBlank() || timezone == "auto") ZoneId.systemDefault() else ZoneId.of(timezone)
-    }.getOrDefault(ZoneId.systemDefault())
+    fun zone(): ZoneId = ZoneId.systemDefault()
+
+    /** [zone] as Open-Meteo's `timezone` query value. */
+    val timezoneParam: String get() = URLEncoder.encode(zone().id, "UTF-8")
 
     companion object {
         // Every source the consensus can see — keyless first, then the optional keyed ones.
@@ -55,7 +56,6 @@ data class AppConfig(
         val KNOWN_SOURCES = listOf("open-meteo", "nws", "metno", "tomorrowio", "pirateweather", "airnow")
         const val DEFAULT_LAT = 40.7128            // your latitude (look it up at latlong.net)
         const val DEFAULT_LON = -74.0060           // your longitude
-        const val DEFAULT_TZ = "auto"              // location-local via Open-Meteo; or an IANA tz name
         const val DEFAULT_UA = "ac-widget/0.1 (your-email@example.com)" // NWS asks for a contact
         // Comfort / decision setpoints seeded on first run:
         const val DEFAULT_MAX_TEMP_F = 78.0        // don't let the house get warmer than this
@@ -71,7 +71,6 @@ data class AppConfig(
             return AppConfig(
                 lat = loc.lat,
                 lon = loc.lon,
-                timezone = p.getString("tz", null) ?: DEFAULT_TZ,
                 userAgent = p.getString("ua", null) ?: DEFAULT_UA,
                 comfort = Comfort(
                     tempIdealF = p.getString("tempIdealF", null)?.toDoubleOrNull() ?: base.tempIdealF,

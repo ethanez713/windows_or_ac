@@ -4,8 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDateTime
-import java.time.ZoneId
 
 /**
  * The wall-clock anchoring that keeps the widget's text and its graph describing the same
@@ -66,28 +64,5 @@ class SnapshotTimeTest {
         val now = 1_700_000_000_000L
         assertTrue(snap(now, WidgetCache.TTL_MS, now).ageMs(now) <= WidgetCache.STALE_MS)
         assertTrue(snap(now, 4 * WidgetCache.TTL_MS, now).ageMs(now) > WidgetCache.STALE_MS)
-    }
-
-    // The config zone is what makes an hourly row's local time absolute.
-
-    private fun cfg(tz: String) = AppConfig(
-        lat = 0.0, lon = 0.0, timezone = tz, userAgent = "test", comfort = Comfort(),
-    )
-
-    @Test fun rowsAreAnchoredInTheZoneTheProviderWasAskedFor() {
-        // The rows come back in the CONFIGURED zone, which need not be the device's — a
-        // phone travelling with a fixed home timezone would otherwise shift every bar.
-        val ny = cfg("America/New_York").zone()
-        val la = cfg("America/Los_Angeles").zone()
-        val local = LocalDateTime.parse("2026-08-02T14:00")
-        val delta = local.atZone(la).toInstant().toEpochMilli() -
-            local.atZone(ny).toInstant().toEpochMilli()
-        assertEquals(3 * hour, delta)
-    }
-
-    @Test fun autoAndGarbageZonesFallBackToTheDevice() {
-        assertEquals(ZoneId.systemDefault(), cfg("auto").zone())
-        assertEquals(ZoneId.systemDefault(), cfg("").zone())
-        assertEquals(ZoneId.systemDefault(), cfg("Not/AZone").zone())
     }
 }
