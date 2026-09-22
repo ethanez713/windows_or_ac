@@ -70,7 +70,7 @@ class RefreshWorker(appContext: Context, params: WorkerParameters) :
         val cfg = AppConfig.loadResolved(context, loc)
         // Render progressively: paint as soon as 3+ sources answer, then redraw on every
         // later source/forecast arrival (each call updates the widget's "N/X sources" count).
-        val result = WeatherRepository.fetchProgressive(cfg) { partial ->
+        val result = WeatherRepository.fetchProgressive(cfg, TomorrowIoBudget(context)) { partial ->
             publish(context, cfg, partial, final = false)
         }
         // A final paint covers the case where no progressive frame ever published (e.g. the

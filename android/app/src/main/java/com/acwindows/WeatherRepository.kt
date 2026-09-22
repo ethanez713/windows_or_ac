@@ -51,9 +51,6 @@ object WeatherRepository {
 
     private const val MM_PER_INCH = 25.4
 
-    /** One-shot fetch: returns the final result with no progressive callbacks. */
-    suspend fun fetch(cfg: AppConfig): WeatherResult = fetchProgressive(cfg) {}
-
     /**
      * Progressive fetch for the widget. Kicks off every current-reading source plus
      * the hourly-forecast feeds in parallel and invokes [onUpdate] each time a fresh
@@ -63,16 +60,16 @@ object WeatherRepository {
      * after the 3rd answer. Returns the final assembled result.
      */
     suspend fun fetchProgressive(
-        cfg: AppConfig, onUpdate: suspend (WeatherResult) -> Unit,
+        cfg: AppConfig, tio: TomorrowIoBudget, onUpdate: suspend (WeatherResult) -> Unit,
     ): WeatherResult = coroutineScope {
         val hrs = cfg.widgetForecastHours
         // Current readings (keyless + any keyed hyperlocal sources) + hourly forecast.
-        val readingTasks = currentReadingTasks(cfg)
+        val readingTasks = currentReadingTasks(cfg, tio)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourly(cfg, hrs) }
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, hrs) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, hrs) }
         val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_hours=$hrs") }
-        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k) } }
+        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k, tio) } }
         driveProgressive(
             readingTasks, listOfNotNull(omH, nwsH, metnoH, ecmwfH, tioH),
             assemble = { readings, feeds ->
@@ -95,41 +92,35 @@ object WeatherRepository {
      * The three keyless sources plus any keyed hyperlocal sources the user configured,
      * each kicked off in parallel. A keyed source is only attempted when its key is set.
      */
-    private fun CoroutineScope.currentReadingTasks(cfg: AppConfig): List<Deferred<SourceReading>> {
+    private fun CoroutineScope.currentReadingTasks(
+        cfg: AppConfig, tio: TomorrowIoBudget,
+    ): List<Deferred<SourceReading>> {
         val tasks = mutableListOf(
             async(Dispatchers.IO) { fetchOpenMeteo(cfg) },
             async(Dispatchers.IO) { fetchNws(cfg) },
             async(Dispatchers.IO) { fetchMetno(cfg) },
         )
-        cfg.secrets.tomorrowIo?.let { k -> tasks += async(Dispatchers.IO) { fetchTomorrowIo(cfg, k) } }
+        cfg.secrets.tomorrowIo?.let { k -> tasks += async(Dispatchers.IO) { fetchTomorrowIo(cfg, k, tio) } }
         cfg.secrets.pirateWeather?.let { k -> tasks += async(Dispatchers.IO) { fetchPirateWeather(cfg, k) } }
         cfg.secrets.airNow?.let { k -> tasks += async(Dispatchers.IO) { fetchAirNow(cfg, k) } }
         return tasks
     }
 
-    /**
-     * The full-app fetch: current consensus + a multi-day hourly forecast (default
-     * 14 days) + home/device state. Same keyless sources as [fetch]; the device
-     * source is the no-op MVP stub. Used by the launcher app's Now / 14-Day tabs.
-     */
-    suspend fun fetchAppState(
-        cfg: AppConfig,
-        days: Int = cfg.comfort.appForecastDays,
-        deviceSource: DeviceSource = NoopDeviceSource,
-    ): AppState = fetchAppStateProgressive(cfg, days, deviceSource) {}
 
     /**
-     * Progressive variant of [fetchAppState] for the launcher app: same 3-source /
-     * 5-second policy as [fetchProgressive], emitting an [AppState] on each fresh
-     * arrival so the app's source counter and graphs fill in live.
+     * The full-app fetch: current consensus + a multi-day hourly forecast (default 14
+     * days) + home/device state. Same 3-source / 5-second policy as [fetchProgressive],
+     * emitting an [AppState] on each fresh arrival so the app's source counter and
+     * graphs fill in live.
      */
     suspend fun fetchAppStateProgressive(
         cfg: AppConfig,
+        tio: TomorrowIoBudget,
         days: Int = cfg.comfort.appForecastDays,
         deviceSource: DeviceSource = NoopDeviceSource,
         onUpdate: suspend (AppState) -> Unit,
     ): AppState = coroutineScope {
-        val readingTasks = currentReadingTasks(cfg)
+        val readingTasks = currentReadingTasks(cfg, tio)
         val omH = async(Dispatchers.IO) { fetchOpenMeteoHourlyDays(cfg, days) }
         // NWS hourly tops out ~6.5 days and met.no's hourly rain ~2.5; ask each for what
         // it has, and the days past it fall back to Open-Meteo alone (ForecastBuilder
@@ -137,7 +128,7 @@ object WeatherRepository {
         val nwsH = async(Dispatchers.IO) { fetchNwsHourly(cfg, days * 24) }
         val metnoH = async(Dispatchers.IO) { fetchMetnoHourly(cfg, days * 24) }
         val ecmwfH = async(Dispatchers.IO) { fetchOpenMeteoEcmwfRain(cfg, "forecast_days=$days") }
-        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k) } }
+        val tioH = cfg.secrets.tomorrowIo?.let { k -> async(Dispatchers.IO) { fetchTomorrowIoHourly(cfg, k, tio) } }
         val home = async(Dispatchers.IO) { deviceSource.read(cfg) }
         // The near-term 15-minute series for the app's "now → end of day" view. One more
         // HTTP round trip per refresh, but it's just another feed in the progressive
@@ -230,6 +221,8 @@ object WeatherRepository {
 
     // HTTP helpers: HttpURLConnection + org.json, both built into Android.
 
+    class HttpStatusException(val code: Int) : RuntimeException("HTTP $code")
+
     private fun httpGet(urlStr: String, userAgent: String, timeoutMs: Int = 15000): String {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -239,7 +232,7 @@ object WeatherRepository {
             readTimeout = timeoutMs
         }
         try {
-            if (conn.responseCode !in 200..299) throw RuntimeException("HTTP ${conn.responseCode}")
+            if (conn.responseCode !in 200..299) throw HttpStatusException(conn.responseCode)
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
             conn.disconnect()
@@ -329,10 +322,13 @@ object WeatherRepository {
     }
 
     /** Tomorrow.io realtime: hyperlocal model temp/dew/humidity/wind (+ EPA AQI if present). */
-    private fun fetchTomorrowIo(cfg: AppConfig, key: String): SourceReading = try {
+    private fun fetchTomorrowIo(cfg: AppConfig, key: String, tio: TomorrowIoBudget): SourceReading = try {
         val url = "https://api.tomorrow.io/v4/weather/realtime?location=${cfg.lat},${cfg.lon}" +
             "&units=imperial&apikey=$key"
-        val v = getJson(url, cfg.userAgent).getJSONObject("data").getJSONObject("values")
+        val body = tio.get("realtime", cfg.lat, cfg.lon, TomorrowIoBudget.REALTIME_MAX_AGE_MS) {
+            httpGet(url, cfg.userAgent)
+        }
+        val v = JSONObject(body).getJSONObject("data").getJSONObject("values")
         SourceReading(
             source = "tomorrowio",
             tempF = v.dblOrNull("temperature"),
@@ -610,14 +606,19 @@ object WeatherRepository {
      * `rainAccumulation`, which is unreliable here — it reports 0 for hours whose own
      * intensity is the highest of the day.
      *
-     * A second call per refresh on top of [fetchTomorrowIo]'s realtime one. The free
-     * tier allows 25 requests/hour and 500/day; two per 30-minute refresh sits well
-     * inside that, and a 429 returns empty and simply doesn't vote.
+     * Both Tomorrow.io calls go through [TomorrowIoBudget], which sets how often they
+     * really reach the API; when it has nothing usable this returns empty and simply
+     * doesn't vote.
      */
-    private fun fetchTomorrowIoHourly(cfg: AppConfig, key: String): List<Map<String, Any?>> = try {
+    private fun fetchTomorrowIoHourly(
+        cfg: AppConfig, key: String, tio: TomorrowIoBudget,
+    ): List<Map<String, Any?>> = try {
         val url = "https://api.tomorrow.io/v4/weather/forecast?location=${cfg.lat},${cfg.lon}" +
             "&timesteps=1h&units=imperial&apikey=$key"
-        val hourly = getJson(url, cfg.userAgent).getJSONObject("timelines").getJSONArray("hourly")
+        val body = tio.get("hourly", cfg.lat, cfg.lon, TomorrowIoBudget.HOURLY_MAX_AGE_MS) {
+            httpGet(url, cfg.userAgent)
+        }
+        val hourly = JSONObject(body).getJSONObject("timelines").getJSONArray("hourly")
         (0 until hourly.length()).mapNotNull { i ->
             val row = hourly.getJSONObject(i)
             val t = utcHourKey(row.optString("time"), cfg.zone()) ?: return@mapNotNull null
