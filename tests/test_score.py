@@ -3,7 +3,7 @@
 import unittest
 
 from ac_windows.config import Comfort
-from ac_windows.score import _ramp_down, window_score
+from ac_windows.score import _ramp_down, _ramp_up, window_score
 
 
 class TestRamp(unittest.TestCase):
@@ -13,6 +13,12 @@ class TestRamp(unittest.TestCase):
         self.assertAlmostEqual(_ramp_down(57.5, 55, 60), 0.5)
         self.assertEqual(_ramp_down(70, 55, 60), 0.0)   # past zero, clamped
         self.assertEqual(_ramp_down(None, 55, 60), 1.0)  # unknown = non-blocking
+
+    def test_ramp_up_endpoints_and_middle(self):
+        self.assertEqual(_ramp_up(60, 40, 55), 1.0)
+        self.assertEqual(_ramp_up(40, 40, 55), 0.0)
+        self.assertAlmostEqual(_ramp_up(47.5, 40, 55), 0.5)
+        self.assertEqual(_ramp_up(None, 40, 55), 1.0)
 
 
 class TestWindowScore(unittest.TestCase):
@@ -52,6 +58,28 @@ class TestWindowScore(unittest.TestCase):
     def test_unknown_aqi_does_not_block(self):
         # No AQI data should not penalize (matches decision.py behavior).
         self.assertEqual(window_score(self.c, temp_f=70, dew_point_f=50, aqi=None).score, 100.0)
+
+    def test_cold_lockout_zeroes_it(self):
+        # At/below the cold floor, opening cannot warm the house.
+        s = window_score(self.c, temp_f=40, dew_point_f=30, aqi=20)
+        self.assertEqual(s.f_temp, 0.0)
+        self.assertEqual(s.score, 0.0)
+
+    def test_night_flush_temperature_stays_open(self):
+        # 55°F is the bottom of the full-score band; 50°F still clears a 60 threshold.
+        self.assertEqual(window_score(self.c, temp_f=55, dew_point_f=40, aqi=20).score, 100.0)
+        s = window_score(self.c, temp_f=50, dew_point_f=40, aqi=20)
+        self.assertAlmostEqual(s.f_temp, 0.667, places=3)
+        self.assertAlmostEqual(s.score, 66.7, places=1)
+
+    def test_cold_ramp_midpoint(self):
+        s = window_score(self.c, temp_f=47.5, dew_point_f=40, aqi=20)
+        self.assertAlmostEqual(s.f_temp, 0.5, places=2)
+        self.assertAlmostEqual(s.score, 50.0, places=1)
+
+    def test_dry_dew_point_does_not_penalize(self):
+        # The dry floor colors the line; it is not a score factor.
+        self.assertEqual(window_score(self.c, temp_f=70, dew_point_f=15, aqi=20).score, 100.0)
 
 
 if __name__ == "__main__":

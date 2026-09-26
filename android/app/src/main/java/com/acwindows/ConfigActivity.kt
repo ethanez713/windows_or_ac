@@ -33,7 +33,10 @@ class ConfigActivity : Activity() {
     private val initialTempF = mutableMapOf<Int, Double>()
 
     /** Every setpoint field that needs unit conversion (as opposed to aqi/rain, which don't). */
-    private val tempFieldIds = listOf(R.id.temp_ideal, R.id.max_temp, R.id.dew_ideal, R.id.dew_max)
+    private val tempFieldIds = listOf(
+        R.id.temp_min_ideal, R.id.temp_min, R.id.temp_ideal, R.id.max_temp,
+        R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
+    )
 
     // The °F value and exact text each setpoint field was last RENDERED from — see
     // [fahrenheitOf] for why this is what stops the toggle from drifting a stored setpoint
@@ -53,7 +56,8 @@ class ConfigActivity : Activity() {
 
     /** Every editable field on the screen, for staged-edit tracking. */
     private val valueFields = listOf(
-        R.id.open_score, R.id.temp_ideal, R.id.max_temp, R.id.dew_ideal, R.id.dew_max,
+        R.id.open_score, R.id.temp_min_ideal, R.id.temp_min, R.id.temp_ideal, R.id.max_temp,
+        R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
         R.id.aqi_ideal, R.id.aqi_max, R.id.rain_ideal, R.id.rain_max,
         R.id.key_tomorrowio, R.id.key_pirateweather, R.id.key_airnow,
     ) + weightFields.map { it.first }
@@ -66,8 +70,11 @@ class ConfigActivity : Activity() {
         val cfg = AppConfig.load(this)
         currentUnit = TempUnit.load(this)
         initialUnit = currentUnit
+        initialTempF[R.id.temp_min_ideal] = cfg.comfort.tempMinIdealF
+        initialTempF[R.id.temp_min] = cfg.comfort.tempMinF
         initialTempF[R.id.temp_ideal] = cfg.comfort.tempIdealF
         initialTempF[R.id.max_temp] = cfg.comfort.maxTempF
+        initialTempF[R.id.dew_min] = cfg.comfort.dewPointMinF
         initialTempF[R.id.dew_ideal] = cfg.comfort.dewPointIdealF
         initialTempF[R.id.dew_max] = cfg.comfort.dewPointMaxF
         tempFieldIds.forEach { renderTempField(it, initialTempF.getValue(it)) }
@@ -186,7 +193,7 @@ class ConfigActivity : Activity() {
         findViewById<TextView>(R.id.dew_unit_label).text = "Dew point (${unit.suffix})"
     }
 
-    /** The unit checkbox flipped: re-render the four setpoint fields (from their current
+    /** The unit checkbox flipped: re-render the setpoint fields (from their current
      *  °F basis, not a reparse of the OLD unit's live text) and swap the field labels. */
     private fun onUnitToggled(on: Boolean) {
         val newUnit = if (on) TempUnit.C else TempUnit.F
@@ -207,20 +214,26 @@ class ConfigActivity : Activity() {
 
     private fun save() {
         val cfg = AppConfig.load(this)
-        // The four setpoints go through the drift-guard reparse (see [fahrenheitOf]); the
+        // Setpoints go through the drift-guard reparse (see [fahrenheitOf]); the
         // rest are just parsed directly, falling back to the current value if invalid.
+        val tempMinIdeal = fahrenheitOf(R.id.temp_min_ideal, currentUnit)
+        val tempMin = fahrenheitOf(R.id.temp_min, currentUnit)
         val tempIdeal = fahrenheitOf(R.id.temp_ideal, currentUnit)
         val maxTemp = fahrenheitOf(R.id.max_temp, currentUnit)
         val openScore = field(R.id.open_score).text.toString().toDoubleOrNull()
             ?.coerceIn(0.0, 100.0) ?: cfg.comfort.openScoreMin
+        val dewMin = fahrenheitOf(R.id.dew_min, currentUnit)
         val dewIdeal = fahrenheitOf(R.id.dew_ideal, currentUnit)
         val dewMax = fahrenheitOf(R.id.dew_max, currentUnit)
         // Re-render each field from its just-parsed °F value: normalizes anything the user
         // typed (e.g. "78.00") to the canonical form, and refreshes the drift-guard's
         // remembered value/text so a further toggle (without leaving the screen) has a
         // fresh basis instead of the one from screen-open.
+        renderTempField(R.id.temp_min_ideal, tempMinIdeal)
+        renderTempField(R.id.temp_min, tempMin)
         renderTempField(R.id.temp_ideal, tempIdeal)
         renderTempField(R.id.max_temp, maxTemp)
+        renderTempField(R.id.dew_min, dewMin)
         renderTempField(R.id.dew_ideal, dewIdeal)
         renderTempField(R.id.dew_max, dewMax)
         val aqiIdeal = field(R.id.aqi_ideal).text.toString().toDoubleOrNull() ?: cfg.comfort.aqiIdeal
@@ -230,9 +243,12 @@ class ConfigActivity : Activity() {
         val textScalePct = textScaleSlider().progress.coerceIn(60, 200)
 
         val ed = getSharedPreferences("ac_windows", MODE_PRIVATE).edit()
+            .putString("tempMinIdealF", tempMinIdeal.toString())
+            .putString("tempMinF", tempMin.toString())
             .putString("tempIdealF", tempIdeal.toString())
             .putString("maxTempF", maxTemp.toString())
             .putString("openScoreMin", openScore.toString())
+            .putString("dewPointMinF", dewMin.toString())
             .putString("dewPointIdealF", dewIdeal.toString())
             .putString("dewPointMaxF", dewMax.toString())
             .putString("aqiIdeal", aqiIdeal.toString())

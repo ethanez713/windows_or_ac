@@ -6,11 +6,15 @@ package com.acwindows
  * control: today it returns an [Action]; later a controller maps actions to
  * devices (thermostat, attic fan, window openers) without changing this logic.
  *
- * Opening windows is "free cooling": worth it only when outdoor air is cooler
- * than your target AND comfortable AND clean AND dry. Dew point (not relative
- * humidity) is the honest mugginess gauge.
+ * Opening windows is worth it when outdoor air is inside the comfort band AND
+ * clean AND dry. Dew point (not relative humidity) is the honest mugginess gauge.
+ * Below the cold floor the call is keep closed: an open window cools toward the
+ * outdoor air and vents solar gain, so it does not warm the room.
  */
 object Decision {
+
+    private const val COLD_SUMMARY =
+        "Outdoor air is too cold to bring in. Opening would cool the house toward that air and let solar heat out; it won't warm the room."
 
     fun aqiCategory(aqi: Int?): String = when {
         aqi == null -> "unknown"
@@ -40,6 +44,7 @@ object Decision {
         val raining = c.precipMm != null && c.precipMm > 0
         val muggy = c.dewPointF != null && c.dewPointF > cfg.dewPointMaxF
         val tooWarm = temp > cfg.maxTempF
+        val tooCold = temp <= cfg.tempMinF
         val coolEnough = temp <= cfg.tempIdealF
 
         if (aqiBad) reasons.add(
@@ -65,7 +70,14 @@ object Decision {
             )
         }
 
-        // 2) Comfortable temperature, but something keeps the windows shut.
+        // 2) Too cold to leave open. Not AC, and not "open to warm": greenhouse
+        //    gain stays indoors only while the glass is shut.
+        if (tooCold) {
+            reasons.add(0, "it's ${unit.degUnit(temp)} out, at or below your ${unit.degUnit(cfg.tempMinF)} cold limit")
+            return Recommendation(Action.KEEP_CLOSED, "Keep windows closed", COLD_SUMMARY, reasons)
+        }
+
+        // 3) Comfortable temperature, but something keeps the windows shut.
         if (windowsBlocked) {
             return if (muggy) Recommendation(
                 Action.RUN_AC,
@@ -80,8 +92,10 @@ object Decision {
             )
         }
 
-        // 3) Cooler than your target, clean and dry — free cooling.
-        if (coolEnough) {
+        // 4) In the open band, clean and dry — free cooling. Inside the cold
+        //    ramp, open only while the score still clears the threshold, so the
+        //    yes/no call and the graph don't disagree.
+        if (coolEnough && (temp >= cfg.tempMinIdealF || scoreClears(c, cfg))) {
             reasons.add(0, "it's ${unit.degUnit(temp)} out, below your ${unit.degUnit(cfg.maxTempF)} max")
             c.dewPointF?.let { reasons.add("dew point ${unit.degUnit(it)} is comfortable") }
             c.aqi?.let { reasons.add("AQI $it (${aqiCategory(it)})") }
@@ -93,7 +107,12 @@ object Decision {
             )
         }
 
-        // 4) Near the setpoint with no blockers — either choice is fine.
+        if (coolEnough) {
+            reasons.add(0, "it's ${unit.degUnit(temp)} out, below your ${unit.degUnit(cfg.tempMinIdealF)} open-down-to")
+            return Recommendation(Action.KEEP_CLOSED, "Keep windows closed", COLD_SUMMARY, reasons)
+        }
+
+        // 5) Near the cooling setpoint with no blockers — either choice is fine.
         return Recommendation(
             Action.COMFORTABLE,
             "You're comfortable — windows optional",
@@ -102,4 +121,7 @@ object Decision {
             reasons.ifEmpty { listOf("conditions are within your comfort band") },
         )
     }
+
+    private fun scoreClears(c: Consensus, cfg: Comfort): Boolean =
+        Score.windowScore(cfg, c.tempF, c.dewPointF, c.aqi, precipMm = c.precipMm) >= cfg.openScoreMin
 }

@@ -68,6 +68,32 @@ class DecisionTest {
         assert(Decision.decide(consensus(tempF = 85.0), c).reasons.isNotEmpty())
     }
 
+    @Test fun freezingKeepsClosedRatherThanHeatingByWindow() {
+        val rec = Decision.decide(consensus(tempF = 32.0, dewPointF = 20.0), c)
+        assertEquals(Action.KEEP_CLOSED, rec.action)
+        assert(rec.summary.contains("won't warm"))
+    }
+
+    @Test fun coldAndSmokyDoesNotRunAc() {
+        val rec = Decision.decide(consensus(tempF = 32.0, aqi = 160), c)
+        assertEquals(Action.KEEP_CLOSED, rec.action)
+        assert(!rec.headline.contains("AC"))
+    }
+
+    @Test fun fiftyDegreesStillOpens() {
+        assertEquals(Action.OPEN_WINDOWS, Decision.decide(consensus(tempF = 50.0, dewPointF = 40.0), c).action)
+    }
+
+    @Test fun midRampColdKeepsClosed() {
+        assertEquals(Action.KEEP_CLOSED, Decision.decide(consensus(tempF = 45.0, dewPointF = 35.0), c).action)
+    }
+
+    @Test fun smokyCoolEveningIsNotTheColdMessage() {
+        val rec = Decision.decide(consensus(tempF = 50.0, aqi = 160), c)
+        assertEquals(Action.KEEP_CLOSED, rec.action)
+        assert(!rec.summary.contains("won't warm"))
+    }
+
     @Test fun aqiCategoryBoundaries() {
         assertEquals("good", Decision.aqiCategory(50))
         assertEquals("moderate", Decision.aqiCategory(100))

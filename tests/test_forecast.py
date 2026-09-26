@@ -49,6 +49,13 @@ class TestBuildForecast(unittest.TestCase):
         self.assertIsNone(fc.best_start)
         self.assertTrue(any("won't beat the AC" in n for n in fc.notes))
 
+    def test_no_window_when_always_cold(self):
+        cold = [_h(f"2026-06-15T{h:02d}:00", 30, dew=20) for h in range(6)]
+        fc = build_forecast(cold, [], self.c)
+        self.assertIsNone(fc.best_start)
+        self.assertTrue(any("Too cold" in n for n in fc.notes))
+        self.assertFalse(any("won't beat the AC" in n for n in fc.notes))
+
     def test_temp_agreement_agree(self):
         nws = [{"time": p["time"], "temp_f": p["temp_f"] + 1} for p in WARM_THEN_COOL]
         fc = build_forecast(WARM_THEN_COOL, nws, self.c)

@@ -146,9 +146,16 @@ def _notes(points: list[ForecastPoint], fc: Forecast, c: Comfort) -> list[str]:
     now_open = points[0].score >= thr
 
     if fc.best_start is None:
-        notes.append(
-            f"Outdoor air won't beat the AC in the next {len(points)}h — "
-            "keep windows closed / run AC.")
+        temps = [p.temp_f for p in points if p.temp_f is not None]
+        if temps and all(t <= c.temp_min_ideal_f for t in temps):
+            notes.append(
+                f"Too cold to leave the windows open in the next {len(points)}h — "
+                "keep them shut. Opening cools the house and lets solar heat out; "
+                "it won't warm the room.")
+        else:
+            notes.append(
+                f"Outdoor air won't beat the AC in the next {len(points)}h — "
+                "keep windows closed / run AC.")
         return notes
 
     if fc.best_start == points[0].time:
@@ -165,9 +172,14 @@ def _notes(points: list[ForecastPoint], fc: Forecast, c: Comfort) -> list[str]:
     # Open-now-then-pre-cool: good now but it drops off as it warms.
     if now_open and any(p.score < thr for p in points[1:]):
         drop = next(p for p in points[1:] if p.score < thr)
-        notes.append(
-            f"Open now, then close up before ~{fmt_hour(drop.time)} when it warms "
-            "(pre-cool if you have AC).")
+        if drop.temp_f is not None and drop.temp_f < c.temp_min_ideal_f:
+            notes.append(
+                f"Open now, then close up before ~{fmt_hour(drop.time)} "
+                "before it overcools the house.")
+        else:
+            notes.append(
+                f"Open now, then close up before ~{fmt_hour(drop.time)} when it warms "
+                "(pre-cool if you have AC).")
 
     # Solar context: strong sun is depressing daytime scores.
     sunny = [p for p in points if (p.shortwave_wm2 or 0) >= 0.6 * c.solar_strong_wm2]

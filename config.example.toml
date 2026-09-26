@@ -11,11 +11,17 @@ timezone = "auto"
 [comfort]
 max_temp_f = 78          # don't let the house get warmer than this
 temp_margin_f = 2.0      # outdoor must be this many °F below max before opening windows is worth it
+# Cold lockout. Full score down to temp_min_ideal_f, score 0 at/below temp_min_f.
+# Opening cools toward the outdoor air and vents solar heat; it does not warm the room.
+# The floor sits under a heating setpoint so a 50°F night still counts as worth opening.
+temp_min_ideal_f = 55
+temp_min_f = 40
 
 # Dew point is the real "muggy-ness" gauge (better than relative humidity):
 #   <=55°F dry/pleasant · ~60°F getting sticky · 65°F+ oppressive
 dew_point_ideal_f = 55
 dew_point_max_f = 60     # above this, prefer AC (it dehumidifies) over ventilating
+dew_point_min_f = 40     # dew line turns blue at/below this; does not change the score
 
 # Indoor relative-humidity preferences (informational; dew point drives the call).
 humidity_ideal_low = 40

@@ -52,20 +52,25 @@ detect total failure.
 
 ## How the decision is made
 
-Opening windows is worthwhile only when the outdoor air is **cooler than you
-want indoors, comfortable, clean, and dry**. The engine checks, in order:
+Opening windows is worthwhile when the outdoor air is **inside your comfort
+band, clean, and dry**. The engine checks, in order:
 
 1. **Too warm?** Outdoor temp above your `max_temp_f` → **AC** (ventilation
    can't cool below the outdoor temperature).
-2. **Blocked from opening?** Even when it's cool enough, any of these keep the
-   windows shut:
+2. **Too cold?** Outdoor temp at or below `temp_min_f` → **keep closed**.
+   Opening moves the house toward that cold air. It does not warm the room;
+   solar heat stays indoors only while the glass is shut.
+3. **Blocked from opening?** Even when the temperature is in range, any of
+   these keep the windows shut:
    - **AQI** above `aqi_max` (smoke/smog — a hard stop),
    - **precipitation** right now (don't invite rain in),
    - **dew point** above `dew_point_max_f` (muggy — opening up imports
      stickiness, so AC wins because it *dehumidifies*).
-3. **Cool, clean, dry?** Below `max_temp_f − temp_margin_f` with no blockers →
-   **OPEN WINDOWS**.
-4. Otherwise you're near your setpoint → **comfortable**, your call.
+4. **In the band, clean, dry?** From `temp_min_ideal_f` up to
+   `max_temp_f − temp_margin_f`, with no blockers → **OPEN WINDOWS**. Between
+   `temp_min_f` and `temp_min_ideal_f` the score is already falling; open only
+   while it still clears `open_score_min`.
+5. Otherwise you're near your cooling setpoint → **comfortable**, your call.
 
 ### Why dew point (and what else I considered)
 
@@ -124,7 +129,7 @@ score = 100 · f_temp · f_humid · f_aqi · f_rain
 
 | Factor | 1.0 (great) when… | 0.0 (veto) when… | Why |
 |---|---|---|---|
-| `f_temp`  | outdoor ≤ `temp_ideal_f` | outdoor ≥ `max_temp_f` | Ventilation can't cool the house *below* the outdoor air, so above your setpoint it's useless. |
+| `f_temp`  | `temp_min_ideal_f` ≤ outdoor ≤ `temp_ideal_f` | outdoor ≥ `max_temp_f`, or outdoor ≤ `temp_min_f` | Above the cooling target, ventilation can't cool the house below the outdoor air. Below the cold floor, leaving the windows open pulls the house down toward that air and dumps greenhouse heat; it does not warm the room. |
 | `f_humid` | dew point ≤ `dew_point_ideal_f` | dew point ≥ `dew_point_max_f` | Dew point is the honest mugginess gauge; muggy air imported through a window is what AC *dehumidifies* away. |
 | `f_aqi`   | AQI ≤ `aqi_ideal` | AQI ≥ `aqi_max` | Smoke/smog makes ventilation a bad idea even on a cool day. |
 | `f_rain`  | precip prob ≤ `rain_prob_ideal` | precip prob ≥ `rain_prob_max` | Don't invite rain in. |
@@ -172,6 +177,36 @@ night ventilation*][mass]).
 **Deferred:** precise solar-load modeling (and the indoor temperature it implies)
 waits for the smart-home phase, when an indoor sensor makes it worth doing.
 
+### Cold air
+
+`f_temp` is the product of two ramps. The upper one is 1 at or below the cooling
+ideal and 0 at or above `max_temp_f`. The lower one is 1 at or above
+`temp_min_ideal_f` (default **55°F**) and 0 at or below `temp_min_f` (default
+**40°F**).
+
+The lower ramp is a lockout, not a heating mode. Ventilation can only move
+indoor air toward the outdoor air, so an open window warms the house only when
+the outdoors is already the warmer side. Passive solar gain works the other
+way: shortwave sun passes the glass, surfaces re-radiate longwave the glass
+holds in, and that warmed air stays inside only while the sash is closed
+([YourHome, *Passive heating*][heat]; [NREL, *Passive Solar Design*][nrel]).
+Opening vents the gain. The fresh-air path that keeps it is heat recovery, not
+a window left open.
+
+The floor is not a heating setpoint. Night flushing is useful because the
+outdoor air is cooler than the room you want to wake up to, so a full score
+runs down through the mid-50s. 40°F sits in the low-limit range used to stop an
+economizer from dumping air cold enough to force the heat back on. A 50°F hour
+still scores about 67 and clears the default open threshold. Both ends are
+settings ("open down to" and "too cold").
+
+Dew point stays one-sided in the score: drier air has lower enthalpy and is
+better to import. The dew line has its own floor, `dew_point_min_f` (default
+**40°F**, about the bottom of a 30–50% indoor relative-humidity range once that
+air is warmed to around 70°F). At or below it the line takes the same cold blue
+the temperature line uses at freezing; at or above `dew_point_max_f` it takes
+the same hot red. The score does not move.
+
 ### Why gates, not weights (equal or otherwise)
 
 The factors are **multiplied**, not summed with weights. That's deliberate: AQI,
@@ -198,6 +233,8 @@ comfort* part (how cool/dry), and that's where the models below would refine it.
 [mass]: https://www.sciencedirect.com/science/article/abs/pii/S0960148101000271
 [ccp]: https://www.sciencedirect.com/science/article/abs/pii/S0306261906000766
 [a55]: https://comfort.cbe.berkeley.edu/
+[heat]: https://www.yourhome.gov.au/passive-design/passive-heating
+[nrel]: https://www.nrel.gov/docs/fy01osti/27954.pdf
 
 ## Data sources
 

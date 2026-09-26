@@ -20,6 +20,13 @@ object Score {
         return ((zero - x) / (zero - full)).coerceIn(0.0, 1.0)
     }
 
+    /** 1.0 at x>=full, 0.0 at x<=zero, linear between. Null = non-blocking (1.0). */
+    private fun rampUp(x: Double?, zero: Double, full: Double): Double {
+        if (x == null) return 1.0
+        if (full <= zero) return if (x >= full) 1.0 else 0.0
+        return ((x - zero) / (full - zero)).coerceIn(0.0, 1.0)
+    }
+
     /**
      * Full breakdown: the score plus each factor multiplier (0..1), so the UI can
      * show *which* factor is holding the score back. Mirrors score.py's
@@ -35,7 +42,12 @@ object Score {
     ): ScoreBreakdown {
         if (tempF == null) return ScoreBreakdown(0.0, 0.0, 1.0, 1.0, 1.0)
 
-        val fTemp = rampDown(tempF, c.tempIdealF, c.maxTempF)
+        // Product of the hot ramp and the cold lockout. The cold side is not
+        // "open to warm": an open window cannot greenhouse-heat a room.
+        val fTemp = rampDown(tempF, c.tempIdealF, c.maxTempF) *
+            rampUp(tempF, c.tempMinF, c.tempMinIdealF)
+        // No low-side dew ramp: drier air is lower enthalpy and still worth importing.
+        // dewPointMinF colors the line only.
         val fHumid = rampDown(dewPointF, c.dewPointIdealF, c.dewPointMaxF)
         val fAqi = rampDown(aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble())
         val fRain = when {

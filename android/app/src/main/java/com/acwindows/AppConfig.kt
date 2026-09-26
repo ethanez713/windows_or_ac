@@ -75,8 +75,11 @@ data class AppConfig(
                 comfort = Comfort(
                     tempIdealF = p.getString("tempIdealF", null)?.toDoubleOrNull() ?: base.tempIdealF,
                     maxTempF = p.getString("maxTempF", null)?.toDoubleOrNull() ?: DEFAULT_MAX_TEMP_F,
+                    tempMinIdealF = p.getString("tempMinIdealF", null)?.toDoubleOrNull() ?: base.tempMinIdealF,
+                    tempMinF = p.getString("tempMinF", null)?.toDoubleOrNull() ?: base.tempMinF,
                     dewPointIdealF = p.getString("dewPointIdealF", null)?.toDoubleOrNull() ?: base.dewPointIdealF,
                     dewPointMaxF = p.getString("dewPointMaxF", null)?.toDoubleOrNull() ?: base.dewPointMaxF,
+                    dewPointMinF = p.getString("dewPointMinF", null)?.toDoubleOrNull() ?: base.dewPointMinF,
                     aqiIdeal = p.getString("aqiIdeal", null)?.toDoubleOrNull() ?: base.aqiIdeal,
                     aqiMax = p.getString("aqiMax", null)?.toIntOrNull() ?: base.aqiMax,
                     rainProbIdeal = p.getString("rainProbIdeal", null)?.toDoubleOrNull() ?: base.rainProbIdeal,
@@ -116,7 +119,10 @@ data class AppConfig(
             return listOf(
                 Seed("tempIdealF", base.tempIdealF.toString()),
                 Seed("maxTempF", DEFAULT_MAX_TEMP_F.toString()),
+                Seed("tempMinIdealF", base.tempMinIdealF.toString()),
+                Seed("tempMinF", base.tempMinF.toString()),
                 Seed("openScoreMin", DEFAULT_OPEN_SCORE_MIN.toString()),
+                Seed("dewPointMinF", base.dewPointMinF.toString()),
                 Seed("dewPointIdealF", base.dewPointIdealF.toString(), supersedes = 55.0),
                 Seed("dewPointMaxF", base.dewPointMaxF.toString(), supersedes = 60.0),
                 Seed("aqiIdeal", base.aqiIdeal.toString(), supersedes = 50.0),
@@ -141,13 +147,26 @@ data class AppConfig(
          * Adding a seed for a brand-new key needs no bump; an unset key is always seeded.
          */
         private fun freezeDefaults(p: SharedPreferences) {
-            if (p.getInt("settingsVersion", 0) >= SETTINGS_VERSION) return
+            val versioned = p.getInt("settingsVersion", 0) >= SETTINGS_VERSION
             val e = p.edit()
+            var changed = false
             seeds().forEach { seed ->
-                val stored = p.getString(seed.key, null)?.toDoubleOrNull()
-                if (stored == null || stored == seed.supersedes) e.putString(seed.key, seed.value)
+                val raw = p.getString(seed.key, null)
+                val stored = raw?.toDoubleOrNull()
+                // A missing key is filled even after the version is current, so a new
+                // setpoint ships onto an existing install. A version bump is only for
+                // replacing a value the user never edited (still sitting on [supersedes]).
+                val write = if (versioned) raw == null else stored == null || stored == seed.supersedes
+                if (write) {
+                    e.putString(seed.key, seed.value)
+                    changed = true
+                }
             }
-            e.putInt("settingsVersion", SETTINGS_VERSION).apply()
+            if (!versioned) {
+                e.putInt("settingsVersion", SETTINGS_VERSION)
+                changed = true
+            }
+            if (changed) e.apply()
         }
 
         /** 1: comfort window widened — dew point 55/60 → 60/65 °F, AQI 50/100 → 100/150. */

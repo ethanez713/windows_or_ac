@@ -217,7 +217,14 @@ object ForecastBuilder {
             // A count of points is only a duration once scaled by the row width — at 15-minute
             // resolution "the next 96" would otherwise misreport a day as 96 hours.
             val spanHours = Math.round(points.size * stepMinutes / 60.0)
-            out.add("Outdoor air won't beat the AC in the next ${spanHours}h — keep closed / run AC.")
+            val temps = points.mapNotNull { it.tempF }
+            val allCold = temps.isNotEmpty() && temps.all { it <= c.tempMinIdealF }
+            out.add(
+                if (allCold)
+                    "Too cold to leave the windows open in the next ${spanHours}h — keep them shut. Opening cools the house and lets solar heat out; it won't warm the room."
+                else
+                    "Outdoor air won't beat the AC in the next ${spanHours}h — keep closed / run AC."
+            )
             return out
         }
         if (bStart == points[0].time) out.add("Good to open now (through ${fmtRowEnd(bEnd!!, stepMinutes)}).")
@@ -229,8 +236,15 @@ object ForecastBuilder {
 
         if (nowOpen) {
             val drop = points.drop(1).firstOrNull { it.score < thr }
-            if (drop != null)
-                out.add("Open now, then close up before ~${fmtHour(drop.time)} when it warms.")
+            if (drop != null) {
+                val colder = drop.tempF != null && drop.tempF < c.tempMinIdealF
+                out.add(
+                    if (colder)
+                        "Open now, then close up before ~${fmtHour(drop.time)} before it overcools the house."
+                    else
+                        "Open now, then close up before ~${fmtHour(drop.time)} when it warms."
+                )
+            }
         }
         return out.take(3)
     }

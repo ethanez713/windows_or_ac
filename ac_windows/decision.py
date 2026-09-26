@@ -7,8 +7,9 @@ can map OPEN_WINDOWS -> open the window openers, RUN_AC -> set the thermostat.
 
 The mental model
 ----------------
-Opening windows is "free cooling": worth it only when the outdoor air is
-cooler than you want indoors AND comfortable AND clean AND dry.
+Opening windows is worth it when the outdoor air is inside your comfort band
+AND comfortable AND clean AND dry. Below the cold floor, keep them shut:
+opening cools toward the outdoor air and vents greenhouse gain.
 
   * Temperature — must be below your max (with a margin) for ventilation to help.
   * Dew point   — the real comfort gauge. Relative humidity moves with
@@ -24,6 +25,13 @@ from __future__ import annotations
 
 from .config import Comfort
 from .models import AggregateReading, Recommendation
+from .score import window_score
+
+# Opening cools toward the outdoor air and vents solar gain. It does not warm the room.
+_COLD_SUMMARY = (
+    "Outdoor air is too cold to bring in. Opening would cool the house toward "
+    "that air and let solar heat out; it won't warm the room."
+)
 
 
 def aqi_category(aqi: int | None) -> str:
@@ -57,6 +65,7 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
     raining = agg.precip_mm is not None and agg.precip_mm > 0
     muggy = agg.dew_point_f is not None and agg.dew_point_f > c.dew_point_max_f
     too_warm = agg.temp_f > c.max_temp_f
+    too_cold = agg.temp_f <= c.temp_min_f
     cool_enough = agg.temp_f <= c.max_temp_f - c.temp_margin_f
 
     if aqi_bad:
@@ -84,7 +93,20 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             reasons=reasons,
         )
 
-    # 2) Comfortable temperature, but a blocker keeps windows shut.
+    # 2) Too cold to leave open. Not AC, and not "open to warm".
+    if too_cold:
+        reasons.insert(
+            0,
+            f"it's {agg.temp_f:.0f}°F out, at or below your {c.temp_min_f:.0f}°F cold limit",
+        )
+        return Recommendation(
+            action="KEEP_CLOSED",
+            headline="Keep windows closed",
+            summary=_COLD_SUMMARY,
+            reasons=reasons,
+        )
+
+    # 3) Comfortable temperature, but a blocker keeps windows shut.
     if windows_blocked:
         if muggy:
             return Recommendation(
@@ -100,8 +122,10 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             reasons=reasons,
         )
 
-    # 3) Cooler than your target, and clean/dry: free cooling.
-    if cool_enough:
+    # 4) In the open band, clean and dry. Inside the cold ramp, open only while
+    #    the score still clears the threshold.
+    in_band = agg.temp_f >= c.temp_min_ideal_f or _score_clears(agg, c)
+    if cool_enough and in_band:
         reasons.insert(0, f"it's {agg.temp_f:.0f}°F out, below your {c.max_temp_f:.0f}°F max")
         if agg.dew_point_f is not None:
             reasons.append(f"dew point {agg.dew_point_f:.0f}°F is comfortable")
@@ -114,7 +138,19 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             reasons=reasons,
         )
 
-    # 4) Near your setpoint with no blockers: either choice is fine.
+    if cool_enough:
+        reasons.insert(
+            0,
+            f"it's {agg.temp_f:.0f}°F out, below your {c.temp_min_ideal_f:.0f}°F open-down-to",
+        )
+        return Recommendation(
+            action="KEEP_CLOSED",
+            headline="Keep windows closed",
+            summary=_COLD_SUMMARY,
+            reasons=reasons,
+        )
+
+    # 5) Near your cooling setpoint with no blockers: either choice is fine.
     return Recommendation(
         action="COMFORTABLE",
         headline="You're comfortable — windows optional",
@@ -124,3 +160,10 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
         ),
         reasons=reasons or ["conditions are within your comfort band"],
     )
+
+
+def _score_clears(agg: AggregateReading, c: Comfort) -> bool:
+    scored = window_score(
+        c, temp_f=agg.temp_f, dew_point_f=agg.dew_point_f, aqi=agg.aqi, precip_mm=agg.precip_mm,
+    )
+    return scored.score >= c.open_score_min

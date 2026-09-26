@@ -160,7 +160,7 @@ object ForecastPanel {
 
             val c = cfg.comfort
             limiting = listOf(
-                Factor.TEMP to severity(s.tempF, c.tempIdealF, c.maxTempF),
+                Factor.TEMP to tempSeverity(s.tempF, c),
                 Factor.DEW to severity(s.dewPointF, c.dewPointIdealF, c.dewPointMaxF),
                 Factor.AQI to severity(s.aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble()),
                 Factor.RAIN to severity(rainNow, c.rainProbIdeal, c.rainProbMax),
@@ -388,7 +388,11 @@ object ForecastPanel {
                 )
             }
             if (widget.showDew) {
-                drawSeries(c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp, dashed = true)
+                drawSeries(
+                    c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp,
+                    dashed = true, degF = idx.map { s.dewSeries.getOrNull(it) },
+                    highF = cfg.comfort.dewPointMaxF, lowF = cfg.comfort.dewPointMinF,
+                )
             }
             drawExtremes(context, c, idx, s, unit, g, lo, hi, d, dp, ts, widget.showTemp, widget.showDew)
         }
@@ -694,7 +698,7 @@ object ForecastPanel {
         if (score >= threshold) return d.score
         val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
         val weights = doubleArrayOf(
-            severity(s.tempSeries.getOrNull(i), comfort.tempIdealF, comfort.maxTempF),
+            tempSeverity(s.tempSeries.getOrNull(i), comfort),
             severity(s.dewSeries.getOrNull(i), comfort.dewPointIdealF, comfort.dewPointMaxF),
             severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
             severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
@@ -709,8 +713,10 @@ object ForecastPanel {
     private fun drawSeries(
         c: Canvas, values: List<Double?>, g: Geom, lo: Double, hi: Double,
         color: Int, width: Float, dp: Float, dashed: Boolean,
-        /** Raw °F per hour: when given, each segment is tinted hot/cold (see [tempSegColor]). */
+        /** Raw °F per hour. When given, a segment at/above [highF] is red and at/below [lowF] is blue. */
         degF: List<Double?>? = null,
+        highF: Double = HOT_F,
+        lowF: Double = COLD_F,
     ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; style = Paint.Style.STROKE; strokeWidth = width
@@ -720,21 +726,17 @@ object ForecastPanel {
         for (k in 0 until values.size - 1) {
             val a = values[k] ?: continue
             val b = values[k + 1] ?: continue
-            paint.color = tempSegColor(color, degF, k)
+            paint.color = segmentColor(color, degF, k, highF, lowF)
             c.drawLine(g.xAt(k), g.yAt(a, lo, hi), g.xAt(k + 1), g.yAt(b, lo, hi), paint)
         }
     }
 
-    /** Hot (red) at/above [HOT_F], cold (blue) at/below [COLD_F], else [base]; null [degF] is [base]. */
-    private fun tempSegColor(base: Int, degF: List<Double?>?, k: Int): Int {
+    /** [HotRedArgb] at/above [highF], [ColdBlueArgb] at/below [lowF], else [base]. Null [degF] stays [base]. */
+    private fun segmentColor(base: Int, degF: List<Double?>?, k: Int, highF: Double, lowF: Double): Int {
         if (degF == null) return base
         val a = degF.getOrNull(k) ?: return base
         val f = (a + (degF.getOrNull(k + 1) ?: a)) / 2
-        return when {
-            f >= HOT_F -> HotRedArgb
-            f <= COLD_F -> ColdBlueArgb
-            else -> base
-        }
+        return segmentTintArgb(f, base, highF, lowF)
     }
 
     /**

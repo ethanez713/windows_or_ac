@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -82,6 +83,8 @@ fun DetailDrawer(
     unit: TempUnit,
     palette: AqiPalette,
     thunderAlertPct: Double,
+    dewHighF: Double,
+    dewLowF: Double,
     isToday: Boolean,
     // Selected hour is hoisted to the card, so the score bars above can mark it too; null
     // follows the present, so an untouched today card still opens on "now".
@@ -111,7 +114,7 @@ fun DetailDrawer(
         Box(Modifier.fillMaxWidth().scrub(n, onSel)) {
             Column {
                 val dark = Skin.chrome.dark
-                TempDewBlock(points, unit, tm, nowFrac, selFrac)
+                TempDewBlock(points, unit, tm, nowFrac, selFrac, dewHighF, dewLowF)
                 Spacer(Modifier.height(4.dp))
                 GradientBarBlock(
                     "AQI", points.map { it.aqi?.toDouble() },
@@ -215,6 +218,7 @@ private fun ReadoutText(text: String, color: Color) = androidx.compose.material3
 @Composable
 private fun TempDewBlock(
     points: List<ForecastPoint>, unit: TempUnit, tm: TextMeasurer, nowFrac: Float?, selFrac: Float?,
+    dewHighF: Double, dewLowF: Double,
 ) {
     val d = Skin.data
     val chrome = Skin.chrome
@@ -238,7 +242,10 @@ private fun TempDewBlock(
             label(tm, "${v.roundToInt()}°", chrome.faint, AXIS_TEXT, 0f, gy - 6.dp.toPx())
         }
 
-        series(points, g, { it.dewPointF?.let(unit::fromF) }, ::y, d.dew, 2.dp.toPx(), dashed = true)
+        series(
+            points, g, { it.dewPointF?.let(unit::fromF) }, ::y, d.dew, 2.dp.toPx(), dashed = true,
+            degF = { it.dewPointF }, highF = dewHighF, lowF = dewLowF,
+        )
         tempSeries(points, g, unit, ::y, d.temp, 2.4.dp.toPx())
 
         // Value labels are inked one notch toward the heading and haloed in the ground colour,
@@ -659,17 +666,10 @@ private fun DrawScope.bands(points: List<ForecastPoint>, g: Plot, chrome: Chrome
 private fun DrawScope.tempSeries(
     points: List<ForecastPoint>, g: Plot, unit: TempUnit, y: (Double) -> Float, base: Color, width: Float,
 ) {
-    for (i in 0 until points.size - 1) {
-        val af = points[i].tempF ?: continue
-        val bf = points[i + 1].tempF ?: continue
-        val midF = (af + bf) / 2
-        val color = when {
-            midF >= HOT_F -> HotRed
-            midF <= COLD_F -> ColdBlue
-            else -> base
-        }
-        drawLine(color, Offset(g.xAt(i), y(unit.fromF(af))), Offset(g.xAt(i + 1), y(unit.fromF(bf))), strokeWidth = width)
-    }
+    series(
+        points, g, { it.tempF?.let(unit::fromF) }, y, base, width, dashed = false,
+        degF = { it.tempF }, highF = HOT_F, lowF = COLD_F,
+    )
 }
 
 /** The (highest, lowest) point indices of a series, or null when it has no readings. */
@@ -695,16 +695,29 @@ private fun DrawScope.markers(
     }
 }
 
-/** One series as a line, breaking rather than plotting zero where an hour has no reading. */
+/**
+ * One series as a line, breaking rather than plotting zero where an hour has no reading.
+ * When [degF] is set, a segment whose °F midpoint is outside [lowF, highF] takes the same
+ * red/blue the temperature line uses, so a dew point past comfort reads the same way.
+ */
 private fun DrawScope.series(
     points: List<ForecastPoint>, g: Plot, value: (ForecastPoint) -> Double?, y: (Double) -> Float,
     color: Color, width: Float, dashed: Boolean,
+    degF: ((ForecastPoint) -> Double?)? = null,
+    highF: Double = HOT_F,
+    lowF: Double = COLD_F,
 ) {
     val effect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(1.dp.toPx(), 3.4.dp.toPx())) else null
+    val base = color.toArgb()
     for (i in 0 until points.size - 1) {
         val a = value(points[i]) ?: continue
         val b = value(points[i + 1]) ?: continue
-        drawLine(color, Offset(g.xAt(i), y(a)), Offset(g.xAt(i + 1), y(b)), strokeWidth = width, pathEffect = effect)
+        val ink = if (degF == null) color else {
+            val af = degF(points[i]) ?: continue
+            val bf = degF(points[i + 1]) ?: af
+            Color(segmentTintArgb((af + bf) / 2, base, highF, lowF))
+        }
+        drawLine(ink, Offset(g.xAt(i), y(a)), Offset(g.xAt(i + 1), y(b)), strokeWidth = width, pathEffect = effect)
     }
 }
 

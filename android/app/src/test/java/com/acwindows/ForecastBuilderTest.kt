@@ -50,6 +50,14 @@ class ForecastBuilderTest {
         assertTrue(fc.notes.any { it.contains("won't beat the AC") })
     }
 
+    @Test fun noWindowWhenAlwaysCold() {
+        val cold = (0..5).map { h("2026-06-15T0$it:00", 30.0, dew = 20.0) }
+        val fc = ForecastBuilder.build(cold, emptyList(), c)
+        assertNull(fc.bestStart)
+        assertTrue(fc.notes.any { it.contains("Too cold") })
+        assertTrue(fc.notes.none { it.contains("won't beat the AC") })
+    }
+
     @Test fun tempAgreementAgree() {
         val nws = warmThenCool.map { cross(it["time"] as String, (it["tempF"] as Double) + 1) }
         assertEquals("agree", ForecastBuilder.build(warmThenCool, nws, c).tempAgreement)

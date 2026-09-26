@@ -115,7 +115,7 @@ background color encodes the call:
 |---|---|
 | 🟩 green | open your windows |
 | 🟦 blue | run the AC |
-| ◾ slate | keep windows closed (not hot, but AQI/rain) |
+| ◾ slate | keep windows closed (too cold, or AQI/rain) |
 | 🟦 teal | comfortable — your call |
 | 🟥 red | no data (tap to retry) |
 

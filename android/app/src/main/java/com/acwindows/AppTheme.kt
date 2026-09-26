@@ -123,3 +123,10 @@ val ColdBlue = Color(0xFF0891B2)
 // The same two, as plain ARGB ints for the widget canvases (android.graphics, no Compose).
 val HotRedArgb = 0xFFEF4444.toInt()
 val ColdBlueArgb = 0xFF0891B2.toInt()
+
+/** Segment tint shared by the temperature and dew lines: red at/above [highF], blue at/below [lowF]. */
+fun segmentTintArgb(midF: Double, base: Int, highF: Double, lowF: Double): Int = when {
+    midF >= highF -> HotRedArgb
+    midF <= lowF -> ColdBlueArgb
+    else -> base
+}

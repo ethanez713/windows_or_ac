@@ -22,9 +22,16 @@ class Location:
 class Comfort:
     # You don't want the house warmer than this (°F).
     max_temp_f: float = 78.0
+    # Full score down to here; 0 at/below temp_min_f. A lockout, not a way to heat:
+    # an open window cools toward the outdoor air and vents greenhouse gain.
+    temp_min_ideal_f: float = 55.0
+    temp_min_f: float = 40.0
     # Dew point is the best single "muggy-ness" gauge (see README).
     dew_point_ideal_f: float = 55.0   # at/below this the air feels dry & pleasant
     dew_point_max_f: float = 60.0     # above this, ventilating feels clammy -> prefer AC
+    # Dew line turns cold-blue at/below this. Not a score factor: drier air is
+    # still worth importing.
+    dew_point_min_f: float = 40.0
     # Indoor relative-humidity preferences (informational; dew point drives the call).
     humidity_ideal_low: float = 40.0
     humidity_ideal_high: float = 45.0

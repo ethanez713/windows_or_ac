@@ -104,9 +104,22 @@
             android:text="Open the windows when the Open-Window Score is at or above this (default 60)." />
 
         <TextView style="@style/CfgHint"
-            android:text="Each factor scores 100% at/below its comfortable value and 0% at/above its cutoff, ramping linearly in between." />
+            android:text="Each factor scores 100% inside its comfortable range and 0% at a cutoff, ramping in between. Temperature has a cold cutoff as well as a hot one." />
 
         <TextView android:id="@+id/temp_unit_label" style="@style/CfgLabel" android:text="Temperature (°F)" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:baselineAligned="false">
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
+                <TextView style="@style/CfgSub" android:text="open down to" />
+                <EditText android:id="@+id/temp_min_ideal" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginStart="8dp">
+                <TextView style="@style/CfgSub" android:text="too cold" />
+                <EditText android:id="@+id/temp_min" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="Below too cold the score is 0. Opening cools the house and lets solar heat out; it does not warm the room." />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
@@ -123,14 +136,20 @@
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
+                <TextView style="@style/CfgSub" android:text="too dry" />
+                <EditText android:id="@+id/dew_min" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
                 <TextView style="@style/CfgSub" android:text="comfortable up to" />
                 <EditText android:id="@+id/dew_ideal" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
-            <LinearLayout style="@style/CfgRangeCol" android:layout_marginStart="8dp">
+            <LinearLayout style="@style/CfgRangeCol">
                 <TextView style="@style/CfgSub" android:text="muggy cutoff" />
                 <EditText android:id="@+id/dew_max" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
         </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="The dew line turns red at the muggy cutoff and blue at or below too dry. Too dry does not lower the score." />
 
         <TextView style="@style/CfgLabel" android:text="Air quality (AQI)" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"

@@ -28,6 +28,21 @@ class SeverityTest {
         assertEquals(1.0, severity(78.0, 76.0, 78.0), 1e-9)
     }
 
+    @Test fun coldFloorRisesAsItGetsColder() {
+        assertEquals(0.0, severityLow(55.0, 55.0, 40.0), 1e-9)
+        assertEquals(0.5, severityLow(47.5, 55.0, 40.0), 1e-9)
+        assertEquals(1.0, severityLow(40.0, 55.0, 40.0), 1e-9)
+        assertEquals(2.0, severityLow(25.0, 55.0, 40.0), 1e-9)
+    }
+
+    @Test fun freezingHourOutranksAMildlyHotOne() {
+        val hot = hour(15, temp = 79.0)
+        val cold = hour(6, temp = 20.0)
+        val worst = limitingFactor(c, listOf(hot, cold))!!
+        assertEquals(Factor.TEMP, worst.factor)
+        assertEquals("2026-06-15T06:00", worst.point.time)
+    }
+
     @Test fun severityKeepsRisingPastTheCutoff() {
         // The property the whole scan depends on: past the cutoff the score has already
         // saturated at 0, so only severity can still tell two bad hours apart.

@@ -66,6 +66,28 @@ class DecisionTests(unittest.TestCase):
     def test_reasons_are_populated(self):
         self.assertTrue(decide(reading(temp_f=85), C).reasons)
 
+    def test_freezing_keeps_closed_rather_than_heating_by_window(self):
+        rec = decide(reading(temp_f=32, dew_point_f=20), C)
+        self.assertEqual(rec.action, "KEEP_CLOSED")
+        self.assertIn("won't warm", rec.summary)
+
+    def test_cold_and_smoky_does_not_run_ac(self):
+        rec = decide(reading(temp_f=32, aqi=160), C)
+        self.assertEqual(rec.action, "KEEP_CLOSED")
+        self.assertNotIn("AC", rec.headline)
+
+    def test_fifty_degrees_still_opens(self):
+        # Inside the cold ramp but the score (about 67) still clears 60.
+        self.assertEqual(decide(reading(temp_f=50, dew_point_f=40), C).action, "OPEN_WINDOWS")
+
+    def test_mid_ramp_cold_keeps_closed(self):
+        self.assertEqual(decide(reading(temp_f=45, dew_point_f=35), C).action, "KEEP_CLOSED")
+
+    def test_smoky_cool_evening_is_not_the_cold_message(self):
+        rec = decide(reading(temp_f=50, aqi=160), C)
+        self.assertEqual(rec.action, "KEEP_CLOSED")
+        self.assertNotIn("won't warm", rec.summary)
+
 
 class AqiCategoryTests(unittest.TestCase):
     def test_boundaries(self):

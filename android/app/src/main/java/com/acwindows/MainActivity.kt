@@ -760,6 +760,8 @@ private fun DayCard(
                     day.points, unit,
                     palette = cfg.aqiPalette,
                     thunderAlertPct = cfg.thunderAlertPct,
+                    dewHighF = comfort.dewPointMaxF,
+                    dewLowF = comfort.dewPointMinF,
                     isToday = isToday,
                     sel = sel,
                     onSel = { sel = it },

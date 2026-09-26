@@ -32,9 +32,31 @@ fun severity(x: Double?, full: Double, zero: Double): Double {
     }
 }
 
+/**
+ * Mirror of [severity] for a floor: 0 at or above [full], 1 at [zero], and still
+ * rising as [x] falls further, so two hours that have both already zeroed the
+ * score can still be ranked.
+ */
+fun severityLow(x: Double?, full: Double, zero: Double): Double {
+    if (x == null) return 0.0
+    if (full <= zero) return if (x >= full) 0.0 else 1.0
+    val span = full - zero
+    return when {
+        x >= full -> 0.0
+        x > zero -> (full - x) / span
+        else -> 1.0 + (zero - x) / span
+    }
+}
+
+/** Hot-side and cold-side temperature severity, so a freezing hour still counts as temperature. */
+fun tempSeverity(tempF: Double?, c: Comfort): Double = maxOf(
+    severity(tempF, c.tempIdealF, c.maxTempF),
+    severityLow(tempF, c.tempMinIdealF, c.tempMinF),
+)
+
 /** One hour's severity in every factor, against the user's [Comfort] thresholds. */
 fun severities(c: Comfort, p: ForecastPoint): Map<Factor, Double> = mapOf(
-    Factor.TEMP to severity(p.tempF, c.tempIdealF, c.maxTempF),
+    Factor.TEMP to tempSeverity(p.tempF, c),
     Factor.DEW to severity(p.dewPointF, c.dewPointIdealF, c.dewPointMaxF),
     Factor.AQI to severity(p.aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble()),
     Factor.RAIN to severity(p.precipProb, c.rainProbIdeal, c.rainProbMax),

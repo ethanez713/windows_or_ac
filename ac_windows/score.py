@@ -13,9 +13,10 @@ isn't raining — any one of those failing kills the case on its own:
 
     score = 100 · f_temp · f_humid · f_aqi · f_rain
 
-  * f_temp  — cooling feasibility. Ventilation can't cool the house below the
-              outdoor temperature, so this is 1 when it's comfortably below your
-              setpoint and 0 once it reaches it.
+  * f_temp  — 1 between the cold-open line and the cooling ideal, 0 at the
+              cold lockout and at the cooling cutoff. Ventilation can't cool the
+              house below the outdoor air, and it can't warm a house either:
+              opening vents greenhouse gain instead of collecting it.
   * f_humid — dryness. 1 at/below your ideal dew point, 0 at/above your muggy
               cap. (f_temp · f_humid is a practical stand-in for the HVAC
               "differential-enthalpy economizer" test: is the outdoor air's
@@ -55,6 +56,15 @@ def _ramp_down(x: float | None, full: float, zero: float) -> float:
     return max(0.0, min(1.0, (zero - x) / (zero - full)))
 
 
+def _ramp_up(x: float | None, zero: float, full: float) -> float:
+    """1.0 at x>=full, 0.0 at x<=zero, linear in between (zero < full)."""
+    if x is None:
+        return 1.0
+    if full <= zero:
+        return 1.0 if x >= full else 0.0
+    return max(0.0, min(1.0, (x - zero) / (full - zero)))
+
+
 def window_score(
     c: Comfort,
     *,
@@ -68,7 +78,12 @@ def window_score(
     if temp_f is None:
         return ScoreBreakdown(0.0, 0.0, 1.0, 1.0, 1.0)
 
-    f_temp = _ramp_down(temp_f, c.max_temp_f - c.temp_margin_f, c.max_temp_f)
+    # Hot ramp times the cold lockout. The cold side is not "open to warm":
+    # an open window cannot greenhouse-heat a room (see README "Cold air").
+    f_hot = _ramp_down(temp_f, c.max_temp_f - c.temp_margin_f, c.max_temp_f)
+    f_cold = _ramp_up(temp_f, c.temp_min_f, c.temp_min_ideal_f)
+    f_temp = f_hot * f_cold
+    # No low-side dew ramp: drier air is lower enthalpy and still worth importing.
     f_humid = _ramp_down(dew_point_f, c.dew_point_ideal_f, c.dew_point_max_f)
     f_aqi = _ramp_down(aqi, c.aqi_max * 0.5, float(c.aqi_max))
 
