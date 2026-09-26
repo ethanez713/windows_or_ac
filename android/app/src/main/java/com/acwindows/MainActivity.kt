@@ -966,21 +966,29 @@ private fun DaySparkline(
     val open = d.score
     val closed = d.blockedBase
     val selColor = Skin.chrome.heading
-    val cold = Color(coldMarkArgb(Skin.chrome.dark))
+    val coldArgb = coldMarkArgb(Skin.chrome.dark)
     Canvas(modifier) {
         val n = points.size.coerceAtLeast(1)
         val bw = size.width / n
         val plotBot = size.height
         val plotH = plotBot
 
-        fun penalized(p: ForecastPoint): Color {
+        // Same midpoint the temperature line uses for the segment that leaves this hour
+        // (the segment that arrives, for the last hour), so a red or white bar is a red or white line.
+        fun lineSample(i: Int): Double? {
+            val a = points[i].tempF ?: return null
+            val b = points.getOrNull(i + 1)?.tempF ?: points.getOrNull(i - 1)?.tempF
+            return if (b == null) a else (a + b) / 2.0
+        }
+
+        fun penalized(i: Int, p: ForecastPoint): Color {
             val factor = p.breakdown?.limiting()
-            val temp = p.tempF
-            // Temperature outside the score band paints the bar red or white. Dew, air,
-            // and rain keep their own hues — a dry hour is not a cold hour.
+            val sample = lineSample(i)
+            // When temperature is what holds the score down, the bar uses the line color.
+            // Another factor keeps its own hue even if the line is red or white.
             return when {
-                factor == Factor.TEMP && temp != null && temp >= comfort.tempIdealF -> HotRed
-                factor == Factor.TEMP && temp != null && temp <= comfort.tempMinIdealF -> cold
+                factor == Factor.TEMP && sample != null ->
+                    Color(tempLineArgb(sample, comfort, d.raw.temp, coldArgb))
                 factor != null -> Color(Tokens.blockedBar(d.raw, Tokens.factorHue(d.raw, factor)))
                 else -> closed
             }
@@ -988,7 +996,7 @@ private fun DaySparkline(
 
         points.forEachIndexed { i, p ->
             val h = (p.score / 100.0).toFloat() * plotH
-            val barColor = if (p.score >= threshold) open else penalized(p)
+            val barColor = if (p.score >= threshold) open else penalized(i, p)
             drawRect(
                 color = barColor,
                 topLeft = Offset(i * bw, plotBot - h),
@@ -1000,7 +1008,7 @@ private fun DaySparkline(
         val markH = 2.5f.dp.toPx()
         points.forEachIndexed { i, p ->
             if (p.score > 0.5 || p.breakdown == null) return@forEachIndexed
-            drawRect(penalized(p), topLeft = Offset(i * bw, plotBot - markH), size = Size(bw * 0.7f, markH))
+            drawRect(penalized(i, p), topLeft = Offset(i * bw, plotBot - markH), size = Size(bw * 0.7f, markH))
         }
 
         // Static "now" marker (today only — nowIdx is -1 on other days), centred on the bar.

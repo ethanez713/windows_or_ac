@@ -83,4 +83,15 @@ class ScoreTest {
     @Test fun pleasantDewStaysOpen() {
         assertEquals(100.0, Score.windowScore(c, tempF = 70.0, dewPointF = 50.0, aqi = 20), 0.001)
     }
+
+    @Test fun tempLimitedColorFollowsTheLineThresholds() {
+        val base = 0xFFFB923C.toInt()
+        val cold = 0xFFFFFFFF.toInt()
+        // Above the score cutoff (76) but below the line (90): still the temperature hue.
+        assertEquals(base, tempLineArgb(80.0, c, base, cold))
+        assertEquals(HotRedArgb, tempLineArgb(90.0, c, base, cold))
+        // Below the open-down-to line (55) but above the line's white mark (45): still the hue.
+        assertEquals(base, tempLineArgb(50.0, c, base, cold))
+        assertEquals(cold, tempLineArgb(45.0, c, base, cold))
+    }
 }

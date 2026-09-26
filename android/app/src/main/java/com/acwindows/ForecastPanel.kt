@@ -680,7 +680,8 @@ object ForecastPanel {
         val threshold = cfg.comfort.openScoreMin
         val colors = IntArray(idx.size.coerceAtLeast(2)) { d.score }
         idx.forEachIndexed { k, i ->
-            colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d, coldArgb)
+            val neighbor = idx.getOrNull(k + 1) ?: idx.getOrNull(k - 1)
+            colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, neighbor, d, coldArgb)
         }
         if (idx.size == 1) colors[1] = colors[0]
 
@@ -696,24 +697,29 @@ object ForecastPanel {
     }
 
     /**
-     * One hour's score-strip colour (see [drawScoreStrip]): vivid green when open, else the
-     * bad factors' hues mixed by severity and muted through [Tokens.blockedBar]. Falls back to
-     * the cached dominant factor, then a flat grey, when the per-factor series aren't cached.
+     * One hour's score-strip colour. Green when open. When temperature is the factor holding
+     * the score down, the strip uses that hour's temperature-line color. Otherwise a muted mix
+     * of the other factors, or the cached dominant factor when the series aren't cached.
      */
     private fun scoreColor(
-        score: Double, threshold: Double, comfort: Comfort, s: Snapshot, i: Int, d: Tokens.Data, coldArgb: Int,
+        score: Double, threshold: Double, comfort: Comfort, s: Snapshot, i: Int, neighbor: Int?,
+        d: Tokens.Data, coldArgb: Int,
     ): Int {
         if (score >= threshold) return d.score
         val temp = s.tempSeries.getOrNull(i)
+        val other = neighbor?.let { s.tempSeries.getOrNull(it) }
+        val sample = if (temp == null) null else if (other == null) temp else (temp + other) / 2
+        // worst is the argmin of the score multipliers, same as ScoreBreakdown.limiting.
+        // The sample is the midpoint the temperature line uses, so the bar matches that segment.
+        if (s.worst.getOrNull(i) == Factor.TEMP.ordinal && sample != null) {
+            return tempLineArgb(sample, comfort, d.temp, coldArgb)
+        }
         val weights = doubleArrayOf(
             tempSeverity(temp, comfort),
             dewSeverity(s.dewSeries.getOrNull(i), comfort),
             severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
             severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
         )
-        val tempWorst = weights[0] > 0.0 && weights[0] == weights.max() && weights.count { it == weights[0] } == 1
-        if (tempWorst && temp != null && temp >= comfort.tempIdealF) return HotRedArgb
-        if (tempWorst && temp != null && temp <= comfort.tempMinIdealF) return coldArgb
         val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
         if (weights.sum() <= 0.0) {
             val wf = s.worst.getOrNull(i) ?: -1

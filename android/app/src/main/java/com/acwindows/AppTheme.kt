@@ -128,3 +128,10 @@ fun segmentTintArgb(
     midF <= lowF -> lowColor
     else -> base
 }
+
+/**
+ * The temperature line's color for one reading. A temp-limited score bar uses this same
+ * result, so the bar is red only when the line is red and white only when the line is white.
+ */
+fun tempLineArgb(tempF: Double, c: Comfort, baseArgb: Int, coldArgb: Int): Int =
+    segmentTintArgb(tempF, baseArgb, c.tempLineHotF, c.tempLineColdF, HotRedArgb, coldArgb)
