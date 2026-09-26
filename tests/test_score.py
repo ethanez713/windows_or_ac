@@ -67,19 +67,28 @@ class TestWindowScore(unittest.TestCase):
 
     def test_night_flush_temperature_stays_open(self):
         # 55°F is the bottom of the full-score band; 50°F still clears a 60 threshold.
-        self.assertEqual(window_score(self.c, temp_f=55, dew_point_f=40, aqi=20).score, 100.0)
-        s = window_score(self.c, temp_f=50, dew_point_f=40, aqi=20)
+        self.assertEqual(window_score(self.c, temp_f=55, dew_point_f=50, aqi=20).score, 100.0)
+        s = window_score(self.c, temp_f=50, dew_point_f=50, aqi=20)
         self.assertAlmostEqual(s.f_temp, 0.667, places=3)
         self.assertAlmostEqual(s.score, 66.7, places=1)
 
     def test_cold_ramp_midpoint(self):
-        s = window_score(self.c, temp_f=47.5, dew_point_f=40, aqi=20)
+        s = window_score(self.c, temp_f=47.5, dew_point_f=50, aqi=20)
         self.assertAlmostEqual(s.f_temp, 0.5, places=2)
         self.assertAlmostEqual(s.score, 50.0, places=1)
 
-    def test_dry_dew_point_does_not_penalize(self):
-        # The dry floor colors the line; it is not a score factor.
-        self.assertEqual(window_score(self.c, temp_f=70, dew_point_f=15, aqi=20).score, 100.0)
+    def test_dry_dew_point_zeroes_it(self):
+        s = window_score(self.c, temp_f=70, dew_point_f=40, aqi=20)
+        self.assertEqual(s.f_humid, 0.0)
+        self.assertEqual(s.score, 0.0)
+
+    def test_dew_ramp_midpoint(self):
+        s = window_score(self.c, temp_f=70, dew_point_f=42.5, aqi=20)
+        self.assertAlmostEqual(s.f_humid, 0.5, places=2)
+        self.assertAlmostEqual(s.score, 50.0, places=1)
+
+    def test_pleasant_dew_stays_open(self):
+        self.assertEqual(window_score(self.c, temp_f=70, dew_point_f=50, aqi=20).score, 100.0)
 
 
 if __name__ == "__main__":

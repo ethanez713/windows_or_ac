@@ -27,10 +27,11 @@ class Comfort:
     temp_min_ideal_f: float = 55.0
     temp_min_f: float = 40.0
     # Dew point is the best single "muggy-ness" gauge (see README).
-    dew_point_ideal_f: float = 55.0   # at/below this the air feels dry & pleasant
+    dew_point_ideal_f: float = 55.0   # at/below this the air feels pleasant (score 1)
     dew_point_max_f: float = 60.0     # above this, ventilating feels clammy -> prefer AC
-    # Dew line turns cold-blue at/below this. Not a score factor: drier air is
-    # still worth importing.
+    # Full score down to here; 0 at/below dew_point_min_f. Very dry air is a
+    # reason to keep the windows shut, same shape as the cold temperature lockout.
+    dew_point_min_ideal_f: float = 45.0
     dew_point_min_f: float = 40.0
     # Indoor relative-humidity preferences (informational; dew point drives the call).
     humidity_ideal_low: float = 40.0

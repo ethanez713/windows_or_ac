@@ -56,19 +56,31 @@ class ScoreTest {
     }
 
     @Test fun nightFlushTemperatureStaysOpen() {
-        assertEquals(100.0, Score.windowScore(c, tempF = 55.0, dewPointF = 40.0, aqi = 20), 0.001)
-        val b = Score.windowScoreBreakdown(c, tempF = 50.0, dewPointF = 40.0, aqi = 20)
+        assertEquals(100.0, Score.windowScore(c, tempF = 55.0, dewPointF = 50.0, aqi = 20), 0.001)
+        val b = Score.windowScoreBreakdown(c, tempF = 50.0, dewPointF = 50.0, aqi = 20)
         assertEquals(0.667, b.fTemp, 0.001)
         assertEquals(66.7, b.score, 0.1)
     }
 
     @Test fun coldRampMidpoint() {
-        val b = Score.windowScoreBreakdown(c, tempF = 47.5, dewPointF = 40.0, aqi = 20)
+        val b = Score.windowScoreBreakdown(c, tempF = 47.5, dewPointF = 50.0, aqi = 20)
         assertEquals(0.5, b.fTemp, 0.01)
         assertEquals(50.0, b.score, 0.1)
     }
 
-    @Test fun dryDewPointDoesNotPenalize() {
-        assertEquals(100.0, Score.windowScore(c, tempF = 70.0, dewPointF = 15.0, aqi = 20), 0.001)
+    @Test fun dryDewPointZeroesIt() {
+        val b = Score.windowScoreBreakdown(c, tempF = 70.0, dewPointF = 40.0, aqi = 20)
+        assertEquals(0.0, b.fHumid, 0.001)
+        assertEquals(0.0, b.score, 0.001)
+    }
+
+    @Test fun dewRampMidpoint() {
+        val b = Score.windowScoreBreakdown(c, tempF = 70.0, dewPointF = 42.5, aqi = 20)
+        assertEquals(0.5, b.fHumid, 0.01)
+        assertEquals(50.0, b.score, 0.1)
+    }
+
+    @Test fun pleasantDewStaysOpen() {
+        assertEquals(100.0, Score.windowScore(c, tempF = 70.0, dewPointF = 50.0, aqi = 20), 0.001)
     }
 }

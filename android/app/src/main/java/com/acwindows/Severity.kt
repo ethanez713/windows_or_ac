@@ -54,10 +54,16 @@ fun tempSeverity(tempF: Double?, c: Comfort): Double = maxOf(
     severityLow(tempF, c.tempMinIdealF, c.tempMinF),
 )
 
+/** High-side and low-side dew severity. */
+fun dewSeverity(dewF: Double?, c: Comfort): Double = maxOf(
+    severity(dewF, c.dewPointIdealF, c.dewPointMaxF),
+    severityLow(dewF, c.dewPointMinIdealF, c.dewPointMinF),
+)
+
 /** One hour's severity in every factor, against the user's [Comfort] thresholds. */
 fun severities(c: Comfort, p: ForecastPoint): Map<Factor, Double> = mapOf(
     Factor.TEMP to tempSeverity(p.tempF, c),
-    Factor.DEW to severity(p.dewPointF, c.dewPointIdealF, c.dewPointMaxF),
+    Factor.DEW to dewSeverity(p.dewPointF, c),
     Factor.AQI to severity(p.aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble()),
     Factor.RAIN to severity(p.precipProb, c.rainProbIdeal, c.rainProbMax),
 )

@@ -12,18 +12,21 @@ package com.acwindows
  * Temperature scores 1 between [tempMinIdealF] and [tempIdealF], and 0 at or
  * below [tempMinF] and at or above [maxTempF]. The cold end is a lockout:
  * opening cools the house toward the outdoor air and vents solar gain, so it
- * does not warm the room. The other factors score 1 at or below their ideal
- * and 0 at or above their cutoff. [dewPointMinF] only colors the dew line —
- * drier air is still worth importing, so it is not a score factor.
+ * does not warm the room. Dew point scores 1 between [dewPointMinIdealF] and
+ * [dewPointIdealF], and 0 at or below [dewPointMinF] and at or above [dewPointMaxF].
+ * [tempLineHotF] and [tempLineColdF] color the temperature line only.
  */
 data class Comfort(
     val tempIdealF: Double = 76.0,        // temp: comfortable up to here (score 1)
     val maxTempF: Double = 78.0,          // temp: ventilation can't cool at/above (score 0)
     val tempMinIdealF: Double = 55.0,     // temp: worth opening down to here (score 1)
     val tempMinF: Double = 40.0,          // temp: too cold to leave open at/below (score 0)
-    val dewPointIdealF: Double = 60.0,    // humidity: not muggy up to here
-    val dewPointMaxF: Double = 65.0,      // humidity: too muggy at/above
-    val dewPointMinF: Double = 40.0,      // dew line turns cold-blue at/below; not a score factor
+    val tempLineHotF: Double = 90.0,      // temperature line turns red at/above; not a score factor
+    val tempLineColdF: Double = 45.0,     // temperature line turns white at/below; not a score factor
+    val dewPointIdealF: Double = 60.0,    // humidity: comfortable up to here (score 1)
+    val dewPointMaxF: Double = 65.0,      // humidity: too muggy at/above (score 0)
+    val dewPointMinIdealF: Double = 45.0, // humidity: comfortable down to here (score 1)
+    val dewPointMinF: Double = 40.0,      // humidity: too dry at/below (score 0)
     val aqiIdeal: Double = 100.0,         // air: clean up to here
     val aqiMax: Int = 150,                // air: unhealthy at/above
     val rainProbIdeal: Double = 20.0,     // rain: fine up to this % chance

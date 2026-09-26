@@ -66,7 +66,9 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
     muggy = agg.dew_point_f is not None and agg.dew_point_f > c.dew_point_max_f
     too_warm = agg.temp_f > c.max_temp_f
     too_cold = agg.temp_f <= c.temp_min_f
+    too_dry = agg.dew_point_f is not None and agg.dew_point_f <= c.dew_point_min_f
     cool_enough = agg.temp_f <= c.max_temp_f - c.temp_margin_f
+    dew_in_band = agg.dew_point_f is None or agg.dew_point_f >= c.dew_point_min_ideal_f
 
     if aqi_bad:
         reasons.append(
@@ -106,6 +108,18 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             reasons=reasons,
         )
 
+    if too_dry:
+        reasons.insert(
+            0,
+            f"dew point {agg.dew_point_f:.0f}°F is at or below your {c.dew_point_min_f:.0f}°F dry limit",
+        )
+        return Recommendation(
+            action="KEEP_CLOSED",
+            headline="Keep windows closed",
+            summary="The outdoor air is very dry. Opening would bring that dryness in.",
+            reasons=reasons,
+        )
+
     # 3) Comfortable temperature, but a blocker keeps windows shut.
     if windows_blocked:
         if muggy:
@@ -124,10 +138,11 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
 
     # 4) In the open band, clean and dry. Inside the cold ramp, open only while
     #    the score still clears the threshold.
-    in_band = agg.temp_f >= c.temp_min_ideal_f or _score_clears(agg, c)
-    if cool_enough and in_band:
+    opens = _score_clears(agg, c)
+    temp_in_band = agg.temp_f >= c.temp_min_ideal_f
+    if cool_enough and ((temp_in_band and dew_in_band) or opens):
         reasons.insert(0, f"it's {agg.temp_f:.0f}°F out, below your {c.max_temp_f:.0f}°F max")
-        if agg.dew_point_f is not None:
+        if dew_in_band and agg.dew_point_f is not None:
             reasons.append(f"dew point {agg.dew_point_f:.0f}°F is comfortable")
         if agg.aqi is not None:
             reasons.append(f"AQI {agg.aqi} ({aqi_category(agg.aqi)})")
@@ -138,7 +153,7 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             reasons=reasons,
         )
 
-    if cool_enough:
+    if cool_enough and not temp_in_band:
         reasons.insert(
             0,
             f"it's {agg.temp_f:.0f}°F out, below your {c.temp_min_ideal_f:.0f}°F open-down-to",
@@ -147,6 +162,18 @@ def decide(agg: AggregateReading, c: Comfort) -> Recommendation:
             action="KEEP_CLOSED",
             headline="Keep windows closed",
             summary=_COLD_SUMMARY,
+            reasons=reasons,
+        )
+
+    if cool_enough:
+        reasons.insert(
+            0,
+            f"dew point {agg.dew_point_f:.0f}°F is below your {c.dew_point_min_ideal_f:.0f}°F dry-down-to",
+        )
+        return Recommendation(
+            action="KEEP_CLOSED",
+            headline="Keep windows closed",
+            summary="The outdoor air is very dry. Opening would bring that dryness in.",
             reasons=reasons,
         )
 

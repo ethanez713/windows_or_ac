@@ -78,10 +78,15 @@ class DecisionTests(unittest.TestCase):
 
     def test_fifty_degrees_still_opens(self):
         # Inside the cold ramp but the score (about 67) still clears 60.
-        self.assertEqual(decide(reading(temp_f=50, dew_point_f=40), C).action, "OPEN_WINDOWS")
+        self.assertEqual(decide(reading(temp_f=50, dew_point_f=50), C).action, "OPEN_WINDOWS")
 
     def test_mid_ramp_cold_keeps_closed(self):
         self.assertEqual(decide(reading(temp_f=45, dew_point_f=35), C).action, "KEEP_CLOSED")
+
+    def test_very_dry_air_keeps_closed(self):
+        rec = decide(reading(temp_f=70, dew_point_f=30), C)
+        self.assertEqual(rec.action, "KEEP_CLOSED")
+        self.assertIn("very dry", rec.summary)
 
     def test_smoky_cool_evening_is_not_the_cold_message(self):
         rec = decide(reading(temp_f=50, aqi=160), C)

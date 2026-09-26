@@ -161,7 +161,7 @@ object ForecastPanel {
             val c = cfg.comfort
             limiting = listOf(
                 Factor.TEMP to tempSeverity(s.tempF, c),
-                Factor.DEW to severity(s.dewPointF, c.dewPointIdealF, c.dewPointMaxF),
+                Factor.DEW to dewSeverity(s.dewPointF, c),
                 Factor.AQI to severity(s.aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble()),
                 Factor.RAIN to severity(rainNow, c.rainProbIdeal, c.rainProbMax),
             ).filter { it.second > 0 }.maxByOrNull { it.second }?.first
@@ -381,17 +381,20 @@ object ForecastPanel {
                 c.drawLine(g.x0, y, g.x1, y, gridPaint)
                 c.drawText("${v.roundToInt()}°", 0f, y - 2f * dp, gridText)
             }
+            val cold = coldMarkArgb(dark)
             if (widget.showTemp) {
                 drawSeries(
                     c, idx.map { s.tempSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.temp,
                     2.4f * dp, dp, dashed = false, degF = idx.map { s.tempSeries.getOrNull(it) },
+                    highF = cfg.comfort.tempLineHotF, lowF = cfg.comfort.tempLineColdF,
+                    highColor = HotRedArgb, lowColor = cold,
                 )
             }
             if (widget.showDew) {
                 drawSeries(
                     c, idx.map { s.dewSeries.getOrNull(it)?.let(unit::fromF) }, g, lo, hi, d.dew, 2f * dp, dp,
                     dashed = true, degF = idx.map { s.dewSeries.getOrNull(it) },
-                    highF = cfg.comfort.dewPointMaxF, lowF = cfg.comfort.dewPointMinF,
+                    highF = cfg.comfort.dewPointIdealF, lowF = cfg.comfort.dewPointMinIdealF,
                 )
             }
             drawExtremes(context, c, idx, s, unit, g, lo, hi, d, dp, ts, widget.showTemp, widget.showDew)
@@ -407,7 +410,7 @@ object ForecastPanel {
             val y = bandTop + STRIP_GAP * dp
             val mid = y + strip.h * dp / 2
             val label = when (strip) {
-                Strip.SCORE -> if (drawScoreStrip(c, s, idx, g, d, chrome, dp, cfg, y)) StripLabel("WIN", d.score, mid) else null
+                Strip.SCORE -> if (drawScoreStrip(c, s, idx, g, d, chrome, dp, cfg, y, coldMarkArgb(dark))) StripLabel("WIN", d.score, mid) else null
                 Strip.AQI -> if (drawAqi(c, s, idx, g, d, chrome, dp, cfg, dark, y)) StripLabel("AIR", d.aqi, mid) else null
                 Strip.UV -> if (drawUv(c, s, idx, chrome, dp, dark, g.x0, g.x1, y)) StripLabel("UV", chrome.muted, mid) else null
                 Strip.CLOUD -> if (drawCloud(c, s, idx, chrome, dp, g.x0, g.x1, y)) StripLabel("cld", chrome.muted, mid) else null
@@ -671,11 +674,14 @@ object ForecastPanel {
     private fun drawScoreStrip(
         c: Canvas, s: Snapshot, idx: List<Int>,
         g: Geom, d: Tokens.Data, chrome: Tokens.Chrome, dp: Float, cfg: AppConfig, y: Float,
+        coldArgb: Int,
     ): Boolean {
         if (s.scores.isEmpty()) return false
         val threshold = cfg.comfort.openScoreMin
         val colors = IntArray(idx.size.coerceAtLeast(2)) { d.score }
-        idx.forEachIndexed { k, i -> colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d) }
+        idx.forEachIndexed { k, i ->
+            colors[k] = scoreColor(s.scores.getOrNull(i) ?: 0.0, threshold, cfg.comfort, s, i, d, coldArgb)
+        }
         if (idx.size == 1) colors[1] = colors[0]
 
         val bar = RectF(g.x0, y, g.x1, y + SCORE_H * dp)
@@ -694,15 +700,21 @@ object ForecastPanel {
      * bad factors' hues mixed by severity and muted through [Tokens.blockedBar]. Falls back to
      * the cached dominant factor, then a flat grey, when the per-factor series aren't cached.
      */
-    private fun scoreColor(score: Double, threshold: Double, comfort: Comfort, s: Snapshot, i: Int, d: Tokens.Data): Int {
+    private fun scoreColor(
+        score: Double, threshold: Double, comfort: Comfort, s: Snapshot, i: Int, d: Tokens.Data, coldArgb: Int,
+    ): Int {
         if (score >= threshold) return d.score
-        val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
+        val temp = s.tempSeries.getOrNull(i)
         val weights = doubleArrayOf(
-            tempSeverity(s.tempSeries.getOrNull(i), comfort),
-            severity(s.dewSeries.getOrNull(i), comfort.dewPointIdealF, comfort.dewPointMaxF),
+            tempSeverity(temp, comfort),
+            dewSeverity(s.dewSeries.getOrNull(i), comfort),
             severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
             severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
         )
+        val tempWorst = weights[0] > 0.0 && weights[0] == weights.max() && weights.count { it == weights[0] } == 1
+        if (tempWorst && temp != null && temp >= comfort.tempIdealF) return HotRedArgb
+        if (tempWorst && temp != null && temp <= comfort.tempMinIdealF) return coldArgb
+        val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
         if (weights.sum() <= 0.0) {
             val wf = s.worst.getOrNull(i) ?: -1
             return if (wf in hues.indices) Tokens.blockedBar(d, hues[wf]) else d.blockedBase
@@ -713,30 +725,28 @@ object ForecastPanel {
     private fun drawSeries(
         c: Canvas, values: List<Double?>, g: Geom, lo: Double, hi: Double,
         color: Int, width: Float, dp: Float, dashed: Boolean,
-        /** Raw °F per hour. When given, a segment at/above [highF] is red and at/below [lowF] is blue. */
         degF: List<Double?>? = null,
-        highF: Double = HOT_F,
-        lowF: Double = COLD_F,
+        highF: Double = Double.POSITIVE_INFINITY,
+        lowF: Double = Double.NEGATIVE_INFINITY,
+        highColor: Int? = null,
+        lowColor: Int? = null,
     ) {
+        val dash = DashPathEffect(floatArrayOf(1f * dp, 3.4f * dp), 0f)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color; style = Paint.Style.STROKE; strokeWidth = width
             strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
-            if (dashed) pathEffect = DashPathEffect(floatArrayOf(1f * dp, 3.4f * dp), 0f)
         }
         for (k in 0 until values.size - 1) {
             val a = values[k] ?: continue
             val b = values[k + 1] ?: continue
-            paint.color = segmentColor(color, degF, k, highF, lowF)
+            val left = degF?.getOrNull(k)
+            val mid = if (left == null) null else (left + (degF.getOrNull(k + 1) ?: left)) / 2
+            val outside = mid != null && (mid > highF || mid < lowF)
+            paint.color = if (mid == null || highColor == null || lowColor == null) color
+                else segmentTintArgb(mid, color, highF, lowF, highColor, lowColor)
+            paint.pathEffect = if (dashed && !outside) dash else null
             c.drawLine(g.xAt(k), g.yAt(a, lo, hi), g.xAt(k + 1), g.yAt(b, lo, hi), paint)
         }
-    }
-
-    /** [HotRedArgb] at/above [highF], [ColdBlueArgb] at/below [lowF], else [base]. Null [degF] stays [base]. */
-    private fun segmentColor(base: Int, degF: List<Double?>?, k: Int, highF: Double, lowF: Double): Int {
-        if (degF == null) return base
-        val a = degF.getOrNull(k) ?: return base
-        val f = (a + (degF.getOrNull(k + 1) ?: a)) / 2
-        return segmentTintArgb(f, base, highF, lowF)
     }
 
     /**

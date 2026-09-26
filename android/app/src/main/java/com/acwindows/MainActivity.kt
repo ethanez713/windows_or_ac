@@ -672,7 +672,7 @@ private fun DayCard(
                     maxLines = 1, overflow = TextOverflow.Ellipsis, color = Skin.chrome.heading,
                 )
                 Spacer(Modifier.width(colGap))
-                DaySparkline(day.points, threshold, nowIdx, sel, Modifier.weight(1f).height(34.dp))
+                DaySparkline(day.points, threshold, comfort, nowIdx, sel, Modifier.weight(1f).height(34.dp))
                 Spacer(Modifier.width(colGap))
                 // A 2x2 block pinned to the right edge: hi/lo temperature on top, the two
                 // day/night glyphs below. Both a step larger than the row text, since this
@@ -760,8 +760,7 @@ private fun DayCard(
                     day.points, unit,
                     palette = cfg.aqiPalette,
                     thunderAlertPct = cfg.thunderAlertPct,
-                    dewHighF = comfort.dewPointMaxF,
-                    dewLowF = comfort.dewPointMinF,
+                    comfort = comfort,
                     isToday = isToday,
                     sel = sel,
                     onSel = { sel = it },
@@ -958,6 +957,7 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
 private fun DaySparkline(
     points: List<ForecastPoint>,
     threshold: Double,
+    comfort: Comfort,
     nowIdx: Int,
     selectedIdx: Int?,
     modifier: Modifier,
@@ -966,20 +966,29 @@ private fun DaySparkline(
     val open = d.score
     val closed = d.blockedBase
     val selColor = Skin.chrome.heading
+    val cold = Color(coldMarkArgb(Skin.chrome.dark))
     Canvas(modifier) {
         val n = points.size.coerceAtLeast(1)
         val bw = size.width / n
         val plotBot = size.height
         val plotH = plotBot
 
+        fun penalized(p: ForecastPoint): Color {
+            val factor = p.breakdown?.limiting()
+            val temp = p.tempF
+            // Temperature outside the score band paints the bar red or white. Dew, air,
+            // and rain keep their own hues — a dry hour is not a cold hour.
+            return when {
+                factor == Factor.TEMP && temp != null && temp >= comfort.tempIdealF -> HotRed
+                factor == Factor.TEMP && temp != null && temp <= comfort.tempMinIdealF -> cold
+                factor != null -> Color(Tokens.blockedBar(d.raw, Tokens.factorHue(d.raw, factor)))
+                else -> closed
+            }
+        }
+
         points.forEachIndexed { i, p ->
             val h = (p.score / 100.0).toFloat() * plotH
-            // Open hours are vivid green; closed hours are a desaturated grey tinted by their
-            // dominant detractor (falling back to a flat grey when the breakdown is unknown).
-            val barColor = if (p.score >= threshold) open else {
-                val factor = p.breakdown?.limiting()
-                if (factor != null) Color(Tokens.blockedBar(d.raw, Tokens.factorHue(d.raw, factor))) else closed
-            }
+            val barColor = if (p.score >= threshold) open else penalized(p)
             drawRect(
                 color = barColor,
                 topLeft = Offset(i * bw, plotBot - h),
@@ -987,16 +996,11 @@ private fun DaySparkline(
             )
         }
 
-        // Where the score bottoms out (≈0), colour the baseline by the most-penalizing
-        // factor, so a closed stretch still shows *why* it's closed. Extreme heat (≥90°F)
-        // overrides that mark with red.
+        // A zero-height bar still needs a mark, in the same color as the bar would be.
         val markH = 2.5f.dp.toPx()
         points.forEachIndexed { i, p ->
-            if (p.score > 0.5) return@forEachIndexed
-            val b = p.breakdown ?: return@forEachIndexed
-            val color = if ((p.tempF ?: 0.0) >= HOT_F) HotRed
-                else Color(Tokens.factorHue(d.raw, b.limiting() ?: return@forEachIndexed))
-            drawRect(color, topLeft = Offset(i * bw, plotBot - markH), size = Size(bw * 0.7f, markH))
+            if (p.score > 0.5 || p.breakdown == null) return@forEachIndexed
+            drawRect(penalized(p), topLeft = Offset(i * bw, plotBot - markH), size = Size(bw * 0.7f, markH))
         }
 
         // Static "now" marker (today only — nowIdx is -1 on other days), centred on the bar.

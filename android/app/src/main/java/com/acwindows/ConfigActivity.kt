@@ -35,7 +35,8 @@ class ConfigActivity : Activity() {
     /** Every setpoint field that needs unit conversion (as opposed to aqi/rain, which don't). */
     private val tempFieldIds = listOf(
         R.id.temp_min_ideal, R.id.temp_min, R.id.temp_ideal, R.id.max_temp,
-        R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
+        R.id.temp_line_cold, R.id.temp_line_hot,
+        R.id.dew_min_ideal, R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
     )
 
     // The °F value and exact text each setpoint field was last RENDERED from — see
@@ -57,7 +58,8 @@ class ConfigActivity : Activity() {
     /** Every editable field on the screen, for staged-edit tracking. */
     private val valueFields = listOf(
         R.id.open_score, R.id.temp_min_ideal, R.id.temp_min, R.id.temp_ideal, R.id.max_temp,
-        R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
+        R.id.temp_line_cold, R.id.temp_line_hot,
+        R.id.dew_min_ideal, R.id.dew_min, R.id.dew_ideal, R.id.dew_max,
         R.id.aqi_ideal, R.id.aqi_max, R.id.rain_ideal, R.id.rain_max,
         R.id.key_tomorrowio, R.id.key_pirateweather, R.id.key_airnow,
     ) + weightFields.map { it.first }
@@ -74,6 +76,9 @@ class ConfigActivity : Activity() {
         initialTempF[R.id.temp_min] = cfg.comfort.tempMinF
         initialTempF[R.id.temp_ideal] = cfg.comfort.tempIdealF
         initialTempF[R.id.max_temp] = cfg.comfort.maxTempF
+        initialTempF[R.id.temp_line_cold] = cfg.comfort.tempLineColdF
+        initialTempF[R.id.temp_line_hot] = cfg.comfort.tempLineHotF
+        initialTempF[R.id.dew_min_ideal] = cfg.comfort.dewPointMinIdealF
         initialTempF[R.id.dew_min] = cfg.comfort.dewPointMinF
         initialTempF[R.id.dew_ideal] = cfg.comfort.dewPointIdealF
         initialTempF[R.id.dew_max] = cfg.comfort.dewPointMaxF
@@ -220,8 +225,11 @@ class ConfigActivity : Activity() {
         val tempMin = fahrenheitOf(R.id.temp_min, currentUnit)
         val tempIdeal = fahrenheitOf(R.id.temp_ideal, currentUnit)
         val maxTemp = fahrenheitOf(R.id.max_temp, currentUnit)
+        val lineCold = fahrenheitOf(R.id.temp_line_cold, currentUnit)
+        val lineHot = fahrenheitOf(R.id.temp_line_hot, currentUnit)
         val openScore = field(R.id.open_score).text.toString().toDoubleOrNull()
             ?.coerceIn(0.0, 100.0) ?: cfg.comfort.openScoreMin
+        val dewMinIdeal = fahrenheitOf(R.id.dew_min_ideal, currentUnit)
         val dewMin = fahrenheitOf(R.id.dew_min, currentUnit)
         val dewIdeal = fahrenheitOf(R.id.dew_ideal, currentUnit)
         val dewMax = fahrenheitOf(R.id.dew_max, currentUnit)
@@ -233,6 +241,9 @@ class ConfigActivity : Activity() {
         renderTempField(R.id.temp_min, tempMin)
         renderTempField(R.id.temp_ideal, tempIdeal)
         renderTempField(R.id.max_temp, maxTemp)
+        renderTempField(R.id.temp_line_cold, lineCold)
+        renderTempField(R.id.temp_line_hot, lineHot)
+        renderTempField(R.id.dew_min_ideal, dewMinIdeal)
         renderTempField(R.id.dew_min, dewMin)
         renderTempField(R.id.dew_ideal, dewIdeal)
         renderTempField(R.id.dew_max, dewMax)
@@ -247,7 +258,10 @@ class ConfigActivity : Activity() {
             .putString("tempMinF", tempMin.toString())
             .putString("tempIdealF", tempIdeal.toString())
             .putString("maxTempF", maxTemp.toString())
+            .putString("tempLineColdF", lineCold.toString())
+            .putString("tempLineHotF", lineHot.toString())
             .putString("openScoreMin", openScore.toString())
+            .putString("dewPointMinIdealF", dewMinIdeal.toString())
             .putString("dewPointMinF", dewMin.toString())
             .putString("dewPointIdealF", dewIdeal.toString())
             .putString("dewPointMaxF", dewMax.toString())

@@ -17,10 +17,9 @@ isn't raining — any one of those failing kills the case on its own:
               cold lockout and at the cooling cutoff. Ventilation can't cool the
               house below the outdoor air, and it can't warm a house either:
               opening vents greenhouse gain instead of collecting it.
-  * f_humid — dryness. 1 at/below your ideal dew point, 0 at/above your muggy
-              cap. (f_temp · f_humid is a practical stand-in for the HVAC
-              "differential-enthalpy economizer" test: is the outdoor air's
-              total heat content below your indoor target?)
+  * f_humid — 1 between the dry-down-to line and the ideal dew point, 0 at the
+              dry lockout and at the muggy cap. (f_temp · f_humid is a practical
+              stand-in for the HVAC "differential-enthalpy economizer" test.)
   * f_aqi   — clean air. Ramps down to 0 as AQI approaches your limit.
   * f_rain  — not raining. From precipitation probability (or current rain).
 """
@@ -83,8 +82,10 @@ def window_score(
     f_hot = _ramp_down(temp_f, c.max_temp_f - c.temp_margin_f, c.max_temp_f)
     f_cold = _ramp_up(temp_f, c.temp_min_f, c.temp_min_ideal_f)
     f_temp = f_hot * f_cold
-    # No low-side dew ramp: drier air is lower enthalpy and still worth importing.
-    f_humid = _ramp_down(dew_point_f, c.dew_point_ideal_f, c.dew_point_max_f)
+    f_humid = (
+        _ramp_down(dew_point_f, c.dew_point_ideal_f, c.dew_point_max_f)
+        * _ramp_up(dew_point_f, c.dew_point_min_f, c.dew_point_min_ideal_f)
+    )
     f_aqi = _ramp_down(aqi, c.aqi_max * 0.5, float(c.aqi_max))
 
     if precip_prob is not None:

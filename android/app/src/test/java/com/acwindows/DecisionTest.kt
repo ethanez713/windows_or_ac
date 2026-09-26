@@ -81,11 +81,17 @@ class DecisionTest {
     }
 
     @Test fun fiftyDegreesStillOpens() {
-        assertEquals(Action.OPEN_WINDOWS, Decision.decide(consensus(tempF = 50.0, dewPointF = 40.0), c).action)
+        assertEquals(Action.OPEN_WINDOWS, Decision.decide(consensus(tempF = 50.0, dewPointF = 50.0), c).action)
     }
 
     @Test fun midRampColdKeepsClosed() {
         assertEquals(Action.KEEP_CLOSED, Decision.decide(consensus(tempF = 45.0, dewPointF = 35.0), c).action)
+    }
+
+    @Test fun veryDryAirKeepsClosed() {
+        val rec = Decision.decide(consensus(tempF = 70.0, dewPointF = 30.0), c)
+        assertEquals(Action.KEEP_CLOSED, rec.action)
+        assert(rec.summary.contains("very dry"))
     }
 
     @Test fun smokyCoolEveningIsNotTheColdMessage() {

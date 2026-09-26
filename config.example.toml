@@ -21,7 +21,8 @@ temp_min_f = 40
 #   <=55°F dry/pleasant · ~60°F getting sticky · 65°F+ oppressive
 dew_point_ideal_f = 55
 dew_point_max_f = 60     # above this, prefer AC (it dehumidifies) over ventilating
-dew_point_min_f = 40     # dew line turns blue at/below this; does not change the score
+dew_point_min_ideal_f = 45  # full score down to here
+dew_point_min_f = 40     # at/below this, the air is too dry to leave the windows open
 
 # Indoor relative-humidity preferences (informational; dew point drives the call).
 humidity_ideal_low = 40

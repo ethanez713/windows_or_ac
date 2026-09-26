@@ -46,9 +46,9 @@ object Score {
         // "open to warm": an open window cannot greenhouse-heat a room.
         val fTemp = rampDown(tempF, c.tempIdealF, c.maxTempF) *
             rampUp(tempF, c.tempMinF, c.tempMinIdealF)
-        // No low-side dew ramp: drier air is lower enthalpy and still worth importing.
-        // dewPointMinF colors the line only.
-        val fHumid = rampDown(dewPointF, c.dewPointIdealF, c.dewPointMaxF)
+        // Same shape as temperature: a low dew point imports very dry air.
+        val fHumid = rampDown(dewPointF, c.dewPointIdealF, c.dewPointMaxF) *
+            rampUp(dewPointF, c.dewPointMinF, c.dewPointMinIdealF)
         val fAqi = rampDown(aqi?.toDouble(), c.aqiIdeal, c.aqiMax.toDouble())
         val fRain = when {
             precipProb != null -> rampDown(precipProb, c.rainProbIdeal, c.rainProbMax)

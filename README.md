@@ -130,7 +130,7 @@ score = 100 · f_temp · f_humid · f_aqi · f_rain
 | Factor | 1.0 (great) when… | 0.0 (veto) when… | Why |
 |---|---|---|---|
 | `f_temp`  | `temp_min_ideal_f` ≤ outdoor ≤ `temp_ideal_f` | outdoor ≥ `max_temp_f`, or outdoor ≤ `temp_min_f` | Above the cooling target, ventilation can't cool the house below the outdoor air. Below the cold floor, leaving the windows open pulls the house down toward that air and dumps greenhouse heat; it does not warm the room. |
-| `f_humid` | dew point ≤ `dew_point_ideal_f` | dew point ≥ `dew_point_max_f` | Dew point is the honest mugginess gauge; muggy air imported through a window is what AC *dehumidifies* away. |
+| `f_humid` | `dew_point_min_ideal_f` ≤ dew point ≤ `dew_point_ideal_f` | dew point ≥ `dew_point_max_f`, or dew point ≤ `dew_point_min_f` | Above the muggy cap, opening imports moisture that AC would remove. Below the dry floor, opening imports air dry enough to pull the house below a comfortable humidity. |
 | `f_aqi`   | AQI ≤ `aqi_ideal` | AQI ≥ `aqi_max` | Smoke/smog makes ventilation a bad idea even on a cool day. |
 | `f_rain`  | precip prob ≤ `rain_prob_ideal` | precip prob ≥ `rain_prob_max` | Don't invite rain in. |
 
@@ -200,12 +200,11 @@ economizer from dumping air cold enough to force the heat back on. A 50°F hour
 still scores about 67 and clears the default open threshold. Both ends are
 settings ("open down to" and "too cold").
 
-Dew point stays one-sided in the score: drier air has lower enthalpy and is
-better to import. The dew line has its own floor, `dew_point_min_f` (default
-**40°F**, about the bottom of a 30–50% indoor relative-humidity range once that
-air is warmed to around 70°F). At or below it the line takes the same cold blue
-the temperature line uses at freezing; at or above `dew_point_max_f` it takes
-the same hot red. The score does not move.
+`f_humid` has the same shape. It is 1 from `dew_point_min_ideal_f` (default
+**45°F**) up to `dew_point_ideal_f`, and 0 at or below `dew_point_min_f`
+(default **40°F**) and at or above `dew_point_max_f`. 40°F is about the bottom
+of a 30–50% indoor relative-humidity range once that air is warmed to around
+70°F. The dew line is solid outside the full-score band and dashed inside it.
 
 ### Why gates, not weights (equal or otherwise)
 

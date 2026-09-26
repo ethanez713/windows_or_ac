@@ -131,25 +131,45 @@
                 <EditText android:id="@+id/max_temp" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
         </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:baselineAligned="false">
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
+                <TextView style="@style/CfgSub" android:text="line white below" />
+                <EditText android:id="@+id/temp_line_cold" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginStart="8dp">
+                <TextView style="@style/CfgSub" android:text="line red above" />
+                <EditText android:id="@+id/temp_line_hot" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView style="@style/CfgHint"
+            android:text="Colors the temperature line only (defaults 45 and 90). A closed hour whose limiting factor is temperature turns the score bar white or red at the score cutoffs above, not at these." />
 
         <TextView android:id="@+id/dew_unit_label" style="@style/CfgLabel" android:text="Dew point (°F)" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
+                <TextView style="@style/CfgSub" android:text="comfortable down to" />
+                <EditText android:id="@+id/dew_min_ideal" style="@style/CfgField" android:inputType="numberDecimal" />
+            </LinearLayout>
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginStart="8dp">
                 <TextView style="@style/CfgSub" android:text="too dry" />
                 <EditText android:id="@+id/dew_min" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:baselineAligned="false">
             <LinearLayout style="@style/CfgRangeCol" android:layout_marginEnd="8dp">
                 <TextView style="@style/CfgSub" android:text="comfortable up to" />
                 <EditText android:id="@+id/dew_ideal" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
-            <LinearLayout style="@style/CfgRangeCol">
+            <LinearLayout style="@style/CfgRangeCol" android:layout_marginStart="8dp">
                 <TextView style="@style/CfgSub" android:text="muggy cutoff" />
                 <EditText android:id="@+id/dew_max" style="@style/CfgField" android:inputType="numberDecimal" />
             </LinearLayout>
         </LinearLayout>
         <TextView style="@style/CfgHint"
-            android:text="The dew line turns red at the muggy cutoff and blue at or below too dry. Too dry does not lower the score." />
+            android:text="The score falls off outside the comfortable band. The dew line is solid there and dashed inside it. Score bars stay the dew color." />
 
         <TextView style="@style/CfgLabel" android:text="Air quality (AQI)" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
