@@ -359,8 +359,8 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * Placeholder chips shown while the first forecast is still loading, sized to land on
  * the real layout rather than near it: same 84dp/96dp gutters, same one-row 17dp open-window
  * flag strip, same 40dp sparkline, same stacked summary, and text rows that reserve the
- * real line box via [SkeletonTextChip]. A loaded collapsed [DayCard] measures 124dp
- * (10 + 17 + 53 + 6 + 28 + 10) and the header 48dp (10 + 28 + 10).
+ * real line box via [SkeletonTextChip]. A loaded collapsed [DayCard] measures 114dp
+ * (10 + 17 + 53 + 2 + 22 + 10) and the header 48dp (10 + 28 + 10).
  *
  * The FIRST card is drawn EXPANDED, because today's card opens by default — so the
  * placeholder has to reserve the open card's height or the list jumps the moment data
@@ -369,10 +369,10 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * line (a ~28dp themed line box) + Spacer(10) + 124dp temp chart + Spacer(12) + a 140dp
  * combined chart (the 124dp plot plus the 16dp [ICON_BAND] reserved below it for
  * [CombinedChart]'s precip-type icons) = 328dp. That puts the expanded skeleton at
- * 124 + 328 = 452dp (not reverified against a live device: no screenshots without being
+ * 114 + 328 = 442dp (not reverified against a live device: no screenshots without being
  * asked).
  *
- * Two deliberate assumptions for both the collapsed body and that 452dp target, both
+ * Two deliberate assumptions for both the collapsed body and that 442dp target, both
  * the common case: the day has an open-window flag (one row, 17dp) and no rain line in its summary
  * (a rain line would add another 28dp); the expanded readout also assumes one line.
  *
@@ -435,10 +435,10 @@ private fun SkeletonForecast() {
                             SkeletonTextChip(chip, width = 64.dp, fontSize = 15.sp, chipHeight = 16.dp)
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    // The condition notes, end-aligned
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                        SkeletonTextChip(chip, width = 150.dp, fontSize = 12.sp, chipHeight = 14.dp)
+                    Spacer(Modifier.height(2.dp))
+                    // The notes row: the Today chip's 22dp is the tallest thing in it.
+                    Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterEnd) {
+                        SkeletonChip(chip, Modifier.width(150.dp).height(14.dp))
                     }
 
                     // First card = expanded today. Mirror AbsoluteCharts' exact dp scaffold
@@ -709,11 +709,8 @@ private fun DayCard(
                 }
             }
             val bad = remember(day.points, comfort, threshold) { badConditions(comfort, day.points, threshold) }
-            // Without the Today chip or any note the row would be an empty 28dp line box, so it is left out.
             if (isToday || bad.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                // No vertical padding on the hint: 11sp text still lays out in the theme's 28dp line
-                // box, so padding would grow the card and put SkeletonForecast's scaffold out.
+                Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isToday) {
                         Box(
@@ -723,12 +720,13 @@ private fun DayCard(
                                 // An inner clickable consumes the tap before it reaches the
                                 // card's own clickable (the expand/collapse toggle).
                                 .clickable { onToggleView() }
-                                .padding(horizontal = 10.dp),
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
                         ) {
                             Text(
                                 if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
                                 fontFamily = Mono,
                                 fontSize = 11.sp,
+                                lineHeight = NOTE_LINE_HEIGHT,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Skin.data.score,
                             )
@@ -736,6 +734,8 @@ private fun DayCard(
                     }
                     ConditionNotes(bad, day.points, unit, Modifier.weight(1f))
                 }
+            } else {
+                Spacer(Modifier.height(10.dp))
             }
             if (expanded) {
                 Spacer(Modifier.height(10.dp))
@@ -933,6 +933,9 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
     )
 }
 
+/** The theme's 24sp line height would make the 11sp notes row 28dp tall. */
+private val NOTE_LINE_HEIGHT = 14.sp
+
 /**
  * The conditions that keep a day's under-threshold hours closed, each at its worst hour and in
  * its own hue. Always composes a line, even an empty one, so every card keeps the same height.
@@ -958,7 +961,7 @@ private fun ConditionNotes(bad: List<Limiting>, points: List<ForecastPoint>, uni
             }
         }
     }
-    Text(text, modifier, fontFamily = Mono, fontSize = 11.sp, textAlign = TextAlign.End)
+    Text(text, modifier, fontFamily = Mono, fontSize = 11.sp, lineHeight = NOTE_LINE_HEIGHT, textAlign = TextAlign.End)
 }
 
 /**
