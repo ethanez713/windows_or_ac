@@ -48,8 +48,16 @@ lightness step changes per theme, so each clears 4.5:1 on its own ground.
 | Blocked-bar base | `#8893A1` | `#606B7A` |
 | Comfort-cutoff rule | `rgba(62,56,48,.45)` | `rgba(214,208,197,.5)` |
 
-A blocked score bar is `lerp(blockedBase, limitingFactorHue, 0.38)` in linear
-sRGB — the existing `detractorGrey` idea, kept.
+A blocked score bar is `lerp(blockedBase, barHue, 0.38)` in linear sRGB — the
+existing `detractorGrey` idea, kept. `barHue` is the series hue, except dew and rain,
+which use their own so the two bars stay distinguishable at a 38% mix:
+
+| Bar hue | Light | Dark |
+|---------|-------|------|
+| Dew (near-white) | `#F1F3F9` | `#F4F5FA` |
+| Rain (navy) | `#1E3A8A` | `#1E3A8A` |
+
+These are never drawn as a mark on their own, so the 3:1 floor does not apply.
 
 Every graphical mark must clear **3:1** against its card ground. That is why the
 light steps are the 700-level values rather than the dark theme's 400s.

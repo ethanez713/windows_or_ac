@@ -33,6 +33,14 @@ object Tokens {
         val sun: Int,
         /** Cloud-cover readout identity — the halftone's white, darkened on paper. */
         val cloud: Int,
+        /**
+         * Hues for dew and rain on a blocked score bar only. [blockedBar] mixes just 38% of a
+         * hue into the grey, so the line colours above came out too alike; these are pushed
+         * to a near-white and a navy so the two stay apart. They are never drawn as a mark
+         * on their own, so they sit outside the 3:1 floor.
+         */
+        val dewBar: Int,
+        val rainBar: Int,
     )
 
     /** Everything that isn't data (§0.3). This *is* the theme. */
@@ -81,6 +89,8 @@ object Tokens {
         cutoffRule = argb(115, 62, 56, 48),
         sun = 0xFFA16207.toInt(),
         cloud = 0xFF64748B.toInt(),
+        dewBar = 0xFFF1F3F9.toInt(),
+        rainBar = 0xFF1E3A8A.toInt(),
     )
 
     private val DARK_DATA = Data(
@@ -95,6 +105,8 @@ object Tokens {
         cutoffRule = argb(128, 214, 208, 197),
         sun = 0xFFFBBF24.toInt(),
         cloud = CloudRamp.CLOUD,
+        dewBar = 0xFFF4F5FA.toInt(),
+        rainBar = 0xFF1E3A8A.toInt(),
     )
 
     private val LIGHT_CHROME = Chrome(
@@ -156,6 +168,13 @@ object Tokens {
         Factor.DEW -> d.dew
         Factor.AQI -> d.aqi
         Factor.RAIN -> d.rain
+    }
+
+    /** [factorHue], except dew and rain use their own blocked-bar hues. */
+    fun barHue(d: Data, factor: Factor): Int = when (factor) {
+        Factor.DEW -> d.dewBar
+        Factor.RAIN -> d.rainBar
+        else -> factorHue(d, factor)
     }
 
     object Radius {

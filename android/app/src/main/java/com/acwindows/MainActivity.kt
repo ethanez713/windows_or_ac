@@ -996,7 +996,7 @@ private fun DaySparkline(
             return when {
                 factor == Factor.TEMP && sample != null ->
                     Color(tempLineArgb(sample, comfort, d.raw.temp, coldArgb))
-                factor != null -> Color(Tokens.blockedBar(d.raw, Tokens.factorHue(d.raw, factor)))
+                factor != null -> Color(Tokens.blockedBar(d.raw, Tokens.barHue(d.raw, factor)))
                 else -> closed
             }
         }

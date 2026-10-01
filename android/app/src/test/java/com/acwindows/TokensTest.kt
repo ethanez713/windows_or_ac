@@ -60,6 +60,17 @@ class TokensTest {
         )
     }
 
+    @Test fun dewAndRainBlockedBarsStayApart() {
+        for (dark in listOf(false, true)) {
+            val d = Tokens.data(dark)
+            val ratio = Tokens.contrastRatio(
+                Tokens.blockedBar(d, Tokens.barHue(d, Factor.DEW)),
+                Tokens.blockedBar(d, Tokens.barHue(d, Factor.RAIN)),
+            )
+            assertTrue("${if (dark) "dark" else "light"} dew vs rain bars are $ratio:1", ratio >= 2.0)
+        }
+    }
+
     @Test fun theRampIsAnchoredOnTheEpaBreakpoints() {
         // Interpolation must not drift the anchors themselves.
         assertEquals(

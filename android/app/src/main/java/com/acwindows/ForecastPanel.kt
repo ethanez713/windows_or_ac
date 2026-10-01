@@ -720,7 +720,7 @@ object ForecastPanel {
             severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
             severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
         )
-        val hues = intArrayOf(d.temp, d.dew, d.aqi, d.rain)
+        val hues = intArrayOf(d.temp, d.dewBar, d.aqi, d.rainBar)
         if (weights.sum() <= 0.0) {
             val wf = s.worst.getOrNull(i) ?: -1
             return if (wf in hues.indices) Tokens.blockedBar(d, hues[wf]) else d.blockedBase
