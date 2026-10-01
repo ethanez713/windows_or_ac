@@ -48,6 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -355,10 +357,10 @@ private fun CenterBox(content: @Composable () -> Unit) =
 
 /**
  * Placeholder chips shown while the first forecast is still loading, sized to land on
- * the real layout rather than near it: same 84dp/96dp gutters, same 26dp open-window
+ * the real layout rather than near it: same 84dp/96dp gutters, same one-row 17dp open-window
  * flag strip, same 40dp sparkline, same stacked summary, and text rows that reserve the
- * real line box via [SkeletonTextChip]. A loaded collapsed [DayCard] measures 141dp
- * (14 + 26 + 53 + 6 + 28 + 14) and the header 48dp (10 + 28 + 10).
+ * real line box via [SkeletonTextChip]. A loaded collapsed [DayCard] measures 124dp
+ * (10 + 17 + 53 + 6 + 28 + 10) and the header 48dp (10 + 28 + 10).
  *
  * The FIRST card is drawn EXPANDED, because today's card opens by default — so the
  * placeholder has to reserve the open card's height or the list jumps the moment data
@@ -367,12 +369,11 @@ private fun CenterBox(content: @Composable () -> Unit) =
  * line (a ~28dp themed line box) + Spacer(10) + 124dp temp chart + Spacer(12) + a 140dp
  * combined chart (the 124dp plot plus the 16dp [ICON_BAND] reserved below it for
  * [CombinedChart]'s precip-type icons) = 328dp. That puts the expanded skeleton at
- * 141 + 328 = 469dp — up 16dp from the 453dp (141 + 312) figure measured on device
- * before the icon band existed; not reverified against a live device since this
- * project's rule is no screenshots/emulator runs without being asked.
+ * 124 + 328 = 452dp (not reverified against a live device: no screenshots without being
+ * asked).
  *
- * Two deliberate assumptions for both the collapsed body and that 452.6dp target, both
- * the common case: the day has an open-window flag (26dp) and no rain line in its summary
+ * Two deliberate assumptions for both the collapsed body and that 452dp target, both
+ * the common case: the day has an open-window flag (one row, 17dp) and no rain line in its summary
  * (a rain line would add another 28dp); the expanded readout also assumes one line.
  *
  * None of this dp scaffold grows with the app text-size setting (see [AcWindowsTheme]) —
@@ -404,14 +405,14 @@ private fun SkeletonForecast() {
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
             ) {
-                Column(Modifier.padding(14.dp)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     // The open-window flag strip. Most days carry a span boundary, so
-                    // reserving its 26dp is what keeps the card at a real card's height.
+                    // reserving its 17dp one-row height is what keeps the card at a real card's height.
                     Row(Modifier.fillMaxWidth()) {
                         Spacer(Modifier.width(dateW))
-                        Box(Modifier.weight(1f).padding(horizontal = barPad).height(26.dp)) {
-                            SkeletonChip(chip, Modifier.align(Alignment.BottomStart).width(58.dp).height(15.dp))
-                            SkeletonChip(chip, Modifier.align(Alignment.BottomEnd).width(58.dp).height(15.dp))
+                        Box(Modifier.weight(1f).padding(horizontal = barPad).height(17.dp)) {
+                            SkeletonChip(chip, Modifier.align(Alignment.TopStart).width(58.dp).height(15.dp))
+                            SkeletonChip(chip, Modifier.align(Alignment.TopEnd).width(58.dp).height(15.dp))
                         }
                         Spacer(Modifier.width(summaryW))
                     }
@@ -631,9 +632,10 @@ private fun DayCard(
         Modifier.fillMaxWidth().clickable { onToggle() },
         colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
     ) {
-        // 14dp, not the design's stated 12: that 12 is paired with a 1dp border on both the
-        // frame and the card, and these cards are borderless, so 14 keeps the same content box.
-        Column(Modifier.padding(14.dp)) {
+        // Horizontal 14dp, not the design's stated 12: that 12 is paired with a 1dp border on
+        // both the frame and the card, and these cards are borderless, so 14 keeps the same
+        // content box. Vertical is tighter so the list shows more days per screen.
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             // The label and the trailing glyphs+hi/lo group are FIXED width; the sparkline
             // takes the slack between them with weight(1f). That keeps its width identical on
             // every card — so the bars start and end at the same x down the list — while
@@ -663,7 +665,7 @@ private fun DayCard(
             if (hasFlags) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.width(labelW + colGap))
-                    OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.weight(1f).height(26.dp))
+                    OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.weight(1f))
                     Spacer(Modifier.width(colGap + trailingW))
                 }
             }
@@ -1047,53 +1049,87 @@ private fun OpenWindowFlags(
     modifier: Modifier,
 ) {
     val tm = rememberTextMeasurer()
+    val density = LocalDensity.current
     val pillBg = Color(0xE6121821)
     val pillFg = Color(0xFFE6EAF0)
-    Canvas(modifier) {
-        val n = points.size.coerceAtLeast(1)
-        val bw = size.width / n
-        val padX = 4.dp.toPx()
-        val padY = 1.5f.dp.toPx()
-        val rowH = 12.dp.toPx()
-        val pillStyle = TextStyle(color = pillFg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-
-        val timeOf = points.map { it.time }
-        val centers = mutableListOf<Float>()
-        val texts = mutableListOf<String>()
-        globalSpans.forEach { (startIso, endIso) ->
-            val si = timeOf.indexOf(startIso)
-            // Start flag keeps naming the row's own hour (unaffected by resolution — see
-            // the GOAL doc: only the end flag over-reports).
-            if (si >= 0) { centers.add(si * bw); texts.add(hourLabelOf(ForecastBuilder.hour(startIso))) }
-            val ei = timeOf.indexOf(endIso)
-            if (ei >= 0) { centers.add((ei + 1) * bw); texts.add(ForecastBuilder.fmtRowEnd(endIso, stepMinutes)) }
+    BoxWithConstraints(modifier) {
+        val widthPx = with(density) { maxWidth.toPx() }
+        val flags = remember(points, globalSpans, stepMinutes, widthPx, density) {
+            with(density) { layoutFlags(points, globalSpans, stepMinutes, widthPx, tm, pillFg) }
         }
-        if (centers.isEmpty()) return@Canvas
-        val layouts = texts.map { tm.measure(it, pillStyle) }
-        val lefts = FloatArray(centers.size)
-        val rows = IntArray(centers.size)
-        val rowRight = floatArrayOf(-1e9f, -1e9f)
-        var maxRow = 0
-        centers.indices.sortedBy { centers[it] }.forEach { idx ->
-            val w = layouts[idx].size.width + 2 * padX
-            val left = (centers[idx] - w / 2).coerceIn(0f, (size.width - w).coerceAtLeast(0f))
-            val row = if (left >= rowRight[0] + 2.dp.toPx()) 0 else 1
-            lefts[idx] = left; rows[idx] = row; rowRight[row] = left + w
-            if (row > maxRow) maxRow = row
-        }
-        // Bottom-anchor the stagger so the lowest pill row sits right above the bars.
-        val bandH = (maxRow + 1) * rowH
-        val offsetY = (size.height - bandH).coerceAtLeast(0f)
-        for (idx in centers.indices) {
-            val l = layouts[idx]
-            val w = l.size.width + 2 * padX
-            val h = l.size.height + 2 * padY
-            val top = offsetY + rows[idx] * rowH
-            drawRoundRect(pillBg, topLeft = Offset(lefts[idx], top), size = Size(w, h), cornerRadius = CornerRadius(4.dp.toPx()))
-            drawText(l, topLeft = Offset(lefts[idx] + padX, top + padY))
+        Canvas(Modifier.fillMaxWidth().height(flags.height)) {
+            val padX = FLAG_PAD_X.toPx()
+            val padY = FLAG_PAD_Y.toPx()
+            flags.layouts.forEachIndexed { i, l ->
+                val top = flags.rows[i] * FLAG_ROW_H.toPx()
+                drawRoundRect(
+                    pillBg, topLeft = Offset(flags.lefts[i], top),
+                    size = Size(l.size.width + 2 * padX, l.size.height + 2 * padY),
+                    cornerRadius = CornerRadius(4.dp.toPx()),
+                )
+                drawText(l, topLeft = Offset(flags.lefts[i] + padX, top + padY))
+            }
         }
     }
 }
+
+private val FLAG_PAD_X = 4.dp
+private val FLAG_PAD_Y = 1.5f.dp
+private val FLAG_ROW_H = 12.dp
+
+private class FlagLayout(
+    val layouts: List<TextLayoutResult>, val lefts: FloatArray, val rows: IntArray, val height: Dp,
+)
+
+/**
+ * Where each time pill sits, and the strip height they need: one row when no two pills
+ * collide, two staggered rows when they do, so a day with a single span doesn't reserve
+ * the second row's empty band.
+ */
+private fun Density.layoutFlags(
+    points: List<ForecastPoint>,
+    globalSpans: List<Pair<String, String>>,
+    stepMinutes: Int,
+    widthPx: Float,
+    tm: TextMeasurer,
+    ink: Color,
+): FlagLayout {
+    val n = points.size.coerceAtLeast(1)
+    val bw = widthPx / n
+    val padX = FLAG_PAD_X.toPx()
+    val padY = FLAG_PAD_Y.toPx()
+    val rowH = FLAG_ROW_H.toPx()
+    val pillStyle = TextStyle(color = ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+
+    val timeOf = points.map { it.time }
+    val centers = mutableListOf<Float>()
+    val texts = mutableListOf<String>()
+    globalSpans.forEach { (startIso, endIso) ->
+        val si = timeOf.indexOf(startIso)
+        // Start flag keeps naming the row's own hour (unaffected by resolution — see
+        // the GOAL doc: only the end flag over-reports).
+        if (si >= 0) { centers.add(si * bw); texts.add(hourLabelOf(ForecastBuilder.hour(startIso))) }
+        val ei = timeOf.indexOf(endIso)
+        if (ei >= 0) { centers.add((ei + 1) * bw); texts.add(ForecastBuilder.fmtRowEnd(endIso, stepMinutes)) }
+    }
+    if (centers.isEmpty()) return FlagLayout(emptyList(), FloatArray(0), IntArray(0), 0.dp)
+    val layouts = texts.map { tm.measure(it, pillStyle) }
+    val lefts = FloatArray(centers.size)
+    val rows = IntArray(centers.size)
+    val rowRight = floatArrayOf(-1e9f, -1e9f)
+    var maxRow = 0
+    centers.indices.sortedBy { centers[it] }.forEach { idx ->
+        val w = layouts[idx].size.width + 2 * padX
+        val left = (centers[idx] - w / 2).coerceIn(0f, (widthPx - w).coerceAtLeast(0f))
+        val row = if (left >= rowRight[0] + 2.dp.toPx()) 0 else 1
+        lefts[idx] = left; rows[idx] = row; rowRight[row] = left + w
+        if (row > maxRow) maxRow = row
+    }
+    val pillH = layouts.maxOf { it.size.height } + 2 * padY
+    return FlagLayout(layouts, lefts, rows, (maxRow * rowH + pillH).toDp() + FLAG_GAP)
+}
+
+private val FLAG_GAP = 2.dp
 
 
 /** Static dashed "now" marker at the current hour (today's graphs only). When [tm] is
