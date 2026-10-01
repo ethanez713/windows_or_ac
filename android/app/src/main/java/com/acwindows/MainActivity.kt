@@ -668,6 +668,8 @@ private fun DayCard(
                     OpenWindowFlags(day.points, globalSpans, day.stepMinutes, Modifier.weight(1f))
                     Spacer(Modifier.width(colGap + trailingW))
                 }
+            } else {
+                Spacer(Modifier.height(4.dp))
             }
             // "Now" only on today's card in NOW mode — every other card (and today's card
             // in TODAY mode) keeps the ordinary date label.
@@ -706,30 +708,34 @@ private fun DayCard(
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            // No vertical padding on the hint: 11sp text still lays out in the theme's 28dp line
-            // box, so padding would grow the card and put SkeletonForecast's scaffold out.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isToday) {
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
-                            // An inner clickable consumes the tap before it reaches the
-                            // card's own clickable (the expand/collapse toggle).
-                            .clickable { onToggleView() }
-                            .padding(horizontal = 10.dp),
-                    ) {
-                        Text(
-                            if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
-                            fontFamily = Mono,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Skin.data.score,
-                        )
+            val bad = remember(day.points, comfort, threshold) { badConditions(comfort, day.points, threshold) }
+            // Without the Today chip or any note the row would be an empty 28dp line box, so it is left out.
+            if (isToday || bad.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                // No vertical padding on the hint: 11sp text still lays out in the theme's 28dp line
+                // box, so padding would grow the card and put SkeletonForecast's scaffold out.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isToday) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                // An inner clickable consumes the tap before it reaches the
+                                // card's own clickable (the expand/collapse toggle).
+                                .clickable { onToggleView() }
+                                .padding(horizontal = 10.dp),
+                        ) {
+                            Text(
+                                if (viewMode == DayViewMode.NOW) "Now ›" else "Today ›",
+                                fontFamily = Mono,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Skin.data.score,
+                            )
+                        }
                     }
+                    ConditionNotes(bad, day.points, unit, Modifier.weight(1f))
                 }
-                ConditionNotes(badConditions(comfort, day.points, threshold), day.points, unit, Modifier.weight(1f))
             }
             if (expanded) {
                 Spacer(Modifier.height(10.dp))
