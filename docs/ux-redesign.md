@@ -128,7 +128,7 @@ icon can never contradict the numbers beside it.
 ## A. Windows-score app screen — REDESIGN
 
 **Keep exactly as it ships:** score bars drawn from zero, the day-card list,
-the location row, hi/lo with day + night icons, the "N h to open windows" line,
+the location row, hi/lo with day + night icons, the bad-condition notes (each factor that holds an hour closed, worst first),
 the score model (`scoreAt` = product of four factor ramps, open at ≥ 60).
 
 **Two changes only:** chrome moves onto the design system, and the
