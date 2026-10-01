@@ -101,4 +101,28 @@ class SeverityTest {
         assertEquals(WxRank.CLOUDY, day)
         assertEquals(WxRank.RAIN, night)
     }
+
+    @Test fun aFactorHiddenBehindAWorseOneIsStillReported() {
+        val bad = badConditions(c, listOf(hour(15, dew = 70.0, rain = 90.0)), threshold = 50.0)
+        assertEquals(setOf(Factor.DEW, Factor.RAIN), bad.map { it.factor }.toSet())
+    }
+
+    @Test fun aMildFactorThatCouldNotSinkTheHourIsLeftOut() {
+        val bad = badConditions(c, listOf(hour(15, temp = 79.0, rain = 30.0)), threshold = 50.0)
+        assertEquals(listOf(Factor.TEMP), bad.map { it.factor })
+    }
+
+    @Test fun hoursAtOrAboveThresholdContributeNothing() {
+        assertEquals(emptyList<Limiting>(), badConditions(c, listOf(hour(12), hour(13)), threshold = 50.0))
+    }
+
+    @Test fun eachFactorReportsItsWorstHour() {
+        val bad = badConditions(c, listOf(hour(9, rain = 80.0), hour(14, rain = 95.0)), threshold = 50.0)
+        assertEquals("2026-06-15T14:00", bad.single().point.time)
+    }
+
+    @Test fun worstFactorComesFirst() {
+        val bad = badConditions(c, listOf(hour(15, dew = 70.0, rain = 80.0)), threshold = 50.0)
+        assertEquals(listOf(Factor.DEW, Factor.RAIN), bad.map { it.factor })
+    }
 }

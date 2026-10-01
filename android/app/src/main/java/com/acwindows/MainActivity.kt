@@ -47,12 +47,16 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -431,8 +435,10 @@ private fun SkeletonForecast() {
                         }
                     }
                     Spacer(Modifier.height(6.dp))
-                    // "N hours to open windows"
-                    SkeletonTextChip(chip, width = 150.dp, fontSize = 12.sp, chipHeight = 14.dp)
+                    // The condition notes, end-aligned
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                        SkeletonTextChip(chip, width = 150.dp, fontSize = 12.sp, chipHeight = 14.dp)
+                    }
 
                     // First card = expanded today. Mirror AbsoluteCharts' exact dp scaffold
                     // (see the doc comment) so data fills it instead of growing the list.
@@ -621,7 +627,6 @@ private fun DayCard(
     onToggleView: () -> Unit,
     onToggle: () -> Unit,
 ) {
-    val openRows = day.points.count { it.score >= threshold }
     ElevatedCard(
         Modifier.fillMaxWidth().clickable { onToggle() },
         colors = CardDefaults.elevatedCardColors(containerColor = Skin.chrome.card),
@@ -700,32 +705,16 @@ private fun DayCard(
                 }
             }
             Spacer(Modifier.height(6.dp))
-            // The view-switch hint rides in the SAME row as the open-hours line (weighted
-            // 1f so the hint doesn't steal its width) rather than a row of its own, so the
-            // card's height doesn't grow by adding it — which is the whole requirement here,
-            // and is fiddlier than it looks: a smaller fontSize does NOT mean a shorter Text.
-            // Compose merges only fontSize onto the ambient LocalTextStyle, so the 11sp hint
-            // inherits bodyLarge's 24sp lineHeight and lays out exactly as tall as the 12sp
-            // line beside it (the same quirk SkeletonTextChip's comment documents). The hint
-            // therefore carries NO vertical padding — 2dp of it would grow the card by 4dp
-            // and put SkeletonForecast's hand-measured scaffold out by the same amount. Its
-            // touch target is already the full ~28dp line box; only horizontal padding is
-            // needed, to widen the tap area and inset the rounded highlight.
+            // No vertical padding on the hint: 11sp text still lays out in the theme's 28dp line
+            // box, so padding would grow the card and put SkeletonForecast's scaffold out.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    openWindowLabel(openRows, day.stepMinutes),
-                    fontFamily = Ui,
-                    fontSize = 12.sp,
-                    color = if (openRows > 0) Skin.data.score else Skin.chrome.faint,
-                )
                 if (isToday) {
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(50))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                             // An inner clickable consumes the tap before it reaches the
-                            // card's own clickable (the expand/collapse toggle) — nesting
-                            // is enough, no explicit consume()/interaction-source needed.
+                            // card's own clickable (the expand/collapse toggle).
                             .clickable { onToggleView() }
                             .padding(horizontal = 10.dp),
                     ) {
@@ -738,19 +727,7 @@ private fun DayCard(
                         )
                     }
                 }
-                Spacer(Modifier.weight(1f))
-                // A day with open hours already shows their timing in the flag strip above
-                // the bars, so this slot only carries the closed-day reason.
-                if (openRows == 0) {
-                    limitingFactor(comfort, day.points)?.let { lim ->
-                        Text(
-                            "${lim.factor.label()} ${readingOf(lim.factor, lim.point) ?: ""}",
-                            fontFamily = Mono, fontSize = 11.sp,
-                            color = Color(Tokens.factorHue(Skin.data.raw, lim.factor)),
-                            maxLines = 1, softWrap = false,
-                        )
-                    }
-                }
+                ConditionNotes(badConditions(comfort, day.points, threshold), day.points, unit, Modifier.weight(1f))
             }
             if (expanded) {
                 Spacer(Modifier.height(10.dp))
@@ -949,6 +926,34 @@ private fun SourceDetailDialog(sources: List<SourceReading>, consensus: Consensu
 }
 
 /**
+ * The conditions that keep a day's under-threshold hours closed, each at its worst hour and in
+ * its own hue. Always composes a line, even an empty one, so every card keeps the same height.
+ */
+@Composable
+private fun ConditionNotes(bad: List<Limiting>, points: List<ForecastPoint>, unit: TempUnit, modifier: Modifier) {
+    val sep = Skin.chrome.faint
+    val rainIn = points.sumOf { it.precipIn ?: 0.0 }
+    val text = buildAnnotatedString {
+        bad.forEachIndexed { i, lim ->
+            val p = lim.point
+            val reading = when (lim.factor) {
+                Factor.TEMP -> p.tempF?.let { unit.deg(it) }
+                Factor.DEW -> p.dewPointF?.let { unit.deg(it) }
+                Factor.AQI -> p.aqi?.toString()
+                Factor.RAIN -> p.precipProb?.let {
+                    "${it.roundToInt()}%" + if (rainIn > 0) " ${fmtIn(rainIn)}" else ""
+                }
+            } ?: return@forEachIndexed
+            if (length > 0) withStyle(SpanStyle(color = sep)) { append(" · ") }
+            withStyle(SpanStyle(color = Color(Tokens.factorHue(Skin.data.raw, lim.factor)))) {
+                append("${lim.factor.label()} $reading")
+            }
+        }
+    }
+    Text(text, modifier, fontFamily = Mono, fontSize = 11.sp, textAlign = TextAlign.End)
+}
+
+/**
  * Score bars for one day. Bars use the full canvas height (the open-window flags now
  * live in their own strip ABOVE — see [OpenWindowFlags] — so they no longer steal bar
  * height).
@@ -1125,28 +1130,6 @@ private fun nowIdxOf(points: List<ForecastPoint>): Int {
     // date can be the current one, which is the invariant the old hour-prefix match had
     // for free and this comparison has to restore explicitly.
     return if (i >= 0 && points[i].time.take(10) == LocalDate.now().toString()) i else -1
-}
-
-/**
- * "N hours to open windows" at any row width. A row COUNT isn't a duration once rows are
- * shorter than an hour (see [Forecast.stepMinutes]), so this multiplies out to minutes
- * first: a whole number of hours stays "N hours", a clean half becomes "N.5 hours", and
- * anything under an hour is "N min". A remainder that's neither whole nor half (only
- * reachable at 15-minute resolution, e.g. 7 open 15-minute rows = 1h45m) spells out both
- * parts rather than inventing a quarter-hour decimal the rest of the app doesn't use.
- */
-private fun openWindowLabel(rowCount: Int, stepMinutes: Int): String {
-    if (rowCount <= 0) return "No open-window hours"
-    val totalMin = rowCount * stepMinutes
-    if (totalMin < 60) return "$totalMin min to open windows"
-    val hours = totalMin / 60
-    val rem = totalMin % 60
-    val hourWord = if (hours == 1) "hour" else "hours"
-    return when (rem) {
-        0 -> "$hours $hourWord to open windows"
-        30 -> "$hours.5 hours to open windows"
-        else -> "$hours $hourWord $rem min to open windows"
-    }
 }
 
 /** Contiguous open-worthy runs across the whole forecast: (startIso, lastOpenIso). */

@@ -68,14 +68,6 @@ fun severities(c: Comfort, p: ForecastPoint): Map<Factor, Double> = mapOf(
     Factor.RAIN to severity(p.precipProb, c.rainProbIdeal, c.rainProbMax),
 )
 
-/** The reading behind [factor] at one hour, formatted the way its label shows it. */
-fun readingOf(factor: Factor, p: ForecastPoint): String? = when (factor) {
-    Factor.TEMP -> p.tempF?.let { "${Math.round(it)}°" }
-    Factor.DEW -> p.dewPointF?.let { "${Math.round(it)}°" }
-    Factor.AQI -> p.aqi?.toString()
-    Factor.RAIN -> p.precipProb?.let { "${Math.round(it)}%" }
-}
-
 /** The worst hour and factor across a span — see [severity] for why it isn't the min score. */
 data class Limiting(val factor: Factor, val point: ForecastPoint, val severity: Double)
 
@@ -83,6 +75,23 @@ fun limitingFactor(c: Comfort, points: List<ForecastPoint>): Limiting? =
     points.flatMap { p -> severities(c, p).map { (f, s) -> Limiting(f, p, s) } }
         .filter { it.severity > 0 }
         .maxByOrNull { it.severity }
+
+/**
+ * Every factor that on its own would hold an hour under [threshold], at the hour it is worst,
+ * worst first. Unlike [limitingFactor] this doesn't stop at one: a factor hidden behind a
+ * worse one in the same hour (muggy dew under rain) is still a reason the day is closed.
+ */
+fun badConditions(c: Comfort, points: List<ForecastPoint>, threshold: Double): List<Limiting> =
+    points.filter { it.score < threshold }
+        .flatMap { p ->
+            val b = p.breakdown ?: Score.windowScoreBreakdown(c, p.tempF, p.dewPointF, p.aqi, p.precipProb)
+            val sinks = mapOf(Factor.TEMP to b.fTemp, Factor.DEW to b.fHumid, Factor.AQI to b.fAqi, Factor.RAIN to b.fRain)
+            severities(c, p).filter { (f, _) -> 100.0 * sinks.getValue(f) < threshold }
+                .map { (f, s) -> Limiting(f, p, s) }
+        }
+        .groupBy { it.factor }
+        .values.map { hours -> hours.maxBy { it.severity } }
+        .sortedByDescending { it.severity }
 
 /**
  * Which weather glyph an hour earns, derived from the numbers rather than read off a

@@ -730,7 +730,7 @@ private fun DrawScope.series(
     }
 }
 
-private fun fmtIn(v: Double): String =
+internal fun fmtIn(v: Double): String =
     (if (v >= 0.1) String.format("%.1f", v) else String.format("%.2f", v)) + "″"
 
 private fun nowClock(): String {
