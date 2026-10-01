@@ -71,9 +71,9 @@ object Tokens {
 
     private val LIGHT_DATA = Data(
         temp = 0xFFB45309.toInt(),
-        dew = 0xFF4338CA.toInt(),
+        dew = 0xFF555299.toInt(),
         aqi = 0xFF15803D.toInt(),
-        rain = 0xFF1D4ED8.toInt(),
+        rain = 0xFF0369A1.toInt(),
         score = 0xFF047857.toInt(),
         now = 0xFF92400E.toInt(),
         storm = 0xFF6D28D9.toInt(),
@@ -85,9 +85,9 @@ object Tokens {
 
     private val DARK_DATA = Data(
         temp = 0xFFFB923C.toInt(),
-        dew = 0xFFA5B4FC.toInt(),
+        dew = 0xFFA9B0DA.toInt(),
         aqi = 0xFF4ADE80.toInt(),
-        rain = 0xFF60A5FA.toInt(),
+        rain = 0xFF38BDF8.toInt(),
         score = 0xFF34D399.toInt(),
         now = 0xFFFBBF24.toInt(),
         storm = 0xFFA78BFA.toInt(),

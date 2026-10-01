@@ -39,9 +39,9 @@ lightness step changes per theme, so each clears 4.5:1 on its own ground.
 | Series | Light | Dark |
 |--------|-------|------|
 | Temperature | `#B45309` | `#FB923C` |
-| Dew point | `#4338CA` | `#A5B4FC` |
+| Dew point | `#555299` | `#A9B0DA` |
 | Air quality (line/label) | `#15803D` | `#4ADE80` |
-| Rain | `#1D4ED8` | `#60A5FA` |
+| Rain | `#0369A1` | `#38BDF8` |
 | Score / open | `#047857` | `#34D399` |
 | Now marker | `#92400E` | `#FBBF24` |
 | Thunderstorm | `#6D28D9` | `#A78BFA` |
