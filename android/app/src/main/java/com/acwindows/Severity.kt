@@ -54,6 +54,10 @@ fun tempSeverity(tempF: Double?, c: Comfort): Double = maxOf(
     severityLow(tempF, c.tempMinIdealF, c.tempMinF),
 )
 
+/** True when [tempF]'s penalty is on the cold side: below the floor, not above the ceiling. */
+fun isTooCold(tempF: Double?, c: Comfort): Boolean =
+    severityLow(tempF, c.tempMinIdealF, c.tempMinF) > severity(tempF, c.tempIdealF, c.maxTempF)
+
 /** High-side and low-side dew severity. */
 fun dewSeverity(dewF: Double?, c: Comfort): Double = maxOf(
     severity(dewF, c.dewPointIdealF, c.dewPointMaxF),

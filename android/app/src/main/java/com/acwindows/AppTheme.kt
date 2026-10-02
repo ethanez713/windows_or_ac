@@ -115,7 +115,8 @@ val HotRed = Color(0xFFEF4444)
 val HotRedArgb = 0xFFEF4444.toInt()
 
 /**
- * Cold mark for the temperature line and cold score bars. White on a dark card.
+ * Cold mark for the temperature line. White on a dark card. (Cold score bars use the ice
+ * blue [Tokens.Data.coldBar] instead.)
  * Pure white on the light paper (#FDFCF9) is invisible, so that theme uses the heading ink.
  */
 fun coldMarkArgb(dark: Boolean): Int = if (dark) 0xFFFFFFFF.toInt() else 0xFF211D18.toInt()
@@ -130,8 +131,8 @@ fun segmentTintArgb(
 }
 
 /**
- * The temperature line's color for one reading. A temp-limited score bar uses this same
- * result, so the bar is red only when the line is red and white only when the line is white.
+ * The temperature line's color for one reading. A heat-limited score bar uses this same
+ * result, so the bar is red only when the line is red. (A cold-limited bar is ice blue.)
  */
 fun tempLineArgb(tempF: Double, c: Comfort, baseArgb: Int, coldArgb: Int): Int =
     segmentTintArgb(tempF, baseArgb, c.tempLineHotF, c.tempLineColdF, HotRedArgb, coldArgb)

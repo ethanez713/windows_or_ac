@@ -697,8 +697,8 @@ object ForecastPanel {
     }
 
     /**
-     * One hour's score-strip colour. Green when open. When temperature is the factor holding
-     * the score down, the strip uses that hour's temperature-line color. Otherwise a muted mix
+     * One hour's score-strip colour. Green when open; ice blue when cold is what holds the score
+     * down. When heat is, the strip uses that hour's temperature-line color. Otherwise a muted mix
      * of the other factors, or the cached dominant factor when the series aren't cached.
      */
     private fun scoreColor(
@@ -711,8 +711,10 @@ object ForecastPanel {
         val sample = if (temp == null) null else if (other == null) temp else (temp + other) / 2
         // worst is the argmin of the score multipliers, same as ScoreBreakdown.limiting.
         // The sample is the midpoint the temperature line uses, so the bar matches that segment.
-        if (s.worst.getOrNull(i) == Factor.TEMP.ordinal && sample != null) {
-            return tempLineArgb(sample, comfort, d.temp, coldArgb)
+        val cold = isTooCold(temp, comfort)
+        if (s.worst.getOrNull(i) == Factor.TEMP.ordinal) {
+            if (cold) return d.coldBar
+            if (sample != null) return tempLineArgb(sample, comfort, d.temp, coldArgb)
         }
         val weights = doubleArrayOf(
             tempSeverity(temp, comfort),
@@ -720,7 +722,7 @@ object ForecastPanel {
             severity(s.aqiSeries.getOrNull(i)?.toDouble(), comfort.aqiIdeal, comfort.aqiMax.toDouble()),
             severity(s.precipProb.getOrNull(i), comfort.rainProbIdeal, comfort.rainProbMax),
         )
-        val hues = intArrayOf(d.temp, d.dewBar, d.aqi, d.rainBar)
+        val hues = intArrayOf(if (cold) d.coldBar else d.temp, d.dewBar, d.aqi, d.rainBar)
         if (weights.sum() <= 0.0) {
             val wf = s.worst.getOrNull(i) ?: -1
             return if (wf in hues.indices) Tokens.blockedBar(d, hues[wf]) else d.blockedBase

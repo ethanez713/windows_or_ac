@@ -41,6 +41,14 @@ object Tokens {
          */
         val dewBar: Int,
         val rainBar: Int,
+        /**
+         * A score bar or score-strip hour held down by cold: an ice blue, used at full
+         * strength (not through [blockedBar]) so it never reads as the dew grey or rain navy.
+         * The day-card bar carries white snowflakes on it; the strip is plain.
+         */
+        val coldBar: Int,
+        /** The raindrops drawn on a rain-blocked day-card bar, over its navy fill. */
+        val rainDrop: Int,
     )
 
     /** Everything that isn't data (§0.3). This *is* the theme. */
@@ -91,6 +99,8 @@ object Tokens {
         cloud = 0xFF64748B.toInt(),
         dewBar = 0xFFF1F3F9.toInt(),
         rainBar = 0xFF1E3A8A.toInt(),
+        coldBar = 0xFF5AB8E4.toInt(),
+        rainDrop = 0xFF7DD3FC.toInt(),
     )
 
     private val DARK_DATA = Data(
@@ -107,6 +117,8 @@ object Tokens {
         cloud = CloudRamp.CLOUD,
         dewBar = 0xFFF4F5FA.toInt(),
         rainBar = 0xFF1E3A8A.toInt(),
+        coldBar = 0xFF8FD3F0.toInt(),
+        rainDrop = 0xFF5CC2F2.toInt(),
     )
 
     private val LIGHT_CHROME = Chrome(
