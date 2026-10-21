@@ -21,4 +21,5 @@ venv/
 .mypy_cache/
 
 # --- local notes (kept on disk, not published) ---
+CLAUDE.local.md
 docs/PUBLISHING.md
