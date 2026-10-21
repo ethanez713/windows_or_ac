@@ -20,7 +20,7 @@ def reading(**kw) -> AggregateReading:
         confidence="high",
     )
     base.update(kw)
-    return AggregateReading(**base)
+    return AggregateReading(**base)  # type: ignore[arg-type]
 
 
 C = Comfort()  # defaults: max 78°F, dew_point_max 60, aqi_max 100, margin 2

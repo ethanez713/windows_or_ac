@@ -83,9 +83,9 @@ def render(size: int) -> bytearray:
                 if d >= edge:
                     continue
                 cov = 1.0 if d <= -edge else (edge - d) / (2 * edge)
-                r += (sr - r) * cov
-                g += (sg - g) * cov
-                b += (sb - b) * cov
+                r += (sr - r) * cov  # type: ignore[assignment]
+                g += (sg - g) * cov  # type: ignore[assignment]
+                b += (sb - b) * cov  # type: ignore[assignment]
             row += bytes((round(r), round(g), round(b)))
         rows += b"\x00" + row     # filter byte 0 (None) per scanline
     return rows

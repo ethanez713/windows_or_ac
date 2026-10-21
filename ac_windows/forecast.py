@@ -159,10 +159,10 @@ def _notes(points: list[ForecastPoint], fc: Forecast, c: Comfort) -> list[str]:
         return notes
 
     if fc.best_start == points[0].time:
-        notes.append(f"Good to open now (through {fmt_hour(fc.best_end)}).")
+        notes.append(f"Good to open now (through {fmt_hour(fc.best_end)}).")  # type: ignore[arg-type]
     else:
         notes.append(
-            f"Best window to open: {fmt_hour(fc.best_start)}–{fmt_hour(fc.best_end)} "
+            f"Best window to open: {fmt_hour(fc.best_start)}–{fmt_hour(fc.best_end)} "  # type: ignore[arg-type]
             f"(avg score {fc.best_avg_score:.0f}).")
 
     # Overnight flush: best window lands mostly at night.

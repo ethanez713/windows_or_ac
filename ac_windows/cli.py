@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .aggregate import aggregate
 from .config import Config, load_config
 from .decision import aqi_category, decide
-from .forecast import build_forecast, fmt_hour
+from .forecast import build_forecast
 from .models import AggregateReading, Forecast, Recommendation
 from .providers import REGISTRY, metno, nws, open_meteo
 from .score import window_score

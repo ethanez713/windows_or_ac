@@ -33,7 +33,7 @@ def _zone(tz_name: str) -> tzinfo:
     try:
         return ZoneInfo(tz_name)
     except (ZoneInfoNotFoundError, ValueError):
-        return datetime.now().astimezone().tzinfo
+        return datetime.now().astimezone().tzinfo  # type: ignore[return-value]
 
 
 def _dew_point_c(temp_c: float | None, rh_pct: float | None) -> float | None:

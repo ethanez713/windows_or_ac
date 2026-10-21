@@ -1,5 +1,7 @@
 # AC / Windows — open the windows, or turn on the AC?
 
+[![CI](https://github.com/ethanez713/windows_or_ac/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/windows_or_ac/actions/workflows/ci.yml)
+
 A small, **dependency-free** Python backend that polls multiple weather sources
 and tells you whether to **open your windows** (free cooling) or **run the AC**,
 based on a comfort target you configure. Built so it can later drive smart-home
@@ -7,7 +9,8 @@ devices (thermostat, attic fan, automatic window openers).
 
 This repo is the **MVP backend**: it produces the recommendation as human text
 or as JSON, plus a native Android home-screen widget in
-[`android/`](android/README.md) — a faithful on-device port of this engine. See
+[`android/`](android/README.md) — an on-device port of this engine that also
+adds keyed providers, a weighted-median consensus, and a response cache. See
 the [Roadmap](#roadmap).
 
 ```
@@ -286,7 +289,8 @@ controller maps those actions to devices without touching the decision logic.
 
 - [x] **MVP backend** — multi-source fetch, comfort decision, CLI + JSON.
 - [x] **Phone widget** — native Kotlin home-screen widget in
-      [`android/`](android/README.md) (a faithful on-device port of this engine).
+      [`android/`](android/README.md) (an on-device port of this engine that also
+      adds keyed providers, a weighted-median consensus, and a response cache).
       **Compiles** (`./gradlew assembleDebug`) and runs in a local KVM emulator or on a real
       phone over USB; build + emulate from the CLI with `android/dev.sh` (no Android Studio).
 - [x] **Forecast-aware advice** — multi-hour Open-Window Score graph, best-window
