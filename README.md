@@ -323,10 +323,6 @@ This follows a proportionate, personal-project security posture:
 
 ## Publishing
 
-What's already safe to make public, and the Google Play launch checklist
-(account, closed testing, targetSdk, signing, privacy policy, store assets) —
-[docs/PUBLISHING.md](docs/PUBLISHING.md).
-
 The launcher icon is an adaptive icon (with a themed-icon `monochrome` layer);
 the Play Store's 512×512 PNG is generated from the same geometry by
 `python3 tools/make_play_icon.py`, so the two can't drift apart.
