@@ -23,19 +23,13 @@ the [Roadmap](#roadmap).
 
 ## Screenshots
 
-The Android home-screen widget — the current call, the readings behind it, and the
-Open-Window Score across the next day-and-a-half (tall bars = open up, short = run
-the AC; the dashed line is your open threshold):
-
-![AC / Windows widget](docs/screenshots/widget.png)
-
-The companion app's multi-day forecast — tap a day to expand it into either the raw
-weather values or the per-factor score breakdown:
-
-<p>
-  <img src="docs/screenshots/app_values.png" width="32%" alt="App — values view" />
-  <img src="docs/screenshots/app_score.png" width="32%" alt="App — score-factor view" />
+<p align="center">
+  <img src="docs/showcase/01-score.png" width="32%" alt="Windows or AC? An hour-by-hour score">
+  <img src="docs/showcase/02-values.png" width="32%" alt="See why: the readings behind each hour">
+  <img src="docs/showcase/03-widget.png" width="32%" alt="On your home screen: the widget">
 </p>
+
+The raw captures are in [`docs/screenshots/`](docs/screenshots/).
 
 ## Quick start
 
