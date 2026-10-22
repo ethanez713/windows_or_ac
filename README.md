@@ -23,13 +23,26 @@ the [Roadmap](#roadmap).
 
 ## Screenshots
 
-<p align="center">
-  <img src="docs/showcase/01-score.png" width="32%" alt="Windows or AC? An hour-by-hour score">
-  <img src="docs/showcase/02-values.png" width="32%" alt="See why: the readings behind each hour">
-  <img src="docs/showcase/03-widget.png" width="32%" alt="On your home screen: the widget">
-</p>
+Captured from the Android app on a phone, with demo locations in place of a saved home.
 
-The raw captures are in [`docs/screenshots/`](docs/screenshots/).
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/forecast.png" alt="Multi-day forecast"></td>
+    <td width="33%"><img src="docs/screenshots/hot-day.png" alt="A hot day in Austin"></td>
+    <td width="33%"><img src="docs/screenshots/sources.png" alt="Data sources panel"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Forecast.</b> Each day's bars are the hourly Open-Window Score. An expanded day plots temperature and dew point over AQI, UV and cloud-cover bands.</td>
+    <td valign="top"><b>Hot day.</b> In Austin the score falls away by mid-afternoon, so the app shows when to switch to the AC and when to open up again. Saved locations sit in the bottom carousel.</td>
+    <td valign="top"><b>Consensus.</b> Readings from six providers are combined into one. A source that fails (here AirNow, HTTP 410) is listed with its error and left out of the average.</td>
+  </tr>
+</table>
+
+<p><img src="docs/screenshots/widget.png" width="66%" alt="Home-screen widget"></p>
+
+**Widget.** The next day and a half on the home screen: temperature and dew point, rain
+chance, and the open-window, UV and cloud bands beneath. It refreshes in the background
+and is drawn as `RemoteViews` in the launcher's process.
 
 ## Quick start
 
