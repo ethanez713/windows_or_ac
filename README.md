@@ -36,6 +36,17 @@ Captured from the Android app on a phone, with demo locations in place of a save
     <td valign="top"><b>Hot day.</b> In Austin the score falls away by mid-afternoon, so the app shows when to switch to the AC and when to open up again. Saved locations sit in the bottom carousel.</td>
     <td valign="top"><b>Consensus.</b> Readings from six providers are combined into one. A source that fails (here AirNow, HTTP 410) is listed with its error and left out of the average.</td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/miami.png" alt="Miami: heat, humidity and rain"></td>
+    <td><img src="docs/screenshots/portland.png" alt="Portland, Maine: cold nights"></td>
+    <td valign="top"><b>Read a day at a glance.</b> A bar's height is the hour's score and its colour names what held it down:<br><br>
+      green: open the windows<br>
+      orange or red: too hot<br>
+      pale grey: too humid<br>
+      navy with raindrops: rain<br>
+      ice blue with snowflakes: too cold<br><br>
+      Miami (left) is humid with hot afternoons and a rainy Saturday. Portland, Maine (centre) opens up for a few midday hours between cold nights.</td>
+  </tr>
 </table>
 
 <p><img src="docs/screenshots/widget.png" width="66%" alt="Home-screen widget"></p>
