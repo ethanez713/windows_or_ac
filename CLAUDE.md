@@ -13,8 +13,3 @@ published with the repo: personal or machine-specific notes go in the gitignored
   `~/.claude/skills/android-smoketest/scripts/check_remoteviews.py android/app`
   before it is called done — and on-device, the widget's log lives in the launcher, not in
   `logcat -b crash`. See the **android-smoketest** skill, steps 1 and 5.
-
-## Build
-
-- Toolchain is user-space on this WSL2 box: `source ~/android-tooling/env.sh` then
-  `./gradlew assembleDebug` from `android/`. No Android Studio.
