@@ -33,5 +33,5 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 adb -s "$SERIAL" exec-out run-as com.acwindows sh -c 'cd files 2>/dev/null && tar c widget-shots 2>/dev/null' \
   | tar x -C "$OUT" 2>/dev/null || echo ">> (no PNGs pulled — check the app is installed)"
 echo ">> done."
-echo ">> test report: android/app/build/reports/androidTests/connected/"
-echo ">> widget PNGs:  android/$OUT/widget-shots/"
+echo ">> test report: app/build/reports/androidTests/connected/"
+echo ">> widget PNGs:  $OUT/widget-shots/"

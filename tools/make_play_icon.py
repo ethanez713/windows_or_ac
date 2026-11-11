@@ -4,7 +4,7 @@
 Google Play wants a 512x512 32-bit PNG, which Android's vector drawables can't produce on
 their own. Rather than keep a hand-exported bitmap that quietly drifts from the shipped
 icon, this redraws the SAME shapes declared in
-`android/app/src/main/res/drawable/ic_launcher_foreground.xml` — coordinates below are in
+`app/src/main/res/drawable/ic_launcher_foreground.xml` — coordinates below are in
 that file's 108-unit viewport, so the two stay in step by construction. Change one, change
 the other, and diff the output.
 

@@ -4,7 +4,7 @@ A self-contained home-screen widget plus a companion app, showing whether to
 **open your windows** or **run the AC** — with an **Open-Window Score graph**
 (36 h by default, configurable 6–96 h) so you can see the best time to open up
 once. It fetches three keyless weather sources (Open-Meteo + NWS + met.no) in
-parallel and runs an on-device port of the Python backend's scoring engine. No
+parallel and scores them on the device. No
 server, no account, no telemetry.
 
 **Resizable** from 2×2 up to full-width: it shows as many forecast hours as fit
@@ -74,7 +74,7 @@ to a pin, and the coordinates go nowhere but the weather providers.
 ## 1. Build the APK
 
 **Android Studio (recommended):**
-1. *Open* → select this `android/` folder. Let Gradle sync finish (first sync
+1. *Open* → select the repository root. Let Gradle sync finish (first sync
    downloads Gradle + dependencies, so it needs internet, and it will create the
    Gradle wrapper for you). If it offers to upgrade the Android Gradle Plugin,
    accept.
@@ -83,7 +83,6 @@ to a pin, and the coordinates go nowhere but the weather providers.
 
 **Command line (if you have a JDK + the Android SDK):**
 ```bash
-cd android
 gradle wrapper            # one-time, only if ./gradlew is missing
 ./gradlew assembleDebug
 # -> app/build/outputs/apk/debug/app-debug.apk
@@ -102,8 +101,8 @@ Either path works — both are free and local:
 
 Open the app and tap the gear icon. Either tick **Use my phone's location**, or
 type an address and hit **Look up**, or enter a latitude/longitude by hand (find
-yours at <https://www.latlong.net>). Comfort thresholds default to the same
-values as the Python backend and are editable on the same screen — no rebuild.
+yours at <https://www.latlong.net>). Comfort thresholds are editable on the same
+screen — no rebuild.
 
 ## 4. Add the widget
 
@@ -207,10 +206,7 @@ apps while it runs.
   assistant bump the versions; the code itself doesn't depend on the exact
   versions pinned here.
 
-## Relationship to the Python backend
+## Scoring engine
 
-`Decision.kt` / `WeatherRepository.kt` are a faithful port of the repo's Python
-`decision.py` / `providers` / `aggregate.py`. The Python project stays the
-canonical "brain" and is where smart-home device control will be added; when that
-lands, this widget can switch from computing locally to polling that backend's
-JSON over your home network.
+`Decision.kt` and `Score.kt` are the scoring engine. The unit tests next to them
+are its specification. `WeatherRepository.kt` fetches the forecast they score.

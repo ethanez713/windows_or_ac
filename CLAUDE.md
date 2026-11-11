@@ -10,6 +10,6 @@ published with the repo: personal or machine-specific notes go in the gitignored
   compiles, links, launches and crash-scans clean, then fails the whole widget on the home
   screen. Any change under `res/layout/widget_*.xml`, `res/xml/*_widget_info.xml` or a
   `*Provider.kt` must pass
-  `~/.claude/skills/android-smoketest/scripts/check_remoteviews.py android/app`
+  `~/.claude/skills/android-smoketest/scripts/check_remoteviews.py app`
   before it is called done — and on-device, the widget's log lives in the launcher, not in
   `logcat -b crash`. See the **android-smoketest** skill, steps 1 and 5.

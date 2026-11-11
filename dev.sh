@@ -4,7 +4,7 @@
 # Usage:
 #   ./dev.sh build              # compile-verify + produce app-debug.apk
 #   ./dev.sh emu                # boot the emulator HEADLESS (reliable on WSL2)
-#   ./dev.sh emu-window         # boot with a window via WSLg (needs extra Qt libs, see README)
+#   ./dev.sh emu-window         # boot with a window via WSLg (needs extra Qt libs, see docs/DEVELOPMENT.md)
 #   ./dev.sh install            # build + install onto the running emulator/device
 #   ./dev.sh verify             # trigger a refresh and print the on-device fetch+decision
 #   ./dev.sh shot [file]        # screenshot the emulator (default /tmp/acwindows.png)
@@ -12,14 +12,14 @@
 #   ./dev.sh logs               # tail this app's logcat
 #   ./dev.sh run                # emu (if needed) + install + verify  — the full loop
 #
-# Requires the user-space toolchain at ~/android-tooling (see android/README.md).
-# WSL2 prerequisites (one-time, need sudo — see README "Local build & emulator"):
+# Requires the user-space toolchain at ~/android-tooling (see docs/DEVELOPMENT.md).
+# WSL2 prerequisites (one-time, need sudo — see docs/DEVELOPMENT.md "Local build & emulator"):
 #   sudo chmod 666 /dev/kvm
 #   sudo apt-get install -y libx11-xcb1 libgl1 libglx-mesa0 libegl1 libgles2 libxcb1 libxkbcommon0
 set -euo pipefail
 
 ENV="$HOME/android-tooling/env.sh"
-[ -f "$ENV" ] || { echo "Missing $ENV — run the toolchain setup first (see README)."; exit 1; }
+[ -f "$ENV" ] || { echo "Missing $ENV — run the toolchain setup first (see docs/DEVELOPMENT.md)."; exit 1; }
 # shellcheck disable=SC1090
 source "$ENV"
 
