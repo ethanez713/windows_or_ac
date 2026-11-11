@@ -29,7 +29,7 @@ data class Comfort(
     val aqiMax: Int = 150,                // air: unhealthy at/above
     val rainProbIdeal: Double = 20.0,     // rain: fine up to this % chance
     val rainProbMax: Double = 70.0,       // rain: likely at/above
-    // Forecast / scoring (see Score.kt + README "Methodology").
+    // Forecast / scoring (see Score.kt and docs/METHODOLOGY.md).
     val forecastHours: Int = 48,          // widget look-ahead
     val appForecastDays: Int = 14,        // full-app look-ahead
     val openScoreMin: Double = 60.0,

@@ -1,64 +1,7 @@
-# AC / Windows — Android home-screen widget
+# Development
 
-A self-contained home-screen widget plus a companion app, showing whether to
-**open your windows** or **run the AC** — with an **Open-Window Score graph**
-(36 h by default, configurable 6–96 h) so you can see the best time to open up
-once. It fetches three keyless weather sources (Open-Meteo + NWS + met.no) in
-parallel and scores them on the device. No
-server, no account, no telemetry.
-
-**Resizable** from 2×2 up to full-width: it shows as many forecast hours as fit
-the width, fills the available height, labels the left axis **win** (open) at the
-top / **ac** at the bottom, and marks each midnight with a dated divider.
-
-**Settings, no rebuild needed.** The app's gear icon opens the global settings —
-comfort thresholds (each factor's "comfortable up to" and "cutoff"), the
-open-window score threshold, location, per-source trust weights, and optional API
-keys for hyperlocal sources. Long-press the gear (or add/reconfigure the widget)
-for the widget-only settings: forecast length and background opacity. There is no
-Save button — edits commit when you leave the screen, and a **Discard changes**
-button appears in the header once something is staged.
-
-**Three ways to set your location:**
-- **Use my phone's location** — a checkbox. While it's on, the current fix is
-  re-read before every refresh, so the forecast follows you; the coordinate fields
-  are locked and show what was last resolved. (Android only hands out a fix to an
-  app that's actually on screen, so the position updates when you open the app and
-  the widget picks it up on its next tick — this app deliberately doesn't request
-  the background-location permission, which Play gates behind a separate review.)
-- **Address lookup** — type a street, city, or ZIP and hit *Look up*; Android's
-  built-in geocoder converts it to a latitude/longitude.
-- **By hand** — type the coordinates directly, and grant no location permission
-  at all.
-
-Whichever you use, the resolved place name is shown on the widget's footer next
-to a pin, and the coordinates go nowhere but the weather providers.
-
-**Behavior:**
-- **Auto-refreshes every 10 min** on its own (an inexact AlarmManager tick that
-  re-arms itself, with a 15-min WorkManager job as a backstop — WorkManager alone
-  can't go under 15 min). Refreshes are single-flight, so overlapping triggers
-  coalesce instead of racing each other into the cache.
-- **Caches** the last result and renders it instantly on every load; only hits
-  the network when the cache is missing or older than **10 min** (or on tap).
-- **Says what time it's showing.** The footer reads `as of 3:45 PM`, and a bright
-  vertical **now** line on the graph marks the present hour. Because the bars are
-  fixed clock hours, that line drifts right between refreshes — so if the widget
-  ever stops updating you can see it: past hours fade, the footer turns amber with
-  `⚠ as of 9:05 AM (5h old)`, and once the present runs off the end of the series
-  the marker pins to the edge and reads **stale**.
-- **Tap** the widget to force an immediate refresh; the refresh icon does the same
-  without opening the app.
-- Background color encodes the call; the graph bars above the dashed threshold
-  line are the open-worthy hours, and the best contiguous window is underlined.
-- **Rain line** — when rain is in the forecast, a blue line traces the chance of it
-  on the same 0–100 axis as the bars, thickening with the hourly rate (1dp under
-  0.05″/h, 2dp to 0.33″, 3dp to 1″, 4dp above) and labelled with the total inches.
-
-> ✅ This project **compiles** (`./gradlew assembleDebug` → `app-debug.apk`, AGP 8.5.2 /
-> Gradle 8.7 / JDK 17 / compileSdk 34) and was verified against a user-space toolchain on
-> Linux/WSL2. You can build and run it entirely from the command line — Android Studio is
-> optional. See [Local build & emulator (no Android Studio)](#local-build--emulator-no-android-studio).
+Building, installing and debugging the app from the command line. What the app does is in the
+[README](../README.md); how the score is reasoned is in [METHODOLOGY.md](METHODOLOGY.md).
 
 ## What you need (all free)
 
