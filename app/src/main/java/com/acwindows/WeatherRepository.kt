@@ -20,8 +20,7 @@ import kotlin.math.ln
 import kotlin.math.roundToInt
 
 /**
- * Fetches the weather sources in parallel and merges them — a port of the Python
- * backend's providers/ + aggregate.py + forecast.py. Each fetch swallows its own
+ * Fetches the weather sources in parallel and merges them. Each fetch swallows its own
  * errors and returns ok=false, so one dead source can't take down the others.
  *
  * Sources (all free, keyless, simple HTTP GETs, all with forecasting):

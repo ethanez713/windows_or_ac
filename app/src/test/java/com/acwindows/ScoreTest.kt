@@ -4,8 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Mirrors the Python backend's tests/test_score.py so the on-device port can't
- * silently drift from the canonical scoring. Pure logic — runs on plain JVM JUnit.
+ * The Open-Window Score's specification. Pure logic — runs on plain JVM JUnit.
  */
 class ScoreTest {
 

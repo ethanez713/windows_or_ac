@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
  *
  * Everything inside the app stays in °F: the [Comfort] setpoints, [ForecastPoint.tempF]
  * and `dewPointF`, [Score], [Decision], and the widget's cached [Snapshot]. That is the
- * unit every provider is already asked for and the unit the Python brain speaks, so one
+ * unit every provider is already asked for, so one
  * canonical internal unit means a stored setpoint can't drift a fraction of a degree
  * every time this toggle is flipped.
  *

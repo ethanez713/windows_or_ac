@@ -3,7 +3,7 @@ package com.acwindows
 import kotlin.math.roundToInt
 
 /**
- * The Open-Window Score — a faithful port of the Python backend's score.py.
+ * The Open-Window Score.
  * A continuous 0..100 generalisation of Decision.decide(): the product of
  * factors that each ramp between the thresholds configured in [Comfort].
  *
@@ -29,8 +29,7 @@ object Score {
 
     /**
      * Full breakdown: the score plus each factor multiplier (0..1), so the UI can
-     * show *which* factor is holding the score back. Mirrors score.py's
-     * ScoreBreakdown. A missing input leaves its factor at 1.0 (non-blocking).
+     * show *which* factor is holding the score back. A missing input leaves its factor at 1.0 (non-blocking).
      */
     fun windowScoreBreakdown(
         c: Comfort,

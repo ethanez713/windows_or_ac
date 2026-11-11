@@ -4,14 +4,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Mirrors the Python backend's tests/test_decision.py. Keeps the Kotlin decision
- * engine in lockstep with the canonical brain. Pure logic — plain JVM JUnit.
+ * The decision engine's specification. Pure logic — plain JVM JUnit.
  */
 class DecisionTest {
 
     private val c = Comfort()  // temp 76/78, dew max 65, aqi max 150
 
-    /** A consensus with sensible, non-blocking defaults (cf. Python's reading()). */
+    /** A consensus with sensible, non-blocking defaults. */
     private fun consensus(
         tempF: Double? = 70.0,
         dewPointF: Double? = 50.0,

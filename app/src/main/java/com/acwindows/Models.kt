@@ -1,9 +1,7 @@
 package com.acwindows
 
 /**
- * Data containers, mirroring the Python backend's models.py so the two stay
- * conceptually in sync. The Python project remains the canonical "brain"; this
- * is a faithful on-device port for the widget.
+ * Data containers shared by the fetch, score and render layers.
  */
 
 /**

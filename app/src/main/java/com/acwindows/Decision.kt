@@ -1,8 +1,7 @@
 package com.acwindows
 
 /**
- * The recommendation engine — a faithful port of the Python backend's
- * decision.py. Pure (no I/O), so it's the natural seam for future smart-home
+ * The recommendation engine. Pure (no I/O), so it's the natural seam for future smart-home
  * control: today it returns an [Action]; later a controller maps actions to
  * devices (thermostat, attic fan, window openers) without changing this logic.
  *

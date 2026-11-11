@@ -3,8 +3,7 @@ package com.acwindows
 import kotlin.math.abs
 
 /**
- * Builds a scored [Forecast] from hourly series — a port of the Python backend's
- * forecast.py. Open-Meteo drives the score; NWS (and met.no) cross-check the
+ * Builds a scored [Forecast] from hourly series. Open-Meteo drives the score; NWS (and met.no) cross-check the
  * temperature track and vote on the rain fields (see [rainConsensus]).
  *
  * Each hourly map carries: time, tempF, dewPointF, aqi, precipProb, shortwaveWm2.

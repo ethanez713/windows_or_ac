@@ -6,8 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Mirrors the Python backend's tests/test_forecast.py for the on-device port.
- * Pure logic — plain JVM JUnit.
+ * The forecast builder's specification. Pure logic — plain JVM JUnit.
  */
 class ForecastBuilderTest {
 
