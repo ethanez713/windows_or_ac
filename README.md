@@ -12,7 +12,7 @@ entirely on the phone: no account, no server, no telemetry.
 <table>
   <tr>
     <td width="33%"><img src="docs/screenshots/forecast.png" alt="Multi-day forecast"></td>
-    <td width="33%"><img src="docs/screenshots/hot-day.png" alt="A hot day in Austin"></td>
+    <td width="33%"><img src="docs/screenshots/hot-day.png" alt="A hot day in Phoenix"></td>
     <td width="33%"><img src="docs/screenshots/sources.png" alt="Data sources panel"></td>
   </tr>
   <tr>
